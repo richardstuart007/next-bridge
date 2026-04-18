@@ -1,0 +1,46 @@
+{
+  "name": "next-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "migrate": "npx tsx lib/migrate.ts",
+    "locallocal": "set PORT=3030 && copy /Y .env.locallocal .env && next dev --turbopack",
+    "localdev": "set PORT=3031 && copy /Y .env.localdev .env && next dev --turbopack",
+    "localprod": "set PORT=3032 && copy /Y .env.localprod .env && next dev --turbopack"
+  },
+  "dependencies": {
+    "@heroicons/react": "^2.1.5",
+    "@vercel/postgres": "^0.10.0",
+    "chart.js": "^4.5.1",
+    "cheerio": "^1.0.0",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
+    "next": "16.2.3",
+    "nextjs-shared": "github:richardstuart007/nextjs-shared",
+    "pg": "^8.13.1",
+    "react": "19.2.4",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "19.2.4",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/pg": "^8",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.3",
+    "tailwindcss": "^4",
+    "tsx": "^4",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  }
+}

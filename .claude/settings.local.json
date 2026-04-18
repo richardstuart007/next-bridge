@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(psql --version)",
+      "Bash(psql -U postgres -c \"SELECT 1\")",
+      "Bash(PGPASSWORD=bridge psql -U postgres -h localhost -c \"SELECT 1\")",
+      "Bash(cp .env.locallocal .env)",
+      "Bash(npm run *)",
+      "Bash(PGPASSWORD=bridge psql -U postgres -h localhost -d bridgedb -c \"\\\\dt\")",
+      "Bash(psql -U postgres -h localhost -d bridgedb -c ' *)",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\" \"https://auckland.nzbridgeclub.org/resultsbm.asp?id=654558&umbid=0\")",
+      "Bash(npx tsc *)",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\" \"https://auckland.nzbridgeclub.org/resultslistbm.asp\")",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\" \"https://auckland.nzbridgeclub.org/resultslistbm.asp?dow=fri\")",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\" \"https://auckland.nzbridgeclub.org/resultslistbm.asp?headeventid=16900\")",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' 'https://auckland.nzbridgeclub.org/resultslistbm.asp?headeventid=__TRACKED_VAR__')",
+      "Bash(curl -s -A 'Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' 'https://auckland.nzbridgeclub.org/resultsbm.asp?id=__TRACKED_VAR__&umbid=0')",
+      "Bash(curl -s -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\" \"https://www.nzbridge.co.nz/online-points.html?mp_filter_name=richard+stuart&mp_filter_number=&mp_search=Search\")",
+      "Bash(node -e ' *)",
+      "Bash(curl -s http://localhost:3020/api/scrape/import -X POST -H 'Content-Type: application/json' -d '{\"source_id\":654558,\"day_of_week\":\"Friday\",\"time_of_day\":\"morning\",\"session_type\":\"club\"}')",
+      "Bash(curl -s http://localhost:3020/api/scrape/import -X POST -H 'Content-Type: application/json' -d '{\"source_id\":__TRACKED_VAR__,\"day_of_week\":\"Thursday\",\"time_of_day\":\"morning\",\"session_type\":\"club\"}')",
+      "Bash(mkdir -p c:/github/next-bridge/src/app/api/sessions/[id]/results)",
+      "Bash(mkdir -p c:/github/next-bridge/src/app/session/[id])",
+      "Bash(curl -s -o /tmp/akbc_list.html -w \"%{http_code}\" \"https://auckland.nzbridgeclub.org/resultslistbm.asp\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\")",
+      "Bash(curl -s \"https://auckland.nzbridgeclub.org/resultslistbm.asp?headeventid=16921\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\")",
+      "Bash(npm update *)"
+    ]
+  }
+}

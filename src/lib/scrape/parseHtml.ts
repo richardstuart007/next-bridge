@@ -32,6 +32,8 @@ export interface ParsedPair {
   player1Name: string
   player2Name: string
   percentage: number
+  rank?: number              // position in session (1 = best); IMP only
+  impScore?: number          // net IMP score (e.g. +50.0, -23.5); IMP only
   player1NzNumber?: number   // extracted from href if present
   player2NzNumber?: number   // extracted from href if present
   pairHref?: string          // raw href for debugging
@@ -43,6 +45,7 @@ export interface ParsedSession {
   pairs: ParsedPair[]
   skipped: boolean
   skipReason?: string
+  isImp?: boolean        // true when IMP/Teams session detected (pairs have rank, not percentage)
 }
 
 const MONTH_MAP: Record<string, string> = {
@@ -53,24 +56,23 @@ const MONTH_MAP: Record<string, string> = {
 /**
  * Parse the AKBC resultsbm.asp page HTML using cheerio.
  *
- * Heading example:  "Friday morning (6-Mar-26)"
- * Row structure:    <TR CLASS=ResultsTableBody>
- *                     <TD>1</TD>           — place (ignore)
- *                     <TD>590.0</TD>       — raw score (ignore)
- *                     <TD>  64.27%</TD>    — percentage
- *                     <TD><A ...>SYLVESTER RIDDELL - MARK ROBERTSON (12)</A></TD>
- *                   </TR>
+ * MP row structure:  <TR CLASS=ResultsTableBody>
+ *                      <TD>1</TD>           — place
+ *                      <TD>590.0</TD>       — raw score
+ *                      <TD>  64.27%</TD>    — percentage
+ *                      <TD><A ...>NAME1 - NAME2 (12)</A></TD>
+ *                    </TR>
+ *
+ * IMP row structure: same column layout but column 2 may not be a %-comparable value.
+ * For IMP sessions we extract rank (column 0) and names (column 3); percentage is
+ * computed later via quantile normalisation against the MP distribution.
  */
 export function parseResultsPage(html: string): ParsedSession {
   const $ = cheerio.load(html)
 
-  // Skip Teams/IMP sessions
-  if (/teams|imp/i.test($('body').text().slice(0, 1000))) {
-    return { date: '', dayOfWeek: '', pairs: [], skipped: true, skipReason: 'Teams/IMP session' }
-  }
+  const isImp = /teams|imp/i.test($('body').text().slice(0, 1000))
 
   // Extract date from heading — supports (DD-Mon-YY) or (DD-Mon-YYYY)
-  // e.g. "Friday morning (6-Mar-26)", "Thursday Morning - Section A (12-Mar-26)"
   const headingText = $('.ResultsTableHead').first().text().trim()
   const dateMatch = headingText.match(/\((\d{1,2})-(\w{3})-(\d{2,4})\)/)
   if (!dateMatch) {
@@ -93,12 +95,26 @@ export function parseResultsPage(html: string): ParsedSession {
     const cells = $(row).find('td')
     if (cells.length < 4) return
 
-    // Column 2 (index 2): percentage — "  64.27%"
-    const pctText = $(cells[2]).text().trim().replace('%', '')
-    const percentage = parseFloat(pctText)
-    if (isNaN(percentage) || percentage < 0 || percentage > 100) return
+    // Column 0: rank/place (1 = best)
+    const rankVal = parseInt($(cells[0]).text().trim(), 10)
+    const rank = isNaN(rankVal) ? undefined : rankVal
 
-    // Column 3 (index 3): pair name inside <a> tag — "NAME1 - NAME2 (NUM)"
+    // Column 1: raw score — for IMP this is the net IMP score (e.g. 50.0, -23.5)
+    const rawScoreText = $(cells[1]).text().trim()
+    const impScore = isImp ? parseFloat(rawScoreText) : undefined
+
+    // Column 2: percentage — used for MP sessions only
+    const pctText = $(cells[2]).text().trim().replace('%', '')
+    const rawPct = parseFloat(pctText)
+    const percentage = (!isImp && !isNaN(rawPct) && rawPct >= 0 && rawPct <= 100) ? rawPct : 0
+
+    // For MP sessions, skip rows without a valid percentage
+    if (!isImp && percentage === 0 && isNaN(rawPct)) return
+
+    // For IMP sessions, skip rows where we couldn't parse the IMP score
+    if (isImp && (impScore === undefined || isNaN(impScore))) return
+
+    // Column 3: pair name inside <a> tag — "NAME1 - NAME2 (NUM)"
     const anchor = $(cells[3]).find('a')
     const pairText = anchor.text().trim()
     if (!pairText) return
@@ -124,13 +140,15 @@ export function parseResultsPage(html: string): ParsedSession {
       player1Name: name1,
       player2Name: name2,
       percentage,
+      rank,
+      impScore,
       player1NzNumber: nzNumbers[0],
       player2NzNumber: nzNumbers[1],
       pairHref: href || undefined
     })
   })
 
-  return { date, dayOfWeek: '', pairs, skipped: false }
+  return { date, dayOfWeek: '', pairs, skipped: false, isImp }
 }
 
 // -----------------------------------------------------------------------

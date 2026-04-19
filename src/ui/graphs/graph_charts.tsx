@@ -182,12 +182,14 @@ export function MyLineChart({
   LineGraphData,
   GridDisplayX = false,
   GridDisplayY = true,
-  onPointClick
+  onPointClick,
+  onLegendClick
 }: {
   LineGraphData: StackDataStructure
   GridDisplayX?: boolean
   GridDisplayY?: boolean
   onPointClick?: (key: number) => void
+  onLegendClick?: (datasetIndex: number) => void
 }) {
   const defaultBorderColors = [
     'rgba(75, 192, 192, 1)',
@@ -223,10 +225,14 @@ export function MyLineChart({
     },
     plugins: {
       legend: {
+        ...(onLegendClick ? {
+          onClick: (_e: any, legendItem: any) => { onLegendClick(legendItem.datasetIndex) }
+        } : {}),
         labels: {
           usePointStyle: false,
           generateLabels: (chart: ChartJS): LegendItem[] =>
             chart.data.datasets.map((dataset, i) => ({
+              datasetIndex: i,
               text: dataset.label || `Dataset ${i + 1}`,
               fillStyle: dataset.borderColor as string,
               strokeStyle: dataset.borderColor as string,

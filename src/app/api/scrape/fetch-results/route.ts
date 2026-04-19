@@ -105,7 +105,10 @@ export async function POST(request: NextRequest) {
             query: `
               SELECT se_seid, se_source_id FROM tse_sessions
               WHERE NOT EXISTS (SELECT 1 FROM ${RAW_TABLE} WHERE rw_seid = se_seid)
-              AND se_scoring != 'IMP'
+              AND (
+                se_scoring = 'IMP'
+                OR NOT EXISTS (SELECT 1 FROM ${LOG_TABLE} WHERE fl_seid = se_seid AND fl_skipped = true AND fl_error IS NULL)
+              )
               ORDER BY se_seid
             `,
             params: []
@@ -123,25 +126,29 @@ export async function POST(request: NextRequest) {
           const parsed = await fetchSessionResults(sourceId)
 
           if (parsed.skipped) {
+            // Truly unparseable page (no date, etc.) — not an IMP session
             sessionsSkipped++
             await log(seid, 0, true, null)
-            await table_query({
-              caller: 'fetch-results',
-              query: `UPDATE tse_sessions SET se_scoring = 'IMP' WHERE se_seid = $1`,
-              params: [seid]
-            })
           } else if (parsed.pairs.length === 0) {
             const msg = `Session ${sourceId}: no pairs found`
             warnings.push(msg)
             await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/fetch-results', lg_msg: msg, lg_severity: 'W' })
             await log(seid, 0, false, msg)
           } else {
+            // Mark IMP sessions in tse_sessions
+            if (parsed.isImp) {
+              await table_query({
+                caller: 'fetch-results',
+                query: `UPDATE tse_sessions SET se_scoring = 'IMP' WHERE se_seid = $1`,
+                params: [seid]
+              })
+            }
             for (const pair of parsed.pairs) {
               const [name1, name2] = [pair.player1Name, pair.player2Name].sort()
               await table_query({
                 caller: 'fetch-results',
-                query: `INSERT INTO ${RAW_TABLE} (rw_seid, rw_name1, rw_name2, rw_percentage) VALUES ($1, $2, $3, $4)`,
-                params: [seid, name1, name2, pair.percentage]
+                query: `INSERT INTO ${RAW_TABLE} (rw_seid, rw_name1, rw_name2, rw_percentage, rw_rank, rw_imp_score) VALUES ($1, $2, $3, $4, $5, $6)`,
+                params: [seid, name1, name2, pair.percentage, pair.rank ?? null, pair.impScore ?? null]
               })
               pairsStored++
             }

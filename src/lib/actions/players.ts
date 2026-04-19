@@ -28,10 +28,10 @@ export async function getPlayerByNzNumber(nzNumber: number) {
 }
 
 export async function getPlayerByName(name: string) {
-  const rows = await table_fetch({
+  const rows = await table_query({
     caller: 'getPlayerByName',
-    table: PLAYERS_TABLE,
-    whereColumnValuePairs: [{ column: 'pl_name', value: name }]
+    query: `SELECT * FROM ${PLAYERS_TABLE} WHERE LOWER(TRIM(REGEXP_REPLACE(pl_name, '\\s+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE($1, '\\s+', ' ', 'g')))`,
+    params: [name]
   })
   return rows[0] ?? null
 }
@@ -110,10 +110,11 @@ export async function findOrCreatePlayerByName(name: string): Promise<number | n
 
 /** Insert a player by name only (no NZ bridge number yet). Returns the new pl_plid. */
 export async function insertPlayerByName(name: string): Promise<number> {
+  const normalised = name.trim().replace(/\s+/g, ' ')
   const rows = await table_write({
     caller: 'insertPlayerByName',
     table: PLAYERS_TABLE,
-    columnValuePairs: [{ column: 'pl_name', value: name }]
+    columnValuePairs: [{ column: 'pl_name', value: normalised }]
   })
   return rows[0]?.pl_plid
 }

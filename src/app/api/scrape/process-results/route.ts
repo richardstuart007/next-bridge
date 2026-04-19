@@ -21,15 +21,17 @@ export async function POST() {
 
   ;(async () => {
     try {
+
       const pendingSessions = await table_query({
         caller: 'process-results',
         query: `
-          SELECT DISTINCT rw_seid
-          FROM trw_results_raw
+          SELECT DISTINCT rw.rw_seid, s.se_scoring
+          FROM trw_results_raw rw
+          JOIN tse_sessions s ON s.se_seid = rw.rw_seid
           WHERE NOT EXISTS (
-            SELECT 1 FROM tre_results WHERE re_seid = rw_seid
+            SELECT 1 FROM tre_results WHERE re_seid = rw.rw_seid
           )
-          ORDER BY rw_seid
+          ORDER BY rw.rw_seid
         `,
         params: []
       })
@@ -43,17 +45,22 @@ export async function POST() {
 
       for (let i = 0; i < pendingSessions.length; i++) {
         const seid: number = pendingSessions[i].rw_seid
+        const scoring: string = pendingSessions[i].se_scoring
 
         const rawPairs = await table_query({
           caller: 'process-results',
-          query: `SELECT rw_name1, rw_name2, rw_percentage FROM trw_results_raw WHERE rw_seid = $1`,
+          query: `SELECT rw_name1, rw_name2, rw_percentage, rw_imp_score FROM trw_results_raw WHERE rw_seid = $1 ORDER BY rw_imp_score DESC NULLS LAST`,
           params: [seid]
         })
 
         for (const row of rawPairs) {
           const name1: string = row.rw_name1
           const name2: string = row.rw_name2
-          const percentage: number = parseFloat(row.rw_percentage)
+          const impScore: number | null = (scoring === 'IMP' && row.rw_imp_score !== null)
+            ? parseFloat(row.rw_imp_score)
+            : null
+          // IMP sessions: store raw score, percentage left as 0 until imp-convert recalculate runs
+          const percentage: number = impScore !== null ? 0 : parseFloat(row.rw_percentage)
 
           const wasNew1 = !(await getPlayerByName(name1))
           const wasNew2 = !(await getPlayerByName(name2))
@@ -74,8 +81,8 @@ export async function POST() {
           const pairId = await getOrCreatePartnerRow(plid1, plid2, name1, name2)
           if (pairId !== null) partnershipsCreated++
 
-          await insertResult({ se_id: seid, pl_id: plid1, partner_pl_id: plid2, pair_id: pairId, percentage })
-          await insertResult({ se_id: seid, pl_id: plid2, partner_pl_id: plid1, pair_id: pairId, percentage })
+          await insertResult({ se_id: seid, pl_id: plid1, partner_pl_id: plid2, pair_id: pairId, percentage, imp_score: impScore })
+          await insertResult({ se_id: seid, pl_id: plid2, partner_pl_id: plid1, pair_id: pairId, percentage, imp_score: impScore })
           resultsInserted += 2
         }
 

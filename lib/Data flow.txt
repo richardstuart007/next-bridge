@@ -1,0 +1,180 @@
+=============================================================
+BRIDGE RESULTS TRACKER — DATA FLOW & AUDIT REFERENCE
+=============================================================
+
+TABLES
+  tse_sessions      — one row per session (date, scoring, source ID)
+  trw_results_raw   — raw scraped pairs before player resolution
+  tfl_fetch_log     — fetch attempt log (pairs, errors, skipped flag)
+  tpl_players       — player master (name, NZ#, averages)
+  tre_results       — one row per player per session (percentage, IMP score)
+  tpa_partners      — pair partnership stats (sessions, averages)
+  tam_players_ambiguous — NZ lookup matches needing manual review
+
+-------------------------------------------------------------
+STAGE 1 — Import Session
+  Button : "Import Selected" (Available Sessions from AKBC)
+           or "Import Session" (Manual)
+  Reads  : AKBC website (resultsbm.asp?id=XXXXX)
+  Writes : tse_sessions (se_seid, se_source_id, se_date,
+             se_day_of_week, se_scoring, se_session_type)
+           IMP sessions: metadata only — no results yet
+           MP sessions:  ALSO writes tpl_players + tre_results directly
+
+  VERIFY (replace 660711 with your source ID):
+    SELECT se_seid, se_date, se_scoring, se_source_id
+    FROM tse_sessions
+    WHERE se_source_id = 660711;
+
+-------------------------------------------------------------
+STAGE 2 — Fetch Results
+  Button : "Fetch All Pending" or "Refetch Selected"
+  Reads  : AKBC website, tse_sessions
+  Writes : trw_results_raw (rw_seid, rw_name1, rw_name2,
+             rw_percentage, rw_rank, rw_imp_score)
+           tfl_fetch_log (fl_seid, fl_pairs, fl_skipped, fl_error)
+           tse_sessions: updates se_scoring = 'IMP' if detected
+
+  VERIFY (use se_seid from Stage 1 query above, e.g. 2030):
+    SELECT rw_rwid, rw_name1, rw_name2,
+           rw_percentage, rw_rank, rw_imp_score
+    FROM trw_results_raw
+    WHERE rw_seid = 2030
+    ORDER BY rw_imp_score DESC NULLS LAST;
+
+-------------------------------------------------------------
+STAGE 3 — Process Results
+  Button : "Process Results"
+  Reads  : trw_results_raw, tse_sessions
+  Writes : tpl_players — creates new player rows if name not found
+           tre_results (re_seid, re_plid, re_partner_plid,
+             re_pairid, re_percentage, re_imp_score)
+             IMP sessions: re_percentage = 0, re_imp_score = raw value
+             MP sessions:  re_percentage = actual %, re_imp_score = NULL
+           tpa_partners — creates/updates pair rows
+
+  VERIFY:
+    SELECT re.re_plid, p1.pl_name, p2.pl_name AS partner,
+           re.re_imp_score, re.re_percentage
+    FROM tre_results re
+    JOIN tpl_players p1 ON p1.pl_plid = re.re_plid
+    JOIN tpl_players p2 ON p2.pl_plid = re.re_partner_plid
+    WHERE re.re_seid = 2030
+      AND re.re_plid < re.re_partner_plid
+    ORDER BY re.re_imp_score DESC NULLS LAST;
+
+    -- Expect: re_percentage = 0.00 for IMP, re_imp_score populated
+
+-------------------------------------------------------------
+STAGE 4a — Convert IMP → %   (IMP sessions only, run FIRST)
+  Button : "Convert IMP → %"
+  Reads  : tre_results WHERE re_imp_score IS NOT NULL
+  Writes : tre_results.re_percentage
+             min IMP score → 25.00%
+             max IMP score → 75.00%
+             others proportional via min-max formula
+
+  VERIFY:
+    SELECT re.re_imp_score, re.re_percentage,
+           p1.pl_name, p2.pl_name AS partner
+    FROM tre_results re
+    JOIN tpl_players p1 ON p1.pl_plid = re.re_plid
+    JOIN tpl_players p2 ON p2.pl_plid = re.re_partner_plid
+    WHERE re.re_seid = 2030
+      AND re.re_plid < re.re_partner_plid
+    ORDER BY re.re_imp_score DESC NULLS LAST;
+
+    -- Expect: highest imp_score → 75.00%, lowest → 25.00%
+
+-------------------------------------------------------------
+STAGE 4b — Recalculate Averages
+  Button : "Recalculate Averages"
+  Reads  : tre_results, tse_sessions
+  Writes : tpl_players
+             pl_session_count, pl_avg_percentage        (all)
+             pl_mp_session_count, pl_mp_avg_percentage  (MP only)
+             pl_imp_session_count, pl_imp_avg_percentage (IMP only)
+
+  VERIFY (replace name):
+    SELECT pl_name,
+           pl_session_count, pl_avg_percentage,
+           pl_mp_session_count, pl_mp_avg_percentage,
+           pl_imp_session_count, pl_imp_avg_percentage
+    FROM tpl_players
+    WHERE pl_name ILIKE '%holly%shan%';
+
+-------------------------------------------------------------
+STAGE 4c — Recalculate Partnerships
+  Button : "Recalculate Partnerships"
+  Reads  : tre_results, tse_sessions, tpl_players
+  Writes : tpa_partners
+             pa_sessions, pa_avg_pct                    (all)
+             pa_mp_sessions, pa_mp_avg_pct              (MP only)
+             pa_imp_sessions, pa_imp_avg_pct            (IMP only)
+           tre_results.re_pairid — back-fills missing pair IDs
+
+  VERIFY (replace name):
+    SELECT p1.pl_name, p2.pl_name AS partner,
+           pa.pa_sessions, pa.pa_avg_pct,
+           pa.pa_imp_sessions, pa.pa_imp_avg_pct
+    FROM tpa_partners pa
+    JOIN tpl_players p1 ON p1.pl_plid = pa.pa_plid1
+    JOIN tpl_players p2 ON p2.pl_plid = pa.pa_plid2
+    WHERE p1.pl_name ILIKE '%holly%shan%'
+       OR p2.pl_name ILIKE '%holly%shan%';
+
+-------------------------------------------------------------
+STAGE 5a — Fill Missing NZ Numbers
+  Button : "Fill Missing NZ Numbers"
+  Reads  : nzbridge.co.nz (external)
+  Writes : tpl_players
+             pl_nz_bridge_number, pl_club, pl_rank,
+             pl_grade, pl_rating, pl_a_points,
+             pl_b_points, pl_c_points
+
+  VERIFY:
+    -- Players still missing NZ number
+    SELECT pl_plid, pl_name, pl_nz_bridge_number
+    FROM tpl_players
+    WHERE pl_nz_bridge_number = 0
+    ORDER BY pl_name;
+
+-------------------------------------------------------------
+STAGE 5b — Refresh All Players
+  Button : "Refresh All Players"
+  Reads  : nzbridge.co.nz (external)
+  Writes : tpl_players (same columns as 5a, for all players)
+
+  VERIFY:
+    SELECT pl_name, pl_nz_bridge_number, pl_club,
+           pl_rank, pl_rating
+    FROM tpl_players
+    WHERE pl_name ILIKE '%richard%stuart%';
+
+-------------------------------------------------------------
+STAGE 5c — Recalculate Date Seq
+  Button : "Recalculate Date Seq"
+  Reads  : tse_sessions
+  Writes : tse_sessions.se_date_seq
+             (1 = first session on that date, 2 = second, etc.)
+
+  VERIFY:
+    SELECT se_date, se_date_seq, se_scoring, se_source_id
+    FROM tse_sessions
+    ORDER BY se_date DESC, se_date_seq
+    LIMIT 20;
+
+=============================================================
+FULL PIPELINE (new IMP session)
+  1. Import Selected   → tse_sessions
+  2. Fetch Results     → trw_results_raw
+  3. Process Results   → tre_results (re_imp_score set, re_percentage = 0)
+  4. Convert IMP → %   → tre_results.re_percentage (25–75% range)
+  5. Recalc Averages   → tpl_players
+  6. Recalc Partners   → tpa_partners
+
+FULL PIPELINE (new MP session)
+  1. Import Selected   → tse_sessions + tre_results (direct, stages 2–3 skipped)
+  2. Recalc Averages   → tpl_players
+  3. Recalc Partners   → tpa_partners
+=============================================================

@@ -11,11 +11,13 @@ interface SessionRow {
   se_day_of_week: string
   se_date_seq: number
   se_session_type: string
+  se_scoring: string
   se_source_id: number
 }
 
 interface ResultRow {
   percentage: number
+  imp_score: number | null
   pl_id: number
   player_name: string
   player_nz_number: number
@@ -95,6 +97,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
           <span>{session.se_day_of_week}</span>
           {session.se_date_seq > 0 && <span>Session {session.se_date_seq}</span>}
           <span className='capitalize'>{session.se_session_type}</span>
+          <span className={session.se_scoring === 'IMP' ? 'text-purple-600 font-medium' : ''}>{session.se_scoring}</span>
         </div>
       </div>
 
@@ -112,15 +115,17 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
               <tr className='border-b border-gray-200'>
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-8'>#</th>
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Player 1</th>
-                <th className='py-1.5 text-left text-xs text-gray-500 font-medium text-gray-300'>NZ#</th>
+                <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>NZ#</th>
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Player 2</th>
-                <th className='py-1.5 text-left text-xs text-gray-500 font-medium text-gray-300'>NZ#</th>
-                <th className='py-1.5 text-right text-xs text-gray-500 font-medium'>Score</th>
+                <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>NZ#</th>
+                {results[0]?.imp_score != null && <th className='py-1.5 text-right text-xs text-gray-500 font-medium'>IMPs</th>}
+                <th className='py-1.5 text-right text-xs text-gray-500 font-medium'>%</th>
               </tr>
             </thead>
             <tbody>
               {results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => {
                 const rowNum = (currentPage - 1) * itemsPerPage + i + 1
+                const isImp = r.imp_score != null
                 return (
                 <tr
                   key={i}
@@ -129,25 +134,22 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                 >
                   <td className='py-1.5 text-gray-400'>{rowNum}</td>
                   <td className='py-1.5'>
-                    <Link
-                      href={`/player/${r.pl_id}`}
-                      className='text-blue-600 hover:underline'
-                      onClick={e => e.stopPropagation()}
-                    >
+                    <Link href={`/player/${r.pl_id}`} className='text-blue-600 hover:underline' onClick={e => e.stopPropagation()}>
                       {r.player_name}
                     </Link>
                   </td>
                   <td className='py-1.5 text-xs text-gray-400'>{r.player_nz_number || '—'}</td>
                   <td className='py-1.5'>
-                    <Link
-                      href={`/player/${r.partner_pl_id}`}
-                      className='text-blue-600 hover:underline'
-                      onClick={e => e.stopPropagation()}
-                    >
+                    <Link href={`/player/${r.partner_pl_id}`} className='text-blue-600 hover:underline' onClick={e => e.stopPropagation()}>
                       {r.partner_name}
                     </Link>
                   </td>
                   <td className='py-1.5 text-xs text-gray-400'>{r.partner_nz_number || '—'}</td>
+                  {isImp && (
+                    <td className='py-1.5 text-right font-mono text-sm'>
+                      {Number(r.imp_score) > 0 ? '+' : ''}{Number(r.imp_score).toFixed(1)}
+                    </td>
+                  )}
                   <td className='py-1.5 text-right font-medium'>
                     {parseFloat(String(r.percentage)).toFixed(2)}%
                   </td>

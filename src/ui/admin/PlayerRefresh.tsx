@@ -38,6 +38,18 @@ export default function PlayerRefresh() {
   const [loadingAmbiguous, setLoadingAmbiguous] = useState(false)
   const [assigningAmid, setAssigningAmid] = useState<number | null>(null)
   const [ambiguousError, setAmbiguousError] = useState<string | null>(null)
+  const [showAmbiguous, setShowAmbiguous] = useState(false)
+
+  // Merge Players
+  const [mergeKeepSearch, setMergeKeepSearch] = useState('')
+  const [mergeDiscardSearch, setMergeDiscardSearch] = useState('')
+  const [mergeKeepResults, setMergeKeepResults] = useState<any[]>([])
+  const [mergeDiscardResults, setMergeDiscardResults] = useState<any[]>([])
+  const [mergeKeepSelected, setMergeKeepSelected] = useState<{ plid: number; name: string } | null>(null)
+  const [mergeDiscardSelected, setMergeDiscardSelected] = useState<{ plid: number; name: string } | null>(null)
+  const [merging, setMerging] = useState(false)
+  const [mergeMsg, setMergeMsg] = useState<string | null>(null)
+  const [mergeError, setMergeError] = useState<string | null>(null)
 
   // Correct NZ Numbers
   const [correctSearch, setCorrectSearch] = useState('')
@@ -68,6 +80,10 @@ export default function PlayerRefresh() {
   const [recalcDateSeq, setRecalcDateSeq] = useState(false)
   const [dateSeqSummary, setDateSeqSummary] = useState<RecalcDone | null>(null)
   const [dateSeqError, setDateSeqError] = useState<string | null>(null)
+  const [impConvert, setImpConvert] = useState(false)
+  const [impConvertProgress, setImpConvertProgress] = useState<RecalcProgress | null>(null)
+  const [impConvertSummary, setImpConvertSummary] = useState<RecalcDone | null>(null)
+  const [impConvertError, setImpConvertError] = useState<string | null>(null)
 
   async function loadCounts() {
     try {
@@ -270,7 +286,62 @@ export default function PlayerRefresh() {
     finally { setRecalcDateSeq(false) }
   }
 
-  const anyRunning = fillingMissing || refreshingAll || recalcAverages || recalcPartners || recalcDateSeq
+  async function handleImpConvert() {
+    setImpConvert(true)
+    setImpConvertProgress(null)
+    setImpConvertSummary(null)
+    setImpConvertError(null)
+    try {
+      const res = await fetch('/api/players/recalculate?mode=imp-convert', { method: 'POST' })
+      if (!res.ok) { const d = await res.json(); setImpConvertError(d.error ?? 'Failed'); return }
+      await readSSE<RecalcProgress, RecalcDone>(
+        res,
+        evt => setImpConvertProgress(evt),
+        evt => { setImpConvertSummary(evt); setImpConvertProgress(null) },
+        msg => setImpConvertError(msg)
+      )
+    } catch (err) { setImpConvertError(String(err)) }
+    finally { setImpConvert(false) }
+  }
+
+  async function searchMergePlayers(query: string, side: 'keep' | 'discard') {
+    if (query.trim().length < 2) { side === 'keep' ? setMergeKeepResults([]) : setMergeDiscardResults([]); return }
+    try {
+      const res = await fetch(`/api/players/correct?q=${encodeURIComponent(query)}`)
+      if (res.ok) {
+        const data = await res.json()
+        side === 'keep' ? setMergeKeepResults(data) : setMergeDiscardResults(data)
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function handleMerge() {
+    if (!mergeKeepSelected || !mergeDiscardSelected) return
+    setMerging(true)
+    setMergeMsg(null)
+    setMergeError(null)
+    try {
+      const res = await fetch('/api/players/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keep_plid: mergeKeepSelected.plid, discard_plid: mergeDiscardSelected.plid })
+      })
+      const data = await res.json()
+      if (!res.ok) setMergeError(data.error ?? 'Merge failed')
+      else {
+        setMergeMsg(`Merged "${mergeDiscardSelected.name}" into "${mergeKeepSelected.name}". Averages and partnerships recalculated automatically.`)
+        setMergeKeepSelected(null)
+        setMergeDiscardSelected(null)
+        setMergeKeepSearch('')
+        setMergeDiscardSearch('')
+        setMergeKeepResults([])
+        setMergeDiscardResults([])
+      }
+    } catch (err) { setMergeError(String(err)) }
+    finally { setMerging(false) }
+  }
+
+  const anyRunning = fillingMissing || refreshingAll || recalcAverages || recalcPartners || recalcDateSeq || impConvert
 
   return (
     <div className='space-y-4'>
@@ -344,11 +415,17 @@ export default function PlayerRefresh() {
             {ambiguousRows.length > 0 && (
               <span className='text-xs text-amber-700 font-medium'>{ambiguousRows.length} pending</span>
             )}
+            {ambiguousRows.length > 0 && (
+              <button onClick={() => setShowAmbiguous(v => !v)}
+                className='text-xs text-gray-500 hover:text-gray-700 underline'>
+                {showAmbiguous ? 'Hide' : 'Show'}
+              </button>
+            )}
           </div>
           {ambiguousError && <div className='rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 mb-2'>{ambiguousError}</div>}
           {ambiguousRows.length === 0 && !loadingAmbiguous
             ? <div className='text-xs text-gray-400'>No ambiguous players pending review.</div>
-            : ambiguousRows.length > 0 && (
+            : ambiguousRows.length > 0 && showAmbiguous && (
               <div className='overflow-x-auto'>
                 <table className='w-full text-xs'>
                   <thead>
@@ -384,7 +461,59 @@ export default function PlayerRefresh() {
         </div>
       </section>
 
-      {/* Stage 4b — Correct NZ Numbers */}
+      {/* Stage 4b — Merge Players */}
+      <section className='rounded border border-gray-200 p-4'>
+        <h2 className='mb-1 text-base font-semibold text-gray-800'>Stage 4b — Merge Players</h2>
+        <p className='mb-3 text-xs text-gray-400'>Fix duplicate player records caused by name spelling differences. Updates all raw and result rows, deletes the discarded record, then recalculates averages and partnerships automatically.</p>
+        <div className='flex flex-wrap gap-6 mb-3'>
+          {/* Keep */}
+          <div className='flex-1 min-w-48'>
+            <label className='block text-xs font-medium text-gray-600 mb-1'>Name to keep</label>
+            <input type='text' value={mergeKeepSearch}
+              onChange={e => { setMergeKeepSearch(e.target.value); setMergeKeepSelected(null); searchMergePlayers(e.target.value, 'keep') }}
+              placeholder='Search…'
+              className='w-full rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400' />
+            {mergeKeepResults.length > 0 && !mergeKeepSelected && (
+              <ul className='border border-gray-200 rounded mt-1 bg-white shadow text-sm max-h-40 overflow-y-auto'>
+                {mergeKeepResults.map((p: any) => (
+                  <li key={p.pl_plid} className='px-3 py-1.5 hover:bg-blue-50 cursor-pointer'
+                    onClick={() => { setMergeKeepSelected({ plid: p.pl_plid, name: p.pl_name }); setMergeKeepSearch(p.pl_name); setMergeKeepResults([]) }}>
+                    {p.pl_name} <span className='text-gray-400 text-xs'>#{p.pl_plid}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {mergeKeepSelected && <div className='mt-1 text-xs text-green-700 font-medium'>✓ {mergeKeepSelected.name} (#{mergeKeepSelected.plid})</div>}
+          </div>
+          {/* Discard */}
+          <div className='flex-1 min-w-48'>
+            <label className='block text-xs font-medium text-gray-600 mb-1'>Name to discard (duplicate)</label>
+            <input type='text' value={mergeDiscardSearch}
+              onChange={e => { setMergeDiscardSearch(e.target.value); setMergeDiscardSelected(null); searchMergePlayers(e.target.value, 'discard') }}
+              placeholder='Search…'
+              className='w-full rounded border border-gray-300 px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400' />
+            {mergeDiscardResults.length > 0 && !mergeDiscardSelected && (
+              <ul className='border border-gray-200 rounded mt-1 bg-white shadow text-sm max-h-40 overflow-y-auto'>
+                {mergeDiscardResults.map((p: any) => (
+                  <li key={p.pl_plid} className='px-3 py-1.5 hover:bg-blue-50 cursor-pointer'
+                    onClick={() => { setMergeDiscardSelected({ plid: p.pl_plid, name: p.pl_name }); setMergeDiscardSearch(p.pl_name); setMergeDiscardResults([]) }}>
+                    {p.pl_name} <span className='text-gray-400 text-xs'>#{p.pl_plid}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {mergeDiscardSelected && <div className='mt-1 text-xs text-amber-700 font-medium'>✗ {mergeDiscardSelected.name} (#{mergeDiscardSelected.plid})</div>}
+          </div>
+        </div>
+        <button onClick={handleMerge} disabled={!mergeKeepSelected || !mergeDiscardSelected || merging}
+          className='rounded bg-red-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50'>
+          {merging ? 'Merging…' : 'Merge (cannot be undone)'}
+        </button>
+        {mergeError && <div className='mt-3 rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700'>{mergeError}</div>}
+        {mergeMsg   && <div className='mt-3 rounded bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800'>{mergeMsg}</div>}
+      </section>
+
+      {/* Stage 4c — Correct NZ Numbers */}
       <section className='rounded border border-gray-200 p-4'>
         <h2 className='mb-1 text-base font-semibold text-gray-800'>Stage 4b — Correct NZ Numbers</h2>
         <p className='mb-3 text-xs text-gray-400'>Manually fix a player's NZ bridge number. Search by name, enter the correct NZ#, then click Correct.</p>
@@ -484,6 +613,28 @@ export default function PlayerRefresh() {
         <p className='mb-3 text-xs text-gray-400'>Recompute averages, partnership stats and session date sequence from stored results.</p>
 
         <div className='space-y-4'>
+
+          {/* IMP Convert — must run before averages/partnerships */}
+          <div>
+            <button onClick={handleImpConvert} disabled={anyRunning}
+              className='rounded bg-gray-100 border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-200 disabled:opacity-50'>
+              {impConvert ? 'Converting…' : 'Convert IMP → %'}
+            </button>
+            <span className='ml-2 text-xs text-gray-400'>Run first after fetching IMP sessions</span>
+            {impConvertProgress && (
+              <div className='mt-2 rounded bg-blue-50 border border-blue-200 px-3 py-2 text-sm text-blue-800'>
+                Sessions: <strong>{impConvertProgress.processed}</strong> / <strong>{impConvertProgress.total}</strong>
+                {impConvertProgress.failed > 0 && <> · Failed: <strong className='text-red-700'>{impConvertProgress.failed}</strong></>}
+              </div>
+            )}
+            {impConvertError && <div className='mt-2 rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700'>{impConvertError}</div>}
+            {impConvertSummary && (
+              <div className='mt-2 rounded bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800'>
+                Done · Converted: <strong>{impConvertSummary.updated}</strong> sessions
+                {impConvertSummary.failed > 0 && <> · Failed: <strong className='text-red-700'>{impConvertSummary.failed}</strong></>}
+              </div>
+            )}
+          </div>
 
           {/* Averages */}
           <div>

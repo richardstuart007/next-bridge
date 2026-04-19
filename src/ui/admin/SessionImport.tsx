@@ -83,7 +83,9 @@ export default function SessionImport() {
   const [loadingFetchStatus, setLoadingFetchStatus] = useState(false)
   const [fetchStatusError, setFetchStatusError] = useState<string | null>(null)
   const [selectedForRefetch, setSelectedForRefetch] = useState<Set<number>>(new Set())
-  const [showIssuesOnly, setShowIssuesOnly] = useState(false)
+
+  const [scoringFilter, setScoringFilter] = useState<'all' | 'mp' | 'imp'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'processed' | 'fetched' | 'skipped' | 'no-pairs' | 'error' | 'pending'>('all')
   const [fetchingResults, setFetchingResults] = useState(false)
   const [fetchProgress, setFetchProgress] = useState<FetchProgress | null>(null)
   const [fetchSummary, setFetchSummary] = useState<FetchSummary | null>(null)
@@ -309,9 +311,12 @@ export default function SessionImport() {
     return acc
   }, {} as Record<string, number>)
 
-  const filteredFetchStatus = showIssuesOnly
-    ? fetchStatusList.filter(s => s.pair_count === 0 && !s.last_skipped)
-    : fetchStatusList
+  const filteredFetchStatus = fetchStatusList.filter(s => {
+    if (scoringFilter === 'mp'  && s.se_scoring !== 'MP')  return false
+    if (scoringFilter === 'imp' && s.se_scoring !== 'IMP') return false
+    if (statusFilter !== 'all' && getStatusType(s) !== statusFilter) return false
+    return true
+  })
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -488,12 +493,8 @@ export default function SessionImport() {
                 </button>
               )}
             </div>
-            <div className='flex items-center gap-3 mb-2'>
-              <span className='text-xs text-gray-500'>{fetchStatusList.length} sessions</span>
-              <label className='flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer'>
-                <input type='checkbox' checked={showIssuesOnly} onChange={e => setShowIssuesOnly(e.target.checked)} />
-                Issues only
-              </label>
+            <div className='flex flex-wrap items-center gap-3 mb-2'>
+              <span className='text-xs text-gray-500'>{filteredFetchStatus.length} / {fetchStatusList.length}</span>
               {selectedForRefetch.size > 0 && (
                 <span className='text-xs text-amber-700 font-medium'>{selectedForRefetch.size} selected for refetch</span>
               )}
@@ -516,9 +517,27 @@ export default function SessionImport() {
                     </th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>Date</th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>Day</th>
-                    <th className='px-2 py-1.5 text-left text-gray-500'>Type</th>
+                    <th className='px-2 py-1.5 text-left text-gray-500'>
+                      <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value as typeof scoringFilter)}
+                        className='rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-xs text-gray-600 font-normal cursor-pointer'>
+                        <option value='all'>Type</option>
+                        <option value='mp'>MP</option>
+                        <option value='imp'>IMP</option>
+                      </select>
+                    </th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>Source ID</th>
-                    <th className='px-2 py-1.5 text-left text-gray-500'>Status</th>
+                    <th className='px-2 py-1.5 text-left text-gray-500'>
+                      <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
+                        className='rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-xs text-gray-600 font-normal cursor-pointer'>
+                        <option value='all'>Status</option>
+                        <option value='processed'>Processed</option>
+                        <option value='fetched'>Fetched</option>
+                        <option value='pending'>Pending</option>
+                        <option value='skipped'>Skipped</option>
+                        <option value='no-pairs'>No Pairs</option>
+                        <option value='error'>Error</option>
+                      </select>
+                    </th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>Error</th>
                   </tr>
                 </thead>
@@ -533,7 +552,11 @@ export default function SessionImport() {
                       <td className='px-2 py-1 text-gray-500'>{s.se_day_of_week}</td>
                       <td className='px-2 py-1 text-gray-500'>{s.se_scoring}</td>
                       <td className='px-2 py-1 font-mono text-gray-400'>{s.se_source_id}</td>
-                      <td className='px-2 py-1'>{fetchStatusBadge(s)}</td>
+                      <td className='px-2 py-1'>
+                        {fetchingResults && (selectedForRefetch.has(s.se_seid) || (selectedForRefetch.size === 0 && getStatusType(s) === 'pending'))
+                          ? <span className='text-yellow-600 font-medium'>Importing…</span>
+                          : fetchStatusBadge(s)}
+                      </td>
                       <td className='px-2 py-1 text-red-600 max-w-xs truncate' title={s.last_error ?? undefined}>
                         {s.last_error ?? ''}
                       </td>

@@ -18,58 +18,51 @@ export async function POST(request: NextRequest) {
   ;(async () => {
     try {
       if (mode === 'averages') {
-        // Step 1: session counts
-        const countRows = await table_query({
+        const rows = await table_query({
           caller: 'recalculate/averages',
-          query: `SELECT re_plid, COUNT(*) AS session_count FROM tre_results GROUP BY re_plid`,
+          query: `
+            SELECT
+              re.re_plid,
+              COUNT(*)                                                                          AS total_count,
+              ROUND(AVG(re.re_percentage)::numeric, 2)                                         AS avg_all,
+              COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                               AS mp_count,
+              ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)      AS mp_avg,
+              COUNT(*)        FILTER (WHERE s.se_scoring = 'IMP')                              AS imp_count,
+              ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'IMP')::numeric, 2)     AS imp_avg
+            FROM tre_results re
+            JOIN tse_sessions s ON s.se_seid = re.re_seid
+            GROUP BY re.re_plid
+          `,
           params: []
         })
-        const total = countRows.length
+        const total = rows.length
         let processed = 0
         let failed = 0
 
-        for (const row of countRows) {
+        for (const row of rows) {
           try {
             await table_update({
               caller: 'recalculate/averages',
               table: 'tpl_players',
-              columnValuePairs: [{ column: 'pl_session_count', value: Number(row.session_count) }],
+              columnValuePairs: [
+                { column: 'pl_session_count',      value: Number(row.total_count) },
+                { column: 'pl_avg_percentage',     value: row.avg_all ?? 0 },
+                { column: 'pl_mp_session_count',   value: Number(row.mp_count) },
+                { column: 'pl_mp_avg_percentage',  value: row.mp_avg ?? 0 },
+                { column: 'pl_imp_session_count',  value: Number(row.imp_count) },
+                { column: 'pl_imp_avg_percentage', value: row.imp_avg ?? 0 }
+              ],
               whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid }]
             })
           } catch (err) {
             failed++
-            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `session_count update failed for plid ${row.re_plid}: ${String(err)}`, lg_severity: 'E' })
+            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `averages update failed for plid ${row.re_plid}: ${String(err)}`, lg_severity: 'E' })
           }
           processed++
-          await send({ step: 'counts', processed, total, failed })
+          await send({ step: 'averages', processed, total, failed })
         }
 
-        // Step 2: averages
-        const avgRows = await table_query({
-          caller: 'recalculate/averages',
-          query: `SELECT re_plid, ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct FROM tre_results GROUP BY re_plid`,
-          params: []
-        })
-        const total2 = avgRows.length
-        let processed2 = 0
-
-        for (const row of avgRows) {
-          try {
-            await table_update({
-              caller: 'recalculate/averages',
-              table: 'tpl_players',
-              columnValuePairs: [{ column: 'pl_avg_percentage', value: row.avg_pct }],
-              whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid }]
-            })
-          } catch (err) {
-            failed++
-            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `avg_pct update failed for plid ${row.re_plid}: ${String(err)}`, lg_severity: 'E' })
-          }
-          processed2++
-          await send({ step: 'averages', processed: processed2, total: total2, failed })
-        }
-
-        await send({ done: true, updated: avgRows.length, failed })
+        await send({ done: true, updated: rows.length, failed })
 
       } else if (mode === 'partners') {
         const rows = await table_query({
@@ -77,18 +70,24 @@ export async function POST(request: NextRequest) {
           query: `
             WITH pairs AS (
               SELECT
-                re_plid, re_partner_plid,
-                COUNT(*)                               AS sessions,
-                ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct
-              FROM tre_results
-              WHERE re_plid < re_partner_plid
-              GROUP BY re_plid, re_partner_plid
+                re.re_plid, re.re_partner_plid,
+                COUNT(*)                                                                        AS sessions,
+                ROUND(AVG(re.re_percentage)::numeric, 2)                                       AS avg_pct,
+                COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                             AS mp_sessions,
+                ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)    AS mp_avg,
+                COUNT(*)        FILTER (WHERE s.se_scoring = 'IMP')                            AS imp_sessions,
+                ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'IMP')::numeric, 2)   AS imp_avg
+              FROM tre_results re
+              JOIN tse_sessions s ON s.se_seid = re.re_seid
+              WHERE re.re_plid < re.re_partner_plid
+              GROUP BY re.re_plid, re.re_partner_plid
             )
             SELECT
               CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid         ELSE pairs.re_partner_plid END AS plid1,
               CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_partner_plid ELSE pairs.re_plid         END AS plid2,
-              pairs.sessions,
-              pairs.avg_pct
+              pairs.sessions, pairs.avg_pct,
+              pairs.mp_sessions, pairs.mp_avg,
+              pairs.imp_sessions, pairs.imp_avg
             FROM pairs
             JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid
             JOIN tpl_players p2 ON p2.pl_plid = pairs.re_partner_plid
@@ -109,7 +108,11 @@ export async function POST(request: NextRequest) {
                 { column: 'pa_plid1',        value: row.plid1 },
                 { column: 'pa_plid2',        value: row.plid2 },
                 { column: 'pa_sessions',     value: Number(row.sessions) },
-                { column: 'pa_avg_pct',      value: row.avg_pct },
+                { column: 'pa_avg_pct',      value: row.avg_pct ?? 0 },
+                { column: 'pa_mp_sessions',  value: Number(row.mp_sessions) },
+                { column: 'pa_mp_avg_pct',   value: row.mp_avg ?? 0 },
+                { column: 'pa_imp_sessions', value: Number(row.imp_sessions) },
+                { column: 'pa_imp_avg_pct',  value: row.imp_avg ?? 0 },
                 { column: 'pa_last_updated', value: new Date().toISOString() }
               ],
               conflictColumns: ['pa_plid1', 'pa_plid2']
@@ -137,6 +140,53 @@ export async function POST(request: NextRequest) {
         })
 
         await send({ done: true, updated: rows.length, failed })
+
+      } else if (mode === 'imp-convert') {
+        // Apply min-max normalisation to IMP sessions: worst pair → 25%, best → 75%
+        // Groups IMP results by session, computes session min/max, updates re_percentage
+        const sessions = await table_query({
+          caller: 'recalculate/imp-convert',
+          query: `SELECT DISTINCT re_seid FROM tre_results WHERE re_imp_score IS NOT NULL`,
+          params: []
+        })
+        const total = sessions.length
+        let processed = 0
+        let failed = 0
+
+        for (const s of sessions) {
+          try {
+            // Step 1: compute min/max in JS — window functions not allowed in UPDATE SET
+            const statsRows = await table_query({
+              caller: 'recalculate/imp-convert',
+              query: `SELECT MIN(re_imp_score) AS min_imp, MAX(re_imp_score) AS max_imp
+                      FROM tre_results WHERE re_seid = $1 AND re_imp_score IS NOT NULL`,
+              params: [s.re_seid]
+            })
+            const minImp = parseFloat(statsRows[0].min_imp)
+            const maxImp = parseFloat(statsRows[0].max_imp)
+
+            // Step 2: plain parameterised UPDATE
+            await table_query({
+              caller: 'recalculate/imp-convert',
+              query: `
+                UPDATE tre_results
+                SET re_percentage = ROUND(
+                  CASE WHEN $2 = $3 THEN 50
+                       ELSE 25 + ((re_imp_score - $3) / NULLIF($2 - $3, 0) * 50)
+                  END::numeric, 2)
+                WHERE re_seid = $1
+                  AND re_imp_score IS NOT NULL
+              `,
+              params: [s.re_seid, maxImp, minImp]
+            })
+          } catch (err) {
+            failed++
+            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `imp-convert failed for seid ${s.re_seid}: ${String(err)}`, lg_severity: 'E' })
+          }
+          processed++
+          await send({ step: 'imp-convert', processed, total, failed })
+        }
+        await send({ done: true, updated: processed, failed })
 
       } else if (mode === 'dateseq') {
         const result = await table_query({

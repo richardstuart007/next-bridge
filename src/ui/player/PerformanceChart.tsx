@@ -1,11 +1,12 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { MyLineChart } from '@/src/ui/graphs/graph_charts'
 import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
 
 interface ResultRow {
+  session_id: number
   date: string
   session_type: string
   day_of_week: string
@@ -35,6 +36,7 @@ const PARTNER_COLORS = [
 ]
 
 export default function PerformanceChart({ results }: Props) {
+  const router = useRouter()
   const [sessionTypeFilter, setSessionTypeFilter] = useState<'all' | 'club' | 'online'>('all')
   const [dayFilter, setDayFilter] = useState('')
   const [minResults, setMinResults] = useState(3)
@@ -47,8 +49,8 @@ export default function PerformanceChart({ results }: Props) {
     return [...rows].sort((a, b) => (a.date < b.date ? -1 : 1))
   }, [results, sessionTypeFilter, dayFilter])
 
-  const { partnerList, ...graphData }: GraphStructure & { partnerList: { id: number; name: string; avg: number; color: string; count: number }[] } = useMemo(() => {
-    if (sorted.length === 0) return { labels: [], datasets: [], partnerList: [] }
+  const { partnerOrder, ...graphData }: GraphStructure & { partnerOrder: number[] } = useMemo(() => {
+    if (sorted.length === 0) return { labels: [], datasets: [], partnerOrder: [] }
 
     // X-axis: sequential session numbers 1, 2, 3…
     const labels = sorted.map((_, i) => String(i + 1))
@@ -79,27 +81,15 @@ export default function PerformanceChart({ results }: Props) {
       return {
         label: `${partnerNames.get(partnerId) ?? `Partner ${partnerId}`} (${partnerAvgFixed}%)`,
         data,
-        keys: sorted.map(() => partnerId),
-        keyType: 'index',
+        keys: sorted.map(r => r.session_id),
+        keyType: 'seid',
         borderColor: PARTNER_COLORS[idx % PARTNER_COLORS.length],
         tension: 0.2,
         tooltipData
       }
     })
 
-    const partnerList = partnerOrder.map((partnerId, idx) => {
-      const partnerRows = sorted.filter(r => r.partner_id === partnerId)
-      const avg = parseFloat((partnerRows.reduce((sum, r) => sum + parseFloat(String(r.percentage)), 0) / partnerRows.length).toFixed(1))
-      return {
-        id: partnerId,
-        name: partnerNames.get(partnerId) ?? `Partner ${partnerId}`,
-        avg,
-        color: PARTNER_COLORS[idx % PARTNER_COLORS.length],
-        count: partnerRows.length
-      }
-    })
-
-    return { labels, datasets, partnerList }
+    return { labels, datasets, partnerOrder }
   }, [sorted, minResults])
 
   const overallAvg = sorted.length > 0
@@ -156,30 +146,19 @@ export default function PerformanceChart({ results }: Props) {
         </div>
       ) : (
         <div className='h-72'>
-          <MyLineChart LineGraphData={graphData} GridDisplayY={true} />
-        </div>
-      )}
-
-      {partnerList.length > 0 && (
-        <div className='flex flex-wrap gap-2'>
-          {partnerList.map(p => (
-            <Link
-              key={p.id}
-              href={`/player/${p.id}`}
-              className='flex items-center gap-1.5 rounded border px-2 py-1 text-xs hover:bg-gray-50'
-              style={{ borderColor: p.color }}
-            >
-              <span className='inline-block w-2.5 h-2.5 rounded-full flex-shrink-0' style={{ backgroundColor: p.color }} />
-              <span className='font-medium text-gray-800'>{p.name}</span>
-              <span className='text-gray-400'>{p.avg}% · {p.count}</span>
-            </Link>
-          ))}
+          <MyLineChart
+            LineGraphData={graphData}
+            GridDisplayY={true}
+            onPointClick={key => router.push(`/session/${key}`)}
+            onLegendClick={idx => { const id = partnerOrder[idx]; if (id) router.push(`/player/${id}`) }}
+          />
         </div>
       )}
 
       <p className='text-xs text-gray-500'>
         {sorted.length} session{sorted.length !== 1 ? 's' : ''} shown
         {' · '}{graphData.datasets.length} partner{graphData.datasets.length !== 1 ? 's' : ''}
+        {' · '}click point → session · click legend → player
       </p>
     </div>
   )

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { searchPlayers } from '@/src/lib/actions/players'
 import { getRecentSessions } from '@/src/lib/actions/sessions'
@@ -34,7 +34,8 @@ export default function HomePageClient() {
   const [query, setQuery] = useState('')
   const [players, setPlayers] = useState<PlayerRow[]>([])
   const [searching, setSearching] = useState(false)
-  const [hasSearched, setHasSearched] = useState(false)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const [allSessions, setAllSessions] = useState<SessionRow[]>([])
   const [dateFrom, setDateFrom] = useState('')
@@ -59,21 +60,35 @@ export default function HomePageClient() {
 
   useEffect(() => { setCurrentPage(1) }, [dateFrom, dateTo, dayFilter, dateSeqFilter])
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    if (!query.trim()) return
-    setSearching(true)
-    setHasSearched(false)
-    try {
-      const rows = await searchPlayers(query.trim())
-      setPlayers(rows)
-      setHasSearched(true)
-    } catch (err) {
-      console.error(err)
-    } finally {
-      setSearching(false)
+  // Debounced live search
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (trimmed.length < 2) { setPlayers([]); setShowDropdown(false); return }
+    const timer = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const rows = await searchPlayers(trimmed)
+        setPlayers(rows as PlayerRow[])
+        setShowDropdown(true)
+      } catch (err) {
+        console.error(err)
+      } finally {
+        setSearching(false)
+      }
+    }, 250)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false)
+      }
     }
-  }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
 
   return (
     <div className='space-y-8'>
@@ -85,44 +100,43 @@ export default function HomePageClient() {
       {/* Player search */}
       <section className='rounded border border-gray-200 p-4'>
         <h2 className='mb-3 text-base font-semibold text-gray-800'>Find a Player</h2>
-        <form onSubmit={handleSearch} className='flex gap-2'>
+        <div ref={searchRef} className='relative'>
           <input
             type='text'
             value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder='Search by name…'
-            className='flex-1 rounded border border-gray-300 px-3 py-1.5 text-sm'
+            onChange={e => { setQuery(e.target.value); if (!e.target.value.trim()) setShowDropdown(false) }}
+            onFocus={() => { if (players.length > 0) setShowDropdown(true) }}
+            placeholder='Type a name…'
+            className='w-full rounded border border-gray-300 px-3 py-1.5 text-sm'
+            autoComplete='off'
           />
-          <button
-            type='submit'
-            disabled={searching}
-            className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'
-          >
-            {searching ? 'Searching…' : 'Search'}
-          </button>
-        </form>
-
-        {players.length > 0 && (
-          <ul className='mt-3 divide-y divide-gray-100 border border-gray-200 rounded'>
-            {players.map(p => (
-              <li key={p.pl_plid}>
-                <Link
-                  href={`/player/${p.pl_plid}`}
-                  className='flex items-center justify-between px-3 py-2 hover:bg-gray-50 text-sm'
-                >
-                  <span className='font-medium text-gray-900'>{p.pl_name}</span>
-                  <span className='text-xs text-gray-400'>
-                    {[p.pl_grade, p.pl_club].filter(Boolean).join(' · ')}
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {hasSearched && players.length === 0 && !searching && (
-          <p className='mt-3 text-sm text-gray-400'>No players found for &ldquo;{query}&rdquo;</p>
-        )}
+          {searching && (
+            <span className='absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400'>Searching…</span>
+          )}
+          {showDropdown && players.length > 0 && (
+            <ul className='absolute z-10 mt-1 w-full rounded border border-gray-200 bg-white shadow-md divide-y divide-gray-100 max-h-72 overflow-auto'>
+              {players.map(p => (
+                <li key={p.pl_plid}>
+                  <button
+                    type='button'
+                    className='flex w-full items-center justify-between px-3 py-2 hover:bg-gray-50 text-sm text-left'
+                    onClick={() => { setShowDropdown(false); setQuery(''); router.push(`/player/${p.pl_plid}`) }}
+                  >
+                    <span className='font-medium text-gray-900'>{p.pl_name}</span>
+                    <span className='text-xs text-gray-400'>
+                      {[p.pl_grade, p.pl_club].filter(Boolean).join(' · ')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {showDropdown && players.length === 0 && !searching && query.trim().length >= 2 && (
+            <div className='absolute z-10 mt-1 w-full rounded border border-gray-200 bg-white shadow-md px-3 py-2 text-sm text-gray-400'>
+              No players found
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Sessions */}

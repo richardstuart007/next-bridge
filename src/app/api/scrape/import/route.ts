@@ -48,12 +48,12 @@ export async function POST(request: NextRequest) {
       ? DAY_NAMES[new Date(parsed.date).getUTCDay()]
       : day_of_week
 
-    // Insert session
+    // Insert session — use detected scoring for IMP, passed-in value for MP
     await insertSession({
       date: parsed.date,
       day_of_week: resolvedDay,
       session_type,
-      scoring,
+      scoring: parsed.isImp ? 'IMP' : scoring,
       source_id
     })
 
@@ -87,13 +87,16 @@ export async function POST(request: NextRequest) {
         result1.name, result2.name
       )
 
+      const impScore = pair.impScore ?? null
+
       // Insert result for player 1 (partner is player 2)
       await insertResult({
         se_id: session.se_seid,
         pl_id: result1.plId,
         partner_pl_id: result2.plId,
         pair_id: pairId,
-        percentage: pair.percentage
+        percentage: pair.percentage,
+        imp_score: impScore
       })
 
       // Insert result for player 2 (partner is player 1)
@@ -102,7 +105,8 @@ export async function POST(request: NextRequest) {
         pl_id: result2.plId,
         partner_pl_id: result1.plId,
         pair_id: pairId,
-        percentage: pair.percentage
+        percentage: pair.percentage,
+        imp_score: impScore
       })
 
       pairsImported++

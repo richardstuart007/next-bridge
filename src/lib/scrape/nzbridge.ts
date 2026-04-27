@@ -1,4 +1,4 @@
-import { parsePlayerTable, parsePlayerTableByName, parseAllPlayerMatches, parsePlayerTableFuzzy, parseAllPlayerMatchesFuzzy, type ParsedPlayer } from './parseHtml'
+import { parsePlayerTable, parsePlayerTableByName, parseAllPlayerMatches, parsePlayerTableFuzzy, parseAllPlayerMatchesFuzzy, parsePlayerResultsHistory, type ParsedPlayer, type ParsedPlayerResult } from './parseHtml'
 import { write_Logging } from 'nextjs-shared/write_logging'
 
 const NZBRIDGE_BASE = 'https://www.nzbridge.co.nz'
@@ -80,6 +80,25 @@ export async function lookupPlayer(name: string): Promise<ParsedPlayer | null> {
     return parsePlayerTableFuzzy(surnameHtml, name)
   } catch {
     return null
+  }
+}
+
+/**
+ * Fetch the full results history for a player by their NZ bridge number.
+ * URL: /online-points.html?mpsr=1&mp_user=NNN
+ */
+export async function fetchPlayerResultsHistory(nzNumber: number): Promise<ParsedPlayerResult[]> {
+  try {
+    const url = `${NZBRIDGE_BASE}/online-points.html?mpsr=1&mp_user=${nzNumber}`
+    const res = await fetch(url, { headers: FETCH_HEADERS })
+    if (!res.ok) {
+      await write_Logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `HTTP ${res.status} for NZ# ${nzNumber}`, lg_severity: 'W' })
+      return []
+    }
+    return parsePlayerResultsHistory(await res.text())
+  } catch (err) {
+    await write_Logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
+    return []
   }
 }
 

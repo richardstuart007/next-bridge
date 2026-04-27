@@ -1,22 +1,21 @@
 'use client'
 
 import { useState } from 'react'
+import { getSessionHeaders, getSessionsForHeader, type SessionHeaderRow } from '@/src/lib/actions/sessions'
+import HelpButton from './HelpButton'
+import {
+  HELP_IMPORT_SESSION,
+  HELP_FETCH_LIST,
+  HELP_LOAD_STATUS,
+  HELP_FETCH_ALL_PENDING,
+  HELP_REFETCH_SELECTED,
+  HELP_PROCESS_RESULTS,
+  HELP_AUDIT_FETCH,
+  HELP_AUDIT_PROCESS,
+} from './adminHelp'
+import { auditSessionsFetch, auditSessionsProcess, type AuditCheck } from '@/src/lib/actions/audit'
+import AuditResults from './AuditResults'
 
-interface SessionListEntry {
-  sourceId: number
-  label: string
-  date: string
-  dayOfWeek: string
-  alreadyImported: boolean
-  isImp: boolean
-}
-
-interface ImportSummary {
-  session_id: number
-  pairs_imported: number
-  new_players: number
-  warnings?: string[]
-}
 
 interface FetchStatusEntry {
   se_seid: number
@@ -25,10 +24,11 @@ interface FetchStatusEntry {
   se_session_type: string
   se_scoring: string
   se_day_of_week: string
+  se_status: string
+  se_name: string
+  se_headevent_id: number
   pair_count: number
-  processed: boolean
   last_error: string | null
-  last_skipped: boolean
 }
 
 interface FetchProgress {
@@ -62,21 +62,25 @@ interface ProcessSummary {
 }
 
 export default function SessionImport() {
-  // Manual import
-  const [manualSourceId, setManualSourceId] = useState('')
-  const [importMode, setImportMode] = useState<'skip' | 'reimport'>('skip')
+  // Event import
+  const [eventHeadeventId, setEventHeadeventId] = useState('')
   const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState<ImportSummary | null>(null)
+  const [importLog, setImportLog] = useState<string[]>([])
   const [importError, setImportError] = useState<string | null>(null)
 
-  // Session list (available from AKBC)
-  const [fetchingList, setFetchingList] = useState(false)
-  const [sessionList, setSessionList] = useState<SessionListEntry[]>([])
-  const [listError, setListError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Set<number>>(new Set())
+  // Available sessions (event headers)
+  const [headerList, setHeaderList] = useState<SessionHeaderRow[]>([])
+  const [loadingHeaders, setLoadingHeaders] = useState(false)
+  const [headersError, setHeadersError] = useState<string | null>(null)
   const [year, setYear] = useState(new Date().getFullYear())
-  const [batchImporting, setBatchImporting] = useState(false)
-  const [importStatus, setImportStatus] = useState<Map<number, 'importing' | 'done' | 'error' | 'imp'>>(new Map())
+  const [month, setMonth] = useState(0)
+  const [nameFilter, setNameFilter] = useState('')
+  const [eventIdFilter, setEventIdFilter] = useState('')
+  const [expandedHeaders, setExpandedHeaders] = useState<Set<number>>(new Set())
+  const [headerSessions, setHeaderSessions] = useState<Map<number, any[]>>(new Map())
+  const [loadingHeaderSessions, setLoadingHeaderSessions] = useState<Set<number>>(new Set())
+  const [refreshingEvent, setRefreshingEvent] = useState<number | null>(null)
+  const [eventRefreshLog, setEventRefreshLog] = useState<Map<number, string>>(new Map())
 
   // Stage 2: fetch-results status table
   const [fetchStatusList, setFetchStatusList] = useState<FetchStatusEntry[]>([])
@@ -86,6 +90,7 @@ export default function SessionImport() {
 
   const [scoringFilter, setScoringFilter] = useState<'all' | 'mp' | 'imp'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'processed' | 'fetched' | 'skipped' | 'no-pairs' | 'error' | 'pending'>('all')
+  const [headeventFilter, setHeadeventFilter] = useState('')
   const [fetchingResults, setFetchingResults] = useState(false)
   const [fetchProgress, setFetchProgress] = useState<FetchProgress | null>(null)
   const [fetchSummary, setFetchSummary] = useState<FetchSummary | null>(null)
@@ -96,6 +101,14 @@ export default function SessionImport() {
   const [processProgress, setProcessProgress] = useState<ProcessProgress | null>(null)
   const [processSummary, setProcessSummary] = useState<ProcessSummary | null>(null)
   const [processError, setProcessError] = useState<string | null>(null)
+
+  // Audit
+  const [auditFetch,         setAuditFetch]         = useState<AuditCheck[] | null>(null)
+  const [auditFetchRunning,  setAuditFetchRunning]  = useState(false)
+  const [auditFetchError,    setAuditFetchError]    = useState<string | null>(null)
+  const [auditProcess,       setAuditProcess]       = useState<AuditCheck[] | null>(null)
+  const [auditProcessRunning,setAuditProcessRunning]= useState(false)
+  const [auditProcessError,  setAuditProcessError]  = useState<string | null>(null)
 
   // ── SSE reader ──────────────────────────────────────────────────────────────
   async function readSSE<P, D>(
@@ -125,23 +138,54 @@ export default function SessionImport() {
     }
   }
 
-  // ── Manual import ───────────────────────────────────────────────────────────
-  async function handleManualImport(e: React.FormEvent) {
+  // ── Run fetch+process pipeline for a list of seids ─────────────────────────
+  async function runPipeline(
+    seids: number[],
+    log: (msg: string) => void,
+    setError: (msg: string) => void
+  ): Promise<boolean> {
+    log('Fetching results…')
+    const fetchRes = await fetch(`/api/scrape/fetch-results?seids=${seids.join(',')}`, { method: 'POST' })
+    if (!fetchRes.ok) { const d = await fetchRes.json(); setError(d.error ?? 'Fetch failed'); return false }
+    let ok = true
+    await readSSE<FetchProgress, FetchSummary>(
+      fetchRes,
+      evt => log(`Fetching: ${evt.processed}/${evt.total} · ${evt.pairs_stored} pairs`),
+      evt => log(`Fetched: ${evt.pairs_stored} pairs`),
+      msg => { setError(msg); ok = false }
+    )
+    if (!ok) return false
+
+    log('Processing results…')
+    const processRes = await fetch('/api/scrape/process-results', { method: 'POST' })
+    if (!processRes.ok) { const d = await processRes.json(); setError(d.error ?? 'Process failed'); return false }
+    await readSSE<ProcessProgress, ProcessSummary>(
+      processRes,
+      evt => log(`Processing: ${evt.processed}/${evt.total} · ${evt.results_inserted} results`),
+      evt => log(`Done · ${evt.results_inserted} results · ${evt.players_created} new players`),
+      msg => { setError(msg); ok = false }
+    )
+    return ok
+  }
+
+  // ── Event import ────────────────────────────────────────────────────────────
+  async function handleEventImport(e: React.FormEvent) {
     e.preventDefault()
-    const sourceId = parseInt(manualSourceId, 10)
-    if (isNaN(sourceId)) { setImportError('Please enter a valid session ID'); return }
+    const headeventId = parseInt(eventHeadeventId, 10)
+    if (isNaN(headeventId)) { setImportError('Please enter a valid Event ID'); return }
     setImporting(true)
-    setImportResult(null)
+    setImportLog([])
     setImportError(null)
     try {
-      const res = await fetch('/api/scrape/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source_id: sourceId, day_of_week: 'Unknown', session_type: 'club', scoring: 'MP', mode: importMode })
-      })
+      const res = await fetch(`/api/scrape/event-import?headevent_id=${headeventId}`, { method: 'POST' })
       const data = await res.json()
-      if (!res.ok) setImportError(data.error ?? 'Import failed')
-      else setImportResult(data)
+      if (!res.ok) { setImportError(data.error ?? 'Import failed'); return }
+      setImportLog([`${data.session_count} session${data.session_count !== 1 ? 's' : ''} ready`])
+      await runPipeline(
+        data.seids,
+        msg => setImportLog(prev => { const next = [...prev]; next[next.length - 1] = msg; return next }),
+        msg => setImportError(msg)
+      )
     } catch (err) {
       setImportError(String(err))
     } finally {
@@ -149,56 +193,57 @@ export default function SessionImport() {
     }
   }
 
-  // ── Session list ────────────────────────────────────────────────────────────
-  async function handleFetchList() {
-    setFetchingList(true)
-    setListError(null)
-    setSessionList([])
-    setSelected(new Set())
-    setImportStatus(new Map())
+  // ── Available sessions (event headers) ─────────────────────────────────────
+  async function handleDisplayHeaders() {
+    setLoadingHeaders(true)
+    setHeadersError(null)
+    setRefreshMsg(null)
     try {
-      const res = await fetch(`/api/scrape/sessions?year=${year}`)
-      const data = await res.json()
-      if (!res.ok) setListError(data.error ?? 'Failed to fetch session list')
-      else setSessionList(data.sessions ?? [])
+      setHeaderList(await getSessionHeaders(year))
     } catch (err) {
-      setListError(String(err))
+      setHeadersError(String(err))
     } finally {
-      setFetchingList(false)
+      setLoadingHeaders(false)
     }
   }
 
-  function toggleSelect(sourceId: number) {
-    setSelected(prev => {
-      const next = new Set(prev)
-      if (next.has(sourceId)) next.delete(sourceId)
-      else next.add(sourceId)
-      return next
-    })
+  async function toggleHeader(shid: number) {
+    if (expandedHeaders.has(shid)) {
+      setExpandedHeaders(prev => { const n = new Set(prev); n.delete(shid); return n })
+      return
+    }
+    setLoadingHeaderSessions(prev => new Set(prev).add(shid))
+    try {
+      const sessions = await getSessionsForHeader(shid)
+      setHeaderSessions(prev => new Map(prev).set(shid, sessions))
+      setExpandedHeaders(prev => new Set(prev).add(shid))
+    } finally {
+      setLoadingHeaderSessions(prev => { const n = new Set(prev); n.delete(shid); return n })
+    }
   }
 
-  async function handleBatchImport() {
-    if (selected.size === 0) return
-    setBatchImporting(true)
-    setImportStatus(new Map())
-    for (const sourceId of selected) {
-      const entry = sessionList.find(s => s.sourceId === sourceId)
-      setImportStatus(prev => new Map(prev).set(sourceId, 'importing'))
-      try {
-        const res = await fetch('/api/scrape/import', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source_id: sourceId, day_of_week: entry?.dayOfWeek ?? 'Unknown', session_type: 'club', scoring: 'MP', mode: importMode })
-        })
-        const data = await res.json()
-        if (!res.ok) setImportStatus(prev => new Map(prev).set(sourceId, 'error'))
-        else if (data.skipped) setImportStatus(prev => new Map(prev).set(sourceId, 'imp'))
-        else setImportStatus(prev => new Map(prev).set(sourceId, 'done'))
-      } catch {
-        setImportStatus(prev => new Map(prev).set(sourceId, 'error'))
+  async function handleRefreshEvent(headeventId: number, shid: number) {
+    setRefreshingEvent(headeventId)
+    setEventRefreshLog(prev => new Map(prev).set(headeventId, 'Setting up…'))
+    try {
+      const res = await fetch(`/api/scrape/event-import?headevent_id=${headeventId}`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) { setEventRefreshLog(prev => new Map(prev).set(headeventId, `Error: ${data.error}`)); return }
+      setEventRefreshLog(prev => new Map(prev).set(headeventId, `${data.session_count} sessions ready — fetching…`))
+      await runPipeline(
+        data.seids,
+        msg => setEventRefreshLog(prev => new Map(prev).set(headeventId, msg)),
+        msg => setEventRefreshLog(prev => new Map(prev).set(headeventId, `Error: ${msg}`))
+      )
+      const updated = await getSessionHeaders(year)
+      setHeaderList(updated)
+      if (expandedHeaders.has(shid)) {
+        const sessions = await getSessionsForHeader(shid)
+        setHeaderSessions(prev => new Map(prev).set(shid, sessions))
       }
+    } finally {
+      setRefreshingEvent(null)
     }
-    setBatchImporting(false)
   }
 
   // ── Stage 2: fetch results ──────────────────────────────────────────────────
@@ -258,6 +303,21 @@ export default function SessionImport() {
     })
   }
 
+  // ── Audit ────────────────────────────────────────────────────────────────────
+  async function handleAuditFetch() {
+    setAuditFetchRunning(true); setAuditFetchError(null)
+    try { setAuditFetch(await auditSessionsFetch()) }
+    catch (err) { setAuditFetchError(String(err)) }
+    finally { setAuditFetchRunning(false) }
+  }
+
+  async function handleAuditProcess() {
+    setAuditProcessRunning(true); setAuditProcessError(null)
+    try { setAuditProcess(await auditSessionsProcess()) }
+    catch (err) { setAuditProcessError(String(err)) }
+    finally { setAuditProcessRunning(false) }
+  }
+
   // ── Stage 3: process results ────────────────────────────────────────────────
   async function handleProcessResults() {
     setProcessingResults(true)
@@ -281,40 +341,46 @@ export default function SessionImport() {
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
-  function getStatusType(entry: FetchStatusEntry): 'processed' | 'fetched' | 'skipped' | 'no-pairs' | 'error' | 'pending' {
-    if (entry.pair_count > 0 && entry.processed) return 'processed'
-    if (entry.pair_count > 0) return 'fetched'
-    if (entry.last_skipped) return 'skipped'
-    if (entry.last_error?.includes('no pairs found')) return 'no-pairs'
-    if (entry.last_error) return 'error'
-    return 'pending'
-  }
-
   function fetchStatusBadge(entry: FetchStatusEntry) {
-    const type = getStatusType(entry)
-    if (type === 'processed') return <span className='text-green-700 font-medium'>Processed ({entry.pair_count})</span>
-    if (type === 'fetched')   return <span className='text-blue-600 font-medium'>Fetched ({entry.pair_count})</span>
-    if (type === 'skipped')   return <span className='text-gray-400'>Skipped</span>
-    if (type === 'no-pairs')  return <span className='text-amber-600 font-medium'>No Pairs</span>
-    if (type === 'error')     return <span className='text-red-600 font-medium'>Error</span>
-    return <span className='text-gray-500'>Pending</span>
+    if (entry.se_status === 'processed') return <span className='text-green-700 font-medium'>Processed ({entry.pair_count})</span>
+    if (entry.se_status === 'fetched')   return <span className='text-blue-600 font-medium'>Fetched ({entry.pair_count})</span>
+    if (entry.se_status === 'skipped')   return <span className='text-gray-400'>Skipped</span>
+    if (entry.se_status === 'no-pairs')  return <span className='text-amber-600 font-medium'>No Pairs</span>
+    if (entry.se_status === 'error')     return <span className='text-red-600 font-medium'>Error</span>
+    return <span className='text-gray-500'>New</span>
   }
 
-  function selectByType(type: ReturnType<typeof getStatusType>) {
-    const seids = fetchStatusList.filter(s => getStatusType(s) === type).map(s => s.se_seid)
+  function sessionStatusBadge(status: string) {
+    if (status === 'processed') return <span className='text-green-700'>Processed</span>
+    if (status === 'fetched')   return <span className='text-blue-600'>Fetched</span>
+    if (status === 'skipped')   return <span className='text-gray-400'>Skipped</span>
+    if (status === 'no-pairs')  return <span className='text-amber-600'>No Pairs</span>
+    if (status === 'error')     return <span className='text-red-600'>Error</span>
+    return <span className='text-gray-500'>New</span>
+  }
+
+  function selectByType(status: string) {
+    const seids = fetchStatusList.filter(s => s.se_status === status).map(s => s.se_seid)
     setSelectedForRefetch(new Set(seids))
   }
 
   const statusCounts = fetchStatusList.reduce((acc, s) => {
-    const t = getStatusType(s)
-    acc[t] = (acc[t] ?? 0) + 1
+    acc[s.se_status] = (acc[s.se_status] ?? 0) + 1
     return acc
   }, {} as Record<string, number>)
+
+  const filteredHeaders = headerList.filter(h => {
+    if (month !== 0 && h.sh_date && !h.sh_date.startsWith(`${year}-${String(month).padStart(2, '0')}`)) return false
+    if (nameFilter && !h.sh_name.toLowerCase().includes(nameFilter.toLowerCase())) return false
+    if (eventIdFilter && !String(h.sh_headevent_id).includes(eventIdFilter.trim())) return false
+    return true
+  })
 
   const filteredFetchStatus = fetchStatusList.filter(s => {
     if (scoringFilter === 'mp'  && s.se_scoring !== 'MP')  return false
     if (scoringFilter === 'imp' && s.se_scoring !== 'IMP') return false
-    if (statusFilter !== 'all' && getStatusType(s) !== statusFilter) return false
+    if (statusFilter !== 'all' && s.se_status !== statusFilter) return false
+    if (headeventFilter && String(s.se_headevent_id) !== headeventFilter.trim()) return false
     return true
   })
 
@@ -322,112 +388,166 @@ export default function SessionImport() {
   return (
     <div className='space-y-8'>
 
-      {/* Manual Import */}
+      {/* Event Import */}
       <section className='rounded border border-gray-200 p-4'>
-        <h2 className='mb-3 text-base font-semibold text-gray-800'>Manual Session Import</h2>
-        <form onSubmit={handleManualImport} className='space-y-3'>
+        <h2 className='mb-3 text-base font-semibold text-gray-800'>Event Import</h2>
+        <form onSubmit={handleEventImport} className='space-y-3'>
           <div className='flex flex-wrap gap-3'>
             <div>
-              <label className='block text-xs text-gray-600 mb-1'>Source ID</label>
+              <label className='block text-xs text-gray-600 mb-1'>Event ID (headeventid)</label>
               <input
-                type='number'
-                value={manualSourceId}
-                onChange={e => setManualSourceId(e.target.value)}
-                placeholder='e.g. 654558'
+                type='text'
+                inputMode='numeric'
+                pattern='[0-9]*'
+                value={eventHeadeventId}
+                onChange={e => setEventHeadeventId(e.target.value)}
+                placeholder='e.g. 16868'
                 className='rounded border border-gray-300 px-2 py-1 text-sm w-32'
               />
             </div>
           </div>
-          <div className='flex items-center gap-4'>
+          <div className='flex items-center gap-2'>
             <button type='submit' disabled={importing}
               className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'>
-              {importing ? 'Importing…' : 'Import Session'}
+              {importing ? 'Importing…' : 'Import Event'}
             </button>
-            <label className='flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer'>
-              <input type='checkbox' checked={importMode === 'reimport'}
-                onChange={e => setImportMode(e.target.checked ? 'reimport' : 'skip')} />
-              Delete &amp; reimport if exists
-            </label>
+            <HelpButton>{HELP_IMPORT_SESSION}</HelpButton>
           </div>
         </form>
         {importError && <div className='mt-3 rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700'>{importError}</div>}
-        {importResult && (
-          <div className='mt-3 rounded bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800 space-y-1'>
-            <div>Session {importResult.session_id} imported: <strong>{importResult.pairs_imported}</strong> pairs, <strong>{importResult.new_players}</strong> new players</div>
-            {(importResult.warnings?.length ?? 0) > 0 && (
-              <ul className='list-disc list-inside text-yellow-700 text-xs'>
-                {importResult.warnings?.map((w, i) => <li key={i}>{w}</li>)}
-              </ul>
-            )}
+        {importLog.length > 0 && !importError && (
+          <div className='mt-3 rounded bg-blue-50 border border-blue-200 px-3 py-2 text-sm text-blue-800 space-y-0.5'>
+            {importLog.map((line, i) => <div key={i}>{line}</div>)}
           </div>
         )}
       </section>
 
-      {/* Session List */}
+      {/* Available Sessions */}
       <section className='rounded border border-gray-200 p-4'>
         <div className='mb-3 flex items-center gap-3 flex-wrap'>
-          <h2 className='text-base font-semibold text-gray-800'>Available Sessions from AKBC</h2>
+          <h2 className='text-base font-semibold text-gray-800'>Available Sessions</h2>
           <select value={year} onChange={e => setYear(parseInt(e.target.value, 10))}
             className='rounded border border-gray-300 px-2 py-1 text-sm'>
             {[2026, 2025, 2024, 2023, 2022, 2021].map(y => <option key={y} value={y}>{y}</option>)}
           </select>
-          <button onClick={handleFetchList} disabled={fetchingList}
+          <button onClick={handleDisplayHeaders} disabled={loadingHeaders}
             className='rounded bg-gray-100 border border-gray-300 px-3 py-1 text-sm hover:bg-gray-200 disabled:opacity-50'>
-            {fetchingList ? 'Fetching…' : 'Fetch Session List'}
+            {loadingHeaders ? 'Loading…' : 'Display'}
           </button>
+          <HelpButton>{HELP_FETCH_LIST}</HelpButton>
         </div>
-        {listError && <div className='rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700'>{listError}</div>}
-        {sessionList.length > 0 && (
-          <>
-            <div className='max-h-64 overflow-y-auto border border-gray-200 rounded mb-3'>
-              <table className='w-full text-sm'>
-                <thead className='bg-gray-50 sticky top-0'>
-                  <tr>
-                    <th className='px-3 py-1.5 text-left text-xs text-gray-500 w-8'>
-                      <input type='checkbox' title='Select all new'
-                        checked={sessionList.some(s => !s.alreadyImported && !s.isImp && importStatus.get(s.sourceId) !== 'imp') &&
-                          sessionList.filter(s => !s.alreadyImported && !s.isImp && importStatus.get(s.sourceId) !== 'imp').every(s => selected.has(s.sourceId))}
-                        onChange={() => {
-                          const newIds = sessionList.filter(s => !s.alreadyImported && !s.isImp && importStatus.get(s.sourceId) !== 'imp').map(s => s.sourceId)
-                          const allSelected = newIds.every(id => selected.has(id))
-                          setSelected(allSelected ? new Set() : new Set(newIds))
-                        }} />
-                    </th>
-                    <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Date</th>
-                    <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Session</th>
-                    <th className='px-3 py-1.5 text-left text-xs text-gray-500'>ID</th>
-                    <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sessionList.map(s => (
-                    <tr key={s.sourceId} className={`border-t border-gray-100 ${s.alreadyImported ? 'bg-green-50 text-gray-400' : s.isImp ? 'bg-gray-50 text-gray-400' : 'hover:bg-gray-50'}`}>
-                      <td className='px-3 py-1'>
-                        <input type='checkbox' checked={selected.has(s.sourceId)} onChange={() => toggleSelect(s.sourceId)}
-                          disabled={s.alreadyImported || s.isImp || importStatus.get(s.sourceId) === 'imp'} />
+        {headersError && <div className='rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700'>{headersError}</div>}
+        {headerList.length > 0 && (
+          <div className='border border-gray-200 rounded'>
+            <div className='px-3 py-1.5 text-xs text-gray-400 border-b border-gray-100'>
+              {filteredHeaders.length} / {headerList.length} events
+            </div>
+            <table className='w-full text-sm'>
+              <thead className='bg-gray-50'>
+                <tr>
+                  <th className='px-3 py-1 w-8'></th>
+                  <th className='px-3 py-1'>
+                    <select value={month} onChange={e => setMonth(parseInt(e.target.value, 10))}
+                      className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
+                      <option value={0}>All months</option>
+                      {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m, i) => (
+                        <option key={i+1} value={i+1}>{m}</option>
+                      ))}
+                    </select>
+                  </th>
+                  <th className='px-3 py-1'>
+                    <input type='text' value={nameFilter} onChange={e => setNameFilter(e.target.value)}
+                      placeholder='Search…'
+                      className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' />
+                  </th>
+                  <th className='px-3 py-1'></th>
+                  <th className='px-3 py-1'>
+                    <input type='text' inputMode='numeric' value={eventIdFilter} onChange={e => setEventIdFilter(e.target.value)}
+                      placeholder='Search…'
+                      className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' />
+                  </th>
+                  <th className='px-3 py-1'></th>
+                </tr>
+                <tr>
+                  <th className='px-3 py-1.5 text-left text-xs text-gray-500 w-8'></th>
+                  <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Date</th>
+                  <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Name</th>
+                  <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Processed</th>
+                  <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Event ID</th>
+                  <th className='px-3 py-1.5 text-left text-xs text-gray-500'>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHeaders.map(h => (
+                  <>
+                    <tr key={h.sh_shid} className='border-t border-gray-100 hover:bg-gray-50'>
+                      <td className='px-3 py-1 text-xs text-center'>
+                        <button onClick={() => toggleHeader(h.sh_shid)}
+                          className='text-gray-400 hover:text-gray-700 w-5 text-center'>
+                          {loadingHeaderSessions.has(h.sh_shid) ? '…' : expandedHeaders.has(h.sh_shid) ? '▼' : '▶'}
+                        </button>
                       </td>
-                      <td className='px-3 py-1 text-xs'>{s.date}</td>
-                      <td className='px-3 py-1'>{s.label}</td>
-                      <td className='px-3 py-1 font-mono text-xs text-gray-400'>{s.sourceId}</td>
+                      <td className='px-3 py-1 text-xs'>{h.sh_date ?? ''}</td>
+                      <td className='px-3 py-1 text-xs text-gray-700'>
+                        {h.sh_name || <span className='text-gray-400 italic'>Event {h.sh_headevent_id}</span>}
+                      </td>
                       <td className='px-3 py-1 text-xs'>
-                        {s.alreadyImported ? <span className='text-green-700 font-medium'>Imported</span>
-                          : s.isImp ? <span className='text-gray-500 font-medium'>IMP</span>
-                          : importStatus.get(s.sourceId) === 'importing' ? <span className='text-yellow-600 font-medium'>Importing…</span>
-                          : importStatus.get(s.sourceId) === 'done' ? <span className='text-green-700 font-medium'>Done</span>
-                          : importStatus.get(s.sourceId) === 'imp' ? <span className='text-gray-500 font-medium'>IMP</span>
-                          : importStatus.get(s.sourceId) === 'error' ? <span className='text-red-600 font-medium'>Error</span>
-                          : <span className='text-blue-600 font-medium'>New</span>}
+                        <span className={h.processed_count === h.session_count && h.session_count > 0 ? 'text-green-700 font-medium' : 'text-gray-500'}>
+                          {h.processed_count}/{h.session_count}
+                        </span>
+                      </td>
+                      <td className='px-3 py-1 font-mono text-xs text-gray-400'>{h.sh_headevent_id}</td>
+                      <td className='px-3 py-1 text-xs'>
+                        <button
+                          onClick={() => handleRefreshEvent(h.sh_headevent_id, h.sh_shid)}
+                          disabled={refreshingEvent !== null}
+                          className='rounded bg-amber-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50'>
+                          {refreshingEvent === h.sh_headevent_id ? 'Refreshing…' : 'Refresh'}
+                        </button>
+                        {eventRefreshLog.get(h.sh_headevent_id) && (
+                          <span className='ml-2 text-xs text-blue-700'>{eventRefreshLog.get(h.sh_headevent_id)}</span>
+                        )}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button onClick={handleBatchImport} disabled={batchImporting || selected.size === 0}
-              className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'>
-              {batchImporting ? 'Importing…' : `Import Selected (${selected.size})`}
-            </button>
-          </>
+                    {expandedHeaders.has(h.sh_shid) && (
+                      <tr key={`${h.sh_shid}-sessions`} className='bg-gray-50'>
+                        <td colSpan={6} className='px-6 py-2'>
+                          {(headerSessions.get(h.sh_shid) ?? []).length === 0
+                            ? <span className='text-xs text-gray-400'>No sessions</span>
+                            : (
+                              <table className='w-full text-xs border border-gray-200 rounded'>
+                                <thead className='bg-white'>
+                                  <tr>
+                                    <th className='px-2 py-1 text-left text-gray-500'>Date</th>
+                                    <th className='px-2 py-1 text-left text-gray-500'>Day</th>
+                                    <th className='px-2 py-1 text-left text-gray-500'>Name</th>
+                                    <th className='px-2 py-1 text-left text-gray-500'>Type</th>
+                                    <th className='px-2 py-1 text-left text-gray-500 font-mono'>Source ID</th>
+                                    <th className='px-2 py-1 text-left text-gray-500'>Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {(headerSessions.get(h.sh_shid) ?? []).filter((s: any) => s.se_source_id !== h.sh_headevent_id).map((s: any) => (
+                                    <tr key={s.se_seid} className='border-t border-gray-100'>
+                                      <td className='px-2 py-0.5'>{s.se_date}</td>
+                                      <td className='px-2 py-0.5 text-gray-500'>{s.se_day_of_week}</td>
+                                      <td className='px-2 py-0.5 text-gray-700'>{s.se_name}</td>
+                                      <td className='px-2 py-0.5 text-gray-500'>{s.se_scoring}</td>
+                                      <td className='px-2 py-0.5 font-mono text-gray-400'>{s.se_source_id}</td>
+                                      <td className='px-2 py-0.5'>{sessionStatusBadge(s.se_status)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
@@ -441,17 +561,25 @@ export default function SessionImport() {
             className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'>
             {fetchingResults ? 'Fetching…' : 'Fetch All Pending'}
           </button>
+          <HelpButton>{HELP_FETCH_ALL_PENDING}</HelpButton>
           <button onClick={handleRefetchSelected} disabled={fetchingResults || selectedForRefetch.size === 0}
             className='rounded bg-amber-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50'>
             Refetch Selected ({selectedForRefetch.size})
           </button>
+          <HelpButton>{HELP_REFETCH_SELECTED}</HelpButton>
           <button onClick={loadFetchStatus} disabled={loadingFetchStatus}
             className='rounded bg-gray-100 border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-200 disabled:opacity-50'>
             {loadingFetchStatus ? 'Loading…' : 'Load Status'}
           </button>
+          <HelpButton>{HELP_LOAD_STATUS}</HelpButton>
+          <button onClick={handleAuditFetch} disabled={auditFetchRunning}
+            className='rounded bg-amber-50 border border-amber-300 px-3 py-1.5 text-sm hover:bg-amber-100 disabled:opacity-50'>
+            {auditFetchRunning ? 'Auditing…' : 'Audit'}
+          </button>
+          <HelpButton>{HELP_AUDIT_FETCH}</HelpButton>
         </div>
+        <AuditResults checks={auditFetch} error={auditFetchError} />
 
-        {/* Live progress */}
         {fetchProgress && (
           <div className='mb-3 rounded bg-blue-50 border border-blue-200 px-3 py-2 text-sm text-blue-800'>
             Fetching: <strong>{fetchProgress.processed}</strong> / <strong>{fetchProgress.total}</strong> sessions
@@ -475,15 +603,13 @@ export default function SessionImport() {
           </div>
         )}
 
-        {/* Status table */}
         {fetchStatusError && <div className='rounded bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700 mb-2'>{fetchStatusError}</div>}
         {fetchStatusList.length > 0 && (
           <>
-            {/* Status summary — click a badge to select all of that type */}
             <div className='flex flex-wrap gap-2 mb-3 text-xs'>
               {statusCounts['processed'] && <button onClick={() => selectByType('processed')} className='rounded-full bg-green-100 text-green-800 px-2.5 py-0.5 hover:bg-green-200'>Processed: {statusCounts['processed']}</button>}
               {statusCounts['fetched']   && <button onClick={() => selectByType('fetched')}   className='rounded-full bg-blue-100 text-blue-800 px-2.5 py-0.5 hover:bg-blue-200'>Fetched: {statusCounts['fetched']}</button>}
-              {statusCounts['pending']   && <button onClick={() => selectByType('pending')}   className='rounded-full bg-gray-100 text-gray-700 px-2.5 py-0.5 hover:bg-gray-200'>Pending: {statusCounts['pending']}</button>}
+              {statusCounts['new']       && <button onClick={() => selectByType('new')}       className='rounded-full bg-gray-100 text-gray-700 px-2.5 py-0.5 hover:bg-gray-200'>New: {statusCounts['new']}</button>}
               {statusCounts['skipped']   && <button onClick={() => selectByType('skipped')}   className='rounded-full bg-gray-100 text-gray-500 px-2.5 py-0.5 hover:bg-gray-200'>Skipped: {statusCounts['skipped']}</button>}
               {statusCounts['no-pairs']  && <button onClick={() => selectByType('no-pairs')}  className='rounded-full bg-amber-100 text-amber-800 px-2.5 py-0.5 hover:bg-amber-200'>No Pairs: {statusCounts['no-pairs']}</button>}
               {statusCounts['error']     && <button onClick={() => selectByType('error')}     className='rounded-full bg-red-100 text-red-700 px-2.5 py-0.5 hover:bg-red-200'>Error: {statusCounts['error']}</button>}
@@ -498,6 +624,19 @@ export default function SessionImport() {
               {selectedForRefetch.size > 0 && (
                 <span className='text-xs text-amber-700 font-medium'>{selectedForRefetch.size} selected for refetch</span>
               )}
+              <div className='flex items-center gap-1'>
+                <label className='text-xs text-gray-500'>Event ID:</label>
+                <input
+                  type='text' inputMode='numeric' pattern='[0-9]*'
+                  value={headeventFilter}
+                  onChange={e => setHeadeventFilter(e.target.value)}
+                  placeholder='e.g. 16075'
+                  className='rounded border border-gray-300 px-2 py-0.5 text-xs w-24'
+                />
+                {headeventFilter && (
+                  <button onClick={() => setHeadeventFilter('')} className='text-xs text-gray-400 hover:text-gray-600'>✕</button>
+                )}
+              </div>
             </div>
             <div className='max-h-72 overflow-y-auto border border-gray-200 rounded'>
               <table className='w-full text-xs'>
@@ -517,6 +656,7 @@ export default function SessionImport() {
                     </th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>Date</th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>Day</th>
+                    <th className='px-2 py-1.5 text-left text-gray-500'>Name</th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>
                       <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value as typeof scoringFilter)}
                         className='rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-xs text-gray-600 font-normal cursor-pointer'>
@@ -526,13 +666,14 @@ export default function SessionImport() {
                       </select>
                     </th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>Source ID</th>
+                    <th className='px-2 py-1.5 text-left text-gray-500'>Event ID</th>
                     <th className='px-2 py-1.5 text-left text-gray-500'>
                       <select value={statusFilter} onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
                         className='rounded border border-gray-200 bg-gray-50 px-1 py-0.5 text-xs text-gray-600 font-normal cursor-pointer'>
                         <option value='all'>Status</option>
                         <option value='processed'>Processed</option>
                         <option value='fetched'>Fetched</option>
-                        <option value='pending'>Pending</option>
+                        <option value='new'>New</option>
                         <option value='skipped'>Skipped</option>
                         <option value='no-pairs'>No Pairs</option>
                         <option value='error'>Error</option>
@@ -550,10 +691,12 @@ export default function SessionImport() {
                       </td>
                       <td className='px-2 py-1'>{s.se_date}</td>
                       <td className='px-2 py-1 text-gray-500'>{s.se_day_of_week}</td>
+                      <td className='px-2 py-1 text-gray-700'>{s.se_name}</td>
                       <td className='px-2 py-1 text-gray-500'>{s.se_scoring}</td>
                       <td className='px-2 py-1 font-mono text-gray-400'>{s.se_source_id}</td>
+                      <td className='px-2 py-1 font-mono text-gray-400'>{s.se_headevent_id || ''}</td>
                       <td className='px-2 py-1'>
-                        {fetchingResults && (selectedForRefetch.has(s.se_seid) || (selectedForRefetch.size === 0 && getStatusType(s) === 'pending'))
+                        {fetchingResults && (selectedForRefetch.has(s.se_seid) || (selectedForRefetch.size === 0 && s.se_status === 'new'))
                           ? <span className='text-yellow-600 font-medium'>Importing…</span>
                           : fetchStatusBadge(s)}
                       </td>
@@ -573,10 +716,19 @@ export default function SessionImport() {
       <section className='rounded border border-gray-200 p-4'>
         <h2 className='mb-1 text-base font-semibold text-gray-800'>Stage 3 — Process Results</h2>
         <p className='mb-3 text-xs text-gray-400'>Resolves staged name pairs into player records, results and partnerships.</p>
-        <button onClick={handleProcessResults} disabled={processingResults}
-          className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'>
-          {processingResults ? 'Processing…' : 'Process Results'}
-        </button>
+        <div className='flex items-center gap-2'>
+          <button onClick={handleProcessResults} disabled={processingResults}
+            className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50'>
+            {processingResults ? 'Processing…' : 'Process Results'}
+          </button>
+          <HelpButton>{HELP_PROCESS_RESULTS}</HelpButton>
+          <button onClick={handleAuditProcess} disabled={auditProcessRunning}
+            className='rounded bg-amber-50 border border-amber-300 px-3 py-1.5 text-sm hover:bg-amber-100 disabled:opacity-50'>
+            {auditProcessRunning ? 'Auditing…' : 'Audit'}
+          </button>
+          <HelpButton>{HELP_AUDIT_PROCESS}</HelpButton>
+        </div>
+        <AuditResults checks={auditProcess} error={auditProcessError} />
         {processProgress && (
           <div className='mt-3 rounded bg-blue-50 border border-blue-200 px-3 py-2 text-sm text-blue-800'>
             Processing: <strong>{processProgress.processed}</strong> / <strong>{processProgress.total}</strong> sessions

@@ -141,53 +141,6 @@ export async function POST(request: NextRequest) {
 
         await send({ done: true, updated: rows.length, failed })
 
-      } else if (mode === 'imp-convert') {
-        // Apply min-max normalisation to IMP sessions: worst pair → 25%, best → 75%
-        // Groups IMP results by session, computes session min/max, updates re_percentage
-        const sessions = await table_query({
-          caller: 'recalculate/imp-convert',
-          query: `SELECT DISTINCT re_seid FROM tre_results WHERE re_imp_score IS NOT NULL`,
-          params: []
-        })
-        const total = sessions.length
-        let processed = 0
-        let failed = 0
-
-        for (const s of sessions) {
-          try {
-            // Step 1: compute min/max in JS — window functions not allowed in UPDATE SET
-            const statsRows = await table_query({
-              caller: 'recalculate/imp-convert',
-              query: `SELECT MIN(re_imp_score) AS min_imp, MAX(re_imp_score) AS max_imp
-                      FROM tre_results WHERE re_seid = $1 AND re_imp_score IS NOT NULL`,
-              params: [s.re_seid]
-            })
-            const minImp = parseFloat(statsRows[0].min_imp)
-            const maxImp = parseFloat(statsRows[0].max_imp)
-
-            // Step 2: plain parameterised UPDATE
-            await table_query({
-              caller: 'recalculate/imp-convert',
-              query: `
-                UPDATE tre_results
-                SET re_percentage = ROUND(
-                  CASE WHEN $2 = $3 THEN 50
-                       ELSE 25 + ((re_imp_score - $3) / NULLIF($2 - $3, 0) * 50)
-                  END::numeric, 2)
-                WHERE re_seid = $1
-                  AND re_imp_score IS NOT NULL
-              `,
-              params: [s.re_seid, maxImp, minImp]
-            })
-          } catch (err) {
-            failed++
-            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `imp-convert failed for seid ${s.re_seid}: ${String(err)}`, lg_severity: 'E' })
-          }
-          processed++
-          await send({ step: 'imp-convert', processed, total, failed })
-        }
-        await send({ done: true, updated: processed, failed })
-
       } else if (mode === 'dateseq') {
         const result = await table_query({
           caller: 'recalculate/dateseq',

@@ -55,7 +55,20 @@ CREATE TABLE tse_sessions (
   se_scoring      VARCHAR(20)  NOT NULL,
   se_source_id    INTEGER      NOT NULL UNIQUE,
   se_date_seq     INTEGER      NOT NULL DEFAULT 0,
-  se_session_type VARCHAR(20)  NOT NULL DEFAULT 'club'
+  se_session_type VARCHAR(20)  NOT NULL DEFAULT 'club',
+  se_status       VARCHAR(20)  NOT NULL DEFAULT 'new',
+  se_rounds       INTEGER      NOT NULL DEFAULT 0,
+  se_name         VARCHAR(200) NOT NULL DEFAULT '',
+  se_headevent_id INTEGER      NOT NULL DEFAULT 0,
+  se_shid         INTEGER      NOT NULL DEFAULT 0
+);
+
+CREATE TABLE tsh_session_header (
+  sh_shid         SERIAL        PRIMARY KEY,
+  sh_headevent_id INTEGER       NOT NULL UNIQUE,
+  sh_name         VARCHAR(200)  NOT NULL DEFAULT '',
+  sh_date         DATE,
+  sh_year         INTEGER       NOT NULL DEFAULT 0
 );
 
 CREATE TABLE tpa_partners (
@@ -79,7 +92,7 @@ CREATE TABLE tre_results (
   re_partner_plid INTEGER,
   re_pairid       INTEGER,
   re_percentage   DECIMAL(5,2)  NOT NULL,
-  re_imp_score    NUMERIC(8,1)
+  re_match_num    INTEGER       NOT NULL DEFAULT 1
 );
 CREATE INDEX idx_tre_results_plid         ON tre_results (re_plid);
 CREATE INDEX idx_tre_results_partner_plid ON tre_results (re_partner_plid);
@@ -92,8 +105,8 @@ CREATE TABLE trw_results_raw (
   rw_name1      VARCHAR(100)  NOT NULL,
   rw_name2      VARCHAR(100)  NOT NULL,
   rw_percentage DECIMAL(5,2)  NOT NULL,
-  rw_rank       INTEGER,
-  rw_imp_score  NUMERIC(8,1)
+  rw_vp         NUMERIC(6,2),
+  rw_match_num  INTEGER       NOT NULL DEFAULT 1
 );
 CREATE INDEX idx_trw_results_raw_seid ON trw_results_raw (rw_seid);
 
@@ -146,10 +159,11 @@ SELECT
 FROM "#tpl_players";
 
 INSERT INTO tse_sessions (
-  se_seid, se_date, se_day_of_week, se_scoring, se_source_id, se_date_seq, se_session_type
+  se_seid, se_date, se_day_of_week, se_scoring, se_source_id, se_date_seq, se_session_type, se_status
 )
 SELECT
-  se_seid, se_date, se_day_of_week, se_scoring, se_source_id, se_date_seq, se_session_type
+  se_seid, se_date, se_day_of_week, se_scoring, se_source_id, se_date_seq, se_session_type,
+  COALESCE(se_status, 'new')
 FROM "#tse_sessions";
 
 INSERT INTO tpa_partners (
@@ -162,17 +176,17 @@ SELECT
 FROM "#tpa_partners";
 
 INSERT INTO tre_results (
-  re_reid, re_seid, re_plid, re_partner_plid, re_pairid, re_percentage, re_imp_score
+  re_reid, re_seid, re_plid, re_partner_plid, re_pairid, re_percentage
 )
 SELECT
-  re_reid, re_seid, re_plid, re_partner_plid, re_pairid, re_percentage, re_imp_score
+  re_reid, re_seid, re_plid, re_partner_plid, re_pairid, re_percentage
 FROM "#tre_results";
 
 INSERT INTO trw_results_raw (
-  rw_rwid, rw_seid, rw_name1, rw_name2, rw_percentage, rw_rank, rw_imp_score
+  rw_rwid, rw_seid, rw_name1, rw_name2, rw_percentage
 )
 SELECT
-  rw_rwid, rw_seid, rw_name1, rw_name2, rw_percentage, rw_rank, rw_imp_score
+  rw_rwid, rw_seid, rw_name1, rw_name2, rw_percentage
 FROM "#trw_results_raw";
 
 INSERT INTO tam_players_ambiguous (
@@ -209,6 +223,7 @@ SELECT setval('trw_results_raw_rw_rwid_seq',       (SELECT COALESCE(MAX(rw_rwid)
 SELECT setval('tam_players_ambiguous_am_amid_seq', (SELECT COALESCE(MAX(am_amid), 0)  FROM tam_players_ambiguous));
 SELECT setval('tfl_fetch_log_fl_flid_seq',         (SELECT COALESCE(MAX(fl_flid), 0)  FROM tfl_fetch_log));
 SELECT setval('tlg_logging_lg_lgid_seq',           (SELECT COALESCE(MAX(lg_lgid), 0)  FROM tlg_logging));
+SELECT setval('tsh_session_header_sh_shid_seq',    (SELECT COALESCE(MAX(sh_shid), 0)  FROM tsh_session_header));
 
 
 -- ============================================================

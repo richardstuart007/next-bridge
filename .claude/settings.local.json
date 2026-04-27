@@ -24,7 +24,8 @@
       "Bash(mkdir -p c:/github/next-bridge/src/app/session/[id])",
       "Bash(curl -s -o /tmp/akbc_list.html -w \"%{http_code}\" \"https://auckland.nzbridgeclub.org/resultslistbm.asp\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\")",
       "Bash(curl -s \"https://auckland.nzbridgeclub.org/resultslistbm.asp?headeventid=16921\" -H \"User-Agent: Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36\")",
-      "Bash(npm update *)"
+      "Bash(npm update *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,':',v\\) for k,v in d.get\\('exports',{}\\).items\\(\\) if 'cache' in k.lower\\(\\) or 'action' in k.lower\\(\\)]\")"
     ]
   }
 }

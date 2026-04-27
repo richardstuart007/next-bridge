@@ -17,7 +17,6 @@ interface SessionRow {
 
 interface ResultRow {
   percentage: number
-  imp_score: number | null
   pl_id: number
   player_name: string
   player_nz_number: number
@@ -118,14 +117,12 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>NZ#</th>
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Player 2</th>
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>NZ#</th>
-                {results[0]?.imp_score != null && <th className='py-1.5 text-right text-xs text-gray-500 font-medium'>IMPs</th>}
                 <th className='py-1.5 text-right text-xs text-gray-500 font-medium'>%</th>
               </tr>
             </thead>
             <tbody>
               {results.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => {
                 const rowNum = (currentPage - 1) * itemsPerPage + i + 1
-                const isImp = r.imp_score != null
                 return (
                 <tr
                   key={i}
@@ -145,11 +142,6 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                     </Link>
                   </td>
                   <td className='py-1.5 text-xs text-gray-400'>{r.partner_nz_number || '—'}</td>
-                  {isImp && (
-                    <td className='py-1.5 text-right font-mono text-sm'>
-                      {Number(r.imp_score) > 0 ? '+' : ''}{Number(r.imp_score).toFixed(1)}
-                    </td>
-                  )}
                   <td className='py-1.5 text-right font-medium'>
                     {parseFloat(String(r.percentage)).toFixed(2)}%
                   </td>

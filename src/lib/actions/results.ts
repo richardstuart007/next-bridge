@@ -10,15 +10,15 @@ export async function insertResult(data: {
   partner_pl_id: number
   pair_id: number | null
   percentage: number
-  imp_score?: number | null
+  match_num?: number
 }) {
-  const cols: { column: string; value: string | number | boolean | null }[] = [
+  const cols: { column: string; value: string | number | boolean }[] = [
     { column: 're_seid',          value: data.se_id },
     { column: 're_plid',          value: data.pl_id },
     { column: 're_partner_plid',  value: data.partner_pl_id },
-    { column: 're_percentage',    value: data.percentage }
+    { column: 're_percentage',    value: data.percentage },
+    { column: 're_match_num',     value: data.match_num ?? 1 }
   ]
   if (data.pair_id !== null) cols.push({ column: 're_pairid', value: data.pair_id })
-  if (data.imp_score !== undefined) cols.push({ column: 're_imp_score', value: data.imp_score })
   return table_write({ caller: 'insertResult', table: RESULTS_TABLE, columnValuePairs: cols })
 }

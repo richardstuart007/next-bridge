@@ -32,11 +32,9 @@ export interface ParsedPair {
   player1Name: string
   player2Name: string
   percentage: number
-  rank?: number              // position in session (1 = best); IMP only
-  impScore?: number          // net IMP score (e.g. +50.0, -23.5); IMP only
-  player1NzNumber?: number   // extracted from href if present
-  player2NzNumber?: number   // extracted from href if present
-  pairHref?: string          // raw href for debugging
+  player1NzNumber?: number
+  player2NzNumber?: number
+  pairHref?: string
 }
 
 export interface ParsedSession {
@@ -45,7 +43,6 @@ export interface ParsedSession {
   pairs: ParsedPair[]
   skipped: boolean
   skipReason?: string
-  isImp?: boolean        // true when IMP/Teams session detected (pairs have rank, not percentage)
 }
 
 const MONTH_MAP: Record<string, string> = {
@@ -55,22 +52,17 @@ const MONTH_MAP: Record<string, string> = {
 
 /**
  * Parse the AKBC resultsbm.asp page HTML using cheerio.
+ * All resultsbm.asp pages are MP (matchpoints) — team events use teamresults.asp.
  *
- * MP row structure:  <TR CLASS=ResultsTableBody>
- *                      <TD>1</TD>           — place
- *                      <TD>590.0</TD>       — raw score
- *                      <TD>  64.27%</TD>    — percentage
- *                      <TD><A ...>NAME1 - NAME2 (12)</A></TD>
- *                    </TR>
- *
- * IMP row structure: same column layout but column 2 may not be a %-comparable value.
- * For IMP sessions we extract rank (column 0) and names (column 3); percentage is
- * computed later via quantile normalisation against the MP distribution.
+ * Row structure:  <TR CLASS=ResultsTableBody>
+ *                   <TD>1</TD>        — place
+ *                   <TD>590.0</TD>    — raw score
+ *                   <TD>64.27%</TD>   — percentage
+ *                   <TD><A ...>NAME1 - NAME2 (12)</A></TD>
+ *                 </TR>
  */
 export function parseResultsPage(html: string): ParsedSession {
   const $ = cheerio.load(html)
-
-  const isImp = /teams|imp/i.test($('body').text().slice(0, 1000))
 
   // Extract date from heading — supports (DD-Mon-YY) or (DD-Mon-YYYY)
   const headingText = $('.ResultsTableHead').first().text().trim()
@@ -84,7 +76,6 @@ export function parseResultsPage(html: string): ParsedSession {
   const fullYear = yearStr.length === 4 ? yearStr : (parseInt(yearStr, 10) < 50 ? `20${yearStr}` : `19${yearStr}`)
   const date = `${fullYear}-${month}-${day.padStart(2, '0')}`
 
-  // Parse result rows
   const pairs: ParsedPair[] = []
   const rowClasses = ['ResultsTableBody', 'ResultsTableBodyAlternateLine']
 
@@ -95,60 +86,37 @@ export function parseResultsPage(html: string): ParsedSession {
     const cells = $(row).find('td')
     if (cells.length < 4) return
 
-    // Column 0: rank/place (1 = best)
-    const rankVal = parseInt($(cells[0]).text().trim(), 10)
-    const rank = isNaN(rankVal) ? undefined : rankVal
-
-    // Column 1: raw score — for IMP this is the net IMP score (e.g. 50.0, -23.5)
-    const rawScoreText = $(cells[1]).text().trim()
-    const impScore = isImp ? parseFloat(rawScoreText) : undefined
-
-    // Column 2: percentage — used for MP sessions only
+    // Column 2: percentage
     const pctText = $(cells[2]).text().trim().replace('%', '')
     const rawPct = parseFloat(pctText)
-    const percentage = (!isImp && !isNaN(rawPct) && rawPct >= 0 && rawPct <= 100) ? rawPct : 0
-
-    // For MP sessions, skip rows without a valid percentage
-    if (!isImp && percentage === 0 && isNaN(rawPct)) return
-
-    // For IMP sessions, skip rows where we couldn't parse the IMP score
-    if (isImp && (impScore === undefined || isNaN(impScore))) return
+    if (isNaN(rawPct) || rawPct < 0 || rawPct > 100) return
+    const percentage = rawPct
 
     // Column 3: pair name inside <a> tag — "NAME1 - NAME2 (NUM)"
     const anchor = $(cells[3]).find('a')
     const pairText = anchor.text().trim()
     if (!pairText) return
 
-    // Capture href for NZ number extraction
     const href = anchor.attr('href') ?? ''
-
-    // Strip trailing "(PAIR_NUMBER)"
     const cleanPair = pairText.replace(/\s*\(\d+\)\s*$/, '')
-
-    // Split on " - " to get two names
     const dashIdx = cleanPair.indexOf(' - ')
     if (dashIdx === -1) return
 
     const name1 = toTitleCase(cleanPair.slice(0, dashIdx).trim())
     const name2 = toTitleCase(cleanPair.slice(dashIdx + 3).trim())
-
-    // Try to extract NZ bridge numbers from href query params
-    // e.g. href="playerresults.asp?id1=12345&id2=67890" or "?nz1=12345&nz2=67890"
     const nzNumbers = extractNzNumbersFromHref(href)
 
     pairs.push({
       player1Name: name1,
       player2Name: name2,
       percentage,
-      rank,
-      impScore,
       player1NzNumber: nzNumbers[0],
       player2NzNumber: nzNumbers[1],
       pairHref: href || undefined
     })
   })
 
-  return { date, dayOfWeek: '', pairs, skipped: false, isImp }
+  return { date, dayOfWeek: '', pairs, skipped: false }
 }
 
 // -----------------------------------------------------------------------
@@ -374,6 +342,115 @@ export function parseAllPlayerMatchesFuzzy(html: string, name: string): ParsedPl
 function parseDecimal(val: string): number {
   const n = parseFloat(val)
   return isNaN(n) ? 0 : n
+}
+
+// -----------------------------------------------------------------------
+// nzbridge.co.nz player results history (?mpsr=1&mp_user=NNN)
+// -----------------------------------------------------------------------
+
+export interface ParsedPlayerResult {
+  date: string        // ISO YYYY-MM-DD
+  club: string
+  eventName: string
+  place: string       // may include "=" e.g. "3="
+  scoreValue: number
+  scoreType: 'PCT' | 'VP' | ''
+  aPoints: number | null
+  bPoints: number | null
+  cPoints: number | null
+  tournament: string        // masterpoint code e.g. '10A'; '' if none
+  type: string | null       // 'Final' | 'Session' | null
+  sessionNumber: number | null
+  restricted: string        // 'restricted' | 'open' | ''
+  eventType: string         // 'pairs' | 'teams' | 'swiss_pairs' | 'swiss_teams' | ''
+  category: string          // 'Provincial' | 'Championship' | 'Junior' | 'Intermediate' | 'Open' | ''
+}
+
+function parseDMY(dateStr: string): string {
+  const m = dateStr.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{4})$/)
+  if (!m) return ''
+  const month = MONTH_MAP[m[2].toLowerCase()] ?? '01'
+  return `${m[3]}-${month}-${m[1].padStart(2, '0')}`
+}
+
+function parseNullablePoints(val: string): number | null {
+  const s = val.trim()
+  if (!s) return null
+  const n = parseFloat(s)
+  return isNaN(n) ? null : n
+}
+
+function parseScore(val: string): { scoreValue: number; scoreType: 'PCT' | 'VP' | '' } {
+  const s = val.trim()
+  if (s.endsWith('PCT')) return { scoreValue: parseFloat(s) || 0, scoreType: 'PCT' }
+  if (s.endsWith('VP'))  return { scoreValue: parseFloat(s) || 0, scoreType: 'VP' }
+  return { scoreValue: parseFloat(s) || 0, scoreType: '' }
+}
+
+function parseEventFields(name: string) {
+  const tournamentMatch = name.match(/(\d+[ABC])/)
+  const tournament = tournamentMatch ? tournamentMatch[1] : ''
+
+  let type: string | null = null
+  let sessionNumber: number | null = null
+  if (/\(Final\)/.test(name)) {
+    type = 'Final'
+  } else {
+    const m = name.match(/\(Session (\d{1,2})\)/)
+    if (m) { type = 'Session'; sessionNumber = parseInt(m[1], 10) }
+  }
+
+  const restricted = /restricted/i.test(name) ? 'restricted' : /\bopen\b/i.test(name) ? 'open' : ''
+
+  const hasSwiss = /swiss/i.test(name)
+  const hasPairs = /\bpairs\b/i.test(name)
+  const hasTeams = /\bteams\b/i.test(name)
+  const eventType = hasSwiss && hasPairs ? 'swiss_pairs'
+    : hasSwiss && hasTeams ? 'swiss_teams'
+    : hasPairs ? 'pairs'
+    : hasTeams ? 'teams'
+    : ''
+
+  const category = /provincial/i.test(name) ? 'Provincial'
+    : /championship/i.test(name) ? 'Championship'
+    : /junior/i.test(name) ? 'Junior'
+    : /intermediate/i.test(name) ? 'Intermediate'
+    : /\bopen\b/i.test(name) ? 'Open'
+    : ''
+
+  return { tournament, type, sessionNumber, restricted, eventType, category }
+}
+
+/**
+ * Parse the nzbridge.co.nz player results history page (?mpsr=1&mp_user=NNN).
+ * Rows have columns: date | club | event name | place | score | A-pts | B-pts | C-pts
+ */
+export function parsePlayerResultsHistory(html: string): ParsedPlayerResult[] {
+  const $ = cheerio.load(html)
+  const results: ParsedPlayerResult[] = []
+
+  $('table tr').each((_i, row) => {
+    const cells = $(row).find('td')
+    if (cells.length < 5) return
+
+    const dateText = $(cells[0]).text().trim()
+    const date = parseDMY(dateText)
+    if (!date) return  // skip header rows and non-data rows
+
+    const club      = $(cells[1]).text().trim()
+    const eventName = $(cells[2]).text().trim()
+    const place     = $(cells[3]).text().trim()
+    const { scoreValue, scoreType } = parseScore($(cells[4]).text())
+    const aPoints   = cells.length > 5 ? parseNullablePoints($(cells[5]).text()) : null
+    const bPoints   = cells.length > 6 ? parseNullablePoints($(cells[6]).text()) : null
+    const cPoints   = cells.length > 7 ? parseNullablePoints($(cells[7]).text()) : null
+
+    if (!eventName) return
+    const { tournament, type, sessionNumber, restricted, eventType, category } = parseEventFields(eventName)
+    results.push({ date, club, eventName, place, scoreValue, scoreType, aPoints, bPoints, cPoints, tournament, type, sessionNumber, restricted, eventType, category })
+  })
+
+  return results
 }
 
 /**

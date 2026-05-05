@@ -1,0 +1,93 @@
+'use client'
+
+import { useState } from 'react'
+
+interface StepResult {
+  label: string
+  data: Record<string, unknown> | null
+  error: string | null
+}
+
+async function runStep(url: string): Promise<Record<string, unknown>> {
+  const res = await fetch(url, { method: 'POST' })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+  return json
+}
+
+function ResultRow({ result }: { result: StepResult }) {
+  if (!result.data && !result.error) return null
+  if (result.error) {
+    return <p className='text-red-600 text-sm mt-1'>Error: {result.error}</p>
+  }
+  const entries = Object.entries(result.data ?? {})
+  return (
+    <p className='text-green-700 text-sm mt-1'>
+      {entries.map(([k, v]) => `${k}: ${v}`).join(' · ')}
+    </p>
+  )
+}
+
+const STEPS = [
+  { key: 'players',     label: 'Step 1 — Build Players',          url: '/api/build/players',     desc: 'ts7 → tpl_players, trk_ranks, tcl_clubs, tgr_grades' },
+  { key: 'sessions',    label: 'Step 2 — Build Sessions',         url: '/api/build/sessions-nz', desc: 'ts8 run_ids → tse_sessions' },
+  { key: 'results',     label: 'Step 3 — Build Results',          url: '/api/build/results-nz',  desc: 'ts8 pairs + tpl_players → tre_results' },
+  { key: 'partners',    label: 'Step 4 — Build Partnerships',      url: '/api/build/partners',    desc: 'tre_results → tpa_partners' },
+]
+
+export default function BuildTables() {
+  const [results, setResults] = useState<Record<string, StepResult>>({})
+  const [running, setRunning] = useState<string | null>(null)
+
+  async function runAll() {
+    for (const step of STEPS) {
+      await run(step.key, step.url)
+    }
+  }
+
+  async function run(key: string, url: string) {
+    setRunning(key)
+    try {
+      const data = await runStep(url)
+      setResults(prev => ({ ...prev, [key]: { label: key, data, error: null } }))
+    } catch (err) {
+      setResults(prev => ({ ...prev, [key]: { label: key, data: null, error: String(err) } }))
+    } finally {
+      setRunning(null)
+    }
+  }
+
+  return (
+    <div className='space-y-4 max-w-2xl'>
+      <div className='flex items-center gap-3 mb-6'>
+        <button
+          onClick={runAll}
+          disabled={running !== null}
+          className='rounded bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50'
+        >
+          {running ? 'Running…' : 'Run All Steps'}
+        </button>
+        <span className='text-sm text-gray-500'>or run individual steps below</span>
+      </div>
+
+      {STEPS.map(step => (
+        <div key={step.key} className='border border-gray-200 rounded-lg p-4'>
+          <div className='flex items-start justify-between gap-4'>
+            <div>
+              <p className='font-medium text-gray-900 text-sm'>{step.label}</p>
+              <p className='text-xs text-gray-400 mt-0.5'>{step.desc}</p>
+              <ResultRow result={results[step.key] ?? { label: step.key, data: null, error: null }} />
+            </div>
+            <button
+              onClick={() => run(step.key, step.url)}
+              disabled={running !== null}
+              className='shrink-0 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50'
+            >
+              {running === step.key ? 'Running…' : 'Run'}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}

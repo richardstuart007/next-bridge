@@ -1,25 +1,14 @@
 import * as cheerio from 'cheerio'
 import { parseResultsPage, toTitleCase, type ParsedSession } from './parseHtml'
+import { fetchHtml } from './fetchHtml'
 
 const AKBC_BASE = 'https://auckland.nzbridgeclub.org'
-
-const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xhtml+xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-NZ,en;q=0.9'
-}
-
-async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: BROWSER_HEADERS })
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`)
-  return res.text()
-}
 
 /**
  * Fetch and parse a single session results page from AKBC.
  */
 export async function fetchSessionResults(sourceId: number): Promise<ParsedSession> {
-  const html = await fetchHtml(`${AKBC_BASE}/resultsbm.asp?id=${sourceId}&umbid=0`)
+  const html = await fetchHtml(`${AKBC_BASE}/resultsbm.asp?id=${sourceId}&umbid=0`, 'akbc')
   return parseResultsPage(html)
 }
 
@@ -71,7 +60,7 @@ const TEAM_ROW_CLASSES = ['ResultsTableBody', 'ResultsTableBodyAlternateLine']
  */
 export async function fetchTeamResults(sourceId: number): Promise<ParsedTeamSession> {
   // Step 1: get team list
-  const summaryHtml = await fetchHtml(`${AKBC_BASE}/teamresults.asp?id=${sourceId}&shownames=y`)
+  const summaryHtml = await fetchHtml(`${AKBC_BASE}/teamresults.asp?id=${sourceId}&shownames=y`, 'akbc')
   const $s = cheerio.load(summaryHtml)
 
   const teams = new Map<number, string[]>()  // teamNum → [playerNames]
@@ -106,7 +95,7 @@ export async function fetchTeamResults(sourceId: number): Promise<ParsedTeamSess
   await Promise.all(
     Array.from(teams.entries()).map(async ([teamNum, players]) => {
       try {
-        const detailHtml = await fetchHtml(`${AKBC_BASE}/teamdetailedresults.asp?id=${sourceId}&team=${teamNum}`)
+        const detailHtml = await fetchHtml(`${AKBC_BASE}/teamdetailedresults.asp?id=${sourceId}&team=${teamNum}`, 'akbc')
         const $d = cheerio.load(detailHtml)
 
         const matches: ParsedTeamMatch[] = []
@@ -178,7 +167,7 @@ export function parseAkbcDate(raw: string): string {
  * Used both by fetchSessionList (year scrape) and event-import (single event).
  */
 export async function fetchEventSessions(headeventId: number, date = ''): Promise<SessionListEntry[]> {
-  const subHtml = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?headeventid=${headeventId}`)
+  const subHtml = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?headeventid=${headeventId}`, 'akbc')
   const $sub = cheerio.load(subHtml)
   const entries: SessionListEntry[] = []
   const seenSourceIds = new Set<number>()
@@ -217,7 +206,7 @@ export async function fetchEventSessions(headeventId: number, date = ''): Promis
  * Returns both event headers (level 1) and individual sessions (level 2).
  */
 export async function fetchSessionList(year: number): Promise<{ headers: SessionHeaderEntry[], sessions: SessionListEntry[] }> {
-  const mainHtml = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?year=${year}`)
+  const mainHtml = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?year=${year}`, 'akbc')
   const $main = cheerio.load(mainHtml)
 
   const headeventids = new Map<number, { date: string; label: string }>()

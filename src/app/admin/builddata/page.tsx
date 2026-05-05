@@ -1,7 +1,7 @@
-import RawDataViewer from '@/src/ui/admin/RawDataViewer'
+import BuildDataViewer from '@/src/ui/admin/BuildDataViewer'
 import Link from 'next/link'
 
-export default function RawDataPage() {
+export default function BuildDataPage() {
   if (process.env.NEXT_PUBLIC_APPENV_ISADMIN !== 'true') {
     return <div className='p-8 text-gray-500'>Not available</div>
   }
@@ -12,9 +12,9 @@ export default function RawDataPage() {
           className='rounded bg-gray-100 border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-200'>
           ← Admin
         </Link>
-        <h1 className='text-xl font-bold text-gray-900'>Raw Data</h1>
+        <h1 className='text-xl font-bold text-gray-900'>Build Data Viewer</h1>
       </div>
-      <RawDataViewer />
+      <BuildDataViewer />
     </div>
   )
 }

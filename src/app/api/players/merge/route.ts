@@ -47,19 +47,7 @@ export async function POST(request: NextRequest) {
     const keepName    = keepPlayer.pl_name    as string
     const discardName = discardPlayer.pl_name as string
 
-    // 1. Update raw staging table name columns
-    const raw1 = await table_query({
-      caller: 'players/merge',
-      query: `UPDATE trw_results_raw SET rw_name1 = $1 WHERE rw_name1 = $2`,
-      params: [keepName, discardName]
-    })
-    const raw2 = await table_query({
-      caller: 'players/merge',
-      query: `UPDATE trw_results_raw SET rw_name2 = $1 WHERE rw_name2 = $2`,
-      params: [keepName, discardName]
-    })
-
-    // 2. Update tre_results player ID columns
+    // 1. Update tre_results player ID columns
     await table_query({
       caller: 'players/merge',
       query: `UPDATE tre_results SET re_plid = $1 WHERE re_plid = $2`,
@@ -71,16 +59,16 @@ export async function POST(request: NextRequest) {
       params: [keep_plid, discard_plid]
     })
 
-    // 3a. Clear re_pairid on ALL result rows that will lose their partnership row,
+    // 3a. Clear re_paid on ALL result rows that will lose their partnership row,
     //     so the back-fill at the end can reassign them correctly.
     //     (Rows transferred from discard_plid already have re_plid = keep_plid at this point,
-    //     but their re_pairid still points to the about-to-be-deleted partnership rows.)
+    //     but their re_paid still points to the about-to-be-deleted partnership rows.)
     await table_query({
       caller: 'players/merge',
       query: `
         UPDATE tre_results
-        SET re_pairid = NULL
-        WHERE re_pairid IN (
+        SET re_paid = NULL
+        WHERE re_paid IN (
           SELECT pa_paid FROM tpa_partners
           WHERE pa_plid1 = $1 OR pa_plid2 = $1
         )
@@ -132,8 +120,8 @@ export async function POST(request: NextRequest) {
           ROUND(AVG(re.re_percentage)::numeric, 2)                                        AS avg_all,
           COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                              AS mp_count,
           ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)     AS mp_avg,
-          COUNT(*)        FILTER (WHERE s.se_scoring = 'IMP')                             AS imp_count,
-          ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'IMP')::numeric, 2)    AS imp_avg
+          COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                             AS imp_count,
+          ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)    AS imp_avg
         FROM tre_results re
         JOIN tse_sessions s ON s.se_seid = re.re_seid
         WHERE re.re_plid = $1
@@ -169,8 +157,8 @@ export async function POST(request: NextRequest) {
             ROUND(AVG(re.re_percentage)::numeric, 2)                                      AS avg_pct,
             COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                            AS mp_sessions,
             ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)   AS mp_avg,
-            COUNT(*)        FILTER (WHERE s.se_scoring = 'IMP')                           AS imp_sessions,
-            ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'IMP')::numeric, 2)  AS imp_avg
+            COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                           AS imp_sessions,
+            ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)  AS imp_avg
           FROM tre_results re
           JOIN tse_sessions s ON s.se_seid = re.re_seid
           WHERE re.re_plid < re.re_partner_plid
@@ -202,29 +190,28 @@ export async function POST(request: NextRequest) {
           { column: 'pa_mp_sessions',  value: Number(row.mp_sessions) },
           { column: 'pa_mp_avg_pct',   value: row.mp_avg     ?? 0 },
           { column: 'pa_imp_sessions', value: Number(row.imp_sessions) },
-          { column: 'pa_imp_avg_pct',  value: row.imp_avg    ?? 0 },
-          { column: 'pa_last_updated', value: new Date().toISOString() }
+          { column: 'pa_imp_avg_pct',  value: row.imp_avg    ?? 0 }
         ],
         conflictColumns: ['pa_plid1', 'pa_plid2']
       })
     }
 
-    // Back-fill re_pairid for ALL kept player result rows (including transferred rows
-    // whose old re_pairid was nulled in step 3a).
+    // Back-fill re_paid for ALL kept player result rows (including transferred rows
+    // whose old re_paid was nulled in step 3a).
     // Uses both (plid1,plid2) orderings so it works regardless of whether tpa_partners
     // stored the pair in alphabetical-name order or numerical order.
     await table_query({
       caller: 'players/merge',
       query: `
         UPDATE tre_results re
-        SET re_pairid = pa.pa_paid
+        SET re_paid = pa.pa_paid
         FROM tpa_partners pa
         WHERE (
           (pa.pa_plid1 = re.re_plid AND pa.pa_plid2 = re.re_partner_plid) OR
           (pa.pa_plid1 = re.re_partner_plid AND pa.pa_plid2 = re.re_plid)
         )
         AND (re.re_plid = $1 OR re.re_partner_plid = $1)
-        AND re.re_pairid IS NULL
+        AND re.re_paid IS NULL
       `,
       params: [keep_plid]
     })
@@ -240,7 +227,6 @@ export async function POST(request: NextRequest) {
       merged: true,
       kept: { plid: keep_plid, name: keepName },
       discarded: { plid: discard_plid, name: discardName },
-      raw_rows_updated: (raw1?.[0]?.count ?? 0) + (raw2?.[0]?.count ?? 0),
       partnerships_recalculated: pairRows.length
     })
   } catch (err) {

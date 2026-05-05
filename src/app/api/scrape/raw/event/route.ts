@@ -8,6 +8,9 @@ export async function POST(request: NextRequest) {
   if (isNaN(eventId)) return NextResponse.json({ error: 'Missing event_id' }, { status: 400 })
   try {
     const rows = await scrapeEventPage(eventId)
+    if (rows.length === 0) {
+      await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/event', lg_msg: `No sessions parsed for event_id=${eventId} — page may be blocked or empty`, lg_severity: 'W' })
+    }
     await clearTs5(eventId)
     await insertTs5Rows(rows)
     return NextResponse.json({ eventId, count: rows.length })

@@ -1,8 +1,8 @@
-import SessionImport from '@/src/ui/admin/SessionImport'
+import BuildTables from '@/src/ui/admin/BuildTables'
 import Link from 'next/link'
 
 export default function BuildPage() {
-  if (process.env.NODE_ENV !== 'development') {
+  if (process.env.NEXT_PUBLIC_APPENV_ISADMIN !== 'true') {
     return <div className='p-8 text-gray-500'>Not available</div>
   }
   return (
@@ -14,7 +14,7 @@ export default function BuildPage() {
         </Link>
         <h1 className='text-xl font-bold text-gray-900'>Build Tables</h1>
       </div>
-      <SessionImport />
+      <BuildTables />
     </div>
   )
 }

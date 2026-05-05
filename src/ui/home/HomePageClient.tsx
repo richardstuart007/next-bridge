@@ -25,7 +25,6 @@ interface SessionRow {
   se_seid: number
   se_date: string
   se_day_of_week: string
-  se_date_seq: number
   se_session_type: string
   se_source_id: number
 }
@@ -161,6 +160,8 @@ export default function HomePageClient() {
   const [sessionItemsPerPage, setSessionItemsPerPage] = useState(10)
   const [loadingSessions,     setLoadingSessions]     = useState(false)
 
+  const [loaded, setLoaded] = useState(false)
+
   // ── Restore from sessionStorage on mount ──
   useEffect(() => {
     const s = loadSaved()
@@ -202,6 +203,7 @@ export default function HomePageClient() {
       playerPage, playerItemsPerPage, sessionYear])
 
   useEffect(() => {
+    if (!loaded) return
     getAllPlayers().then(rows => setAllPlayers(rows as PlayerRow[])).catch(console.error)
     getAllRanks().then(rows  => setRankOptions((rows as {rk_rank: string}[]).map(r => r.rk_rank))).catch(console.error)
     getAllClubs().then(rows  => {
@@ -213,16 +215,17 @@ export default function HomePageClient() {
       }
     }).catch(console.error)
     getAllGrades().then(rows => setGradeOptions((rows as {gr_grade: string}[]).map(r => r.gr_grade))).catch(console.error)
-  }, [])
+  }, [loaded])
 
   useEffect(() => {
+    if (!loaded) return
     setLoadingSessions(true)
     setSessionPage(1)
     getSessionsByYear(sessionYear ? parseInt(sessionYear, 10) : null)
       .then(rows => setAllSessions(rows as SessionRow[]))
       .catch(console.error)
       .finally(() => setLoadingSessions(false))
-  }, [sessionYear])
+  }, [loaded, sessionYear])
 
   const num = (v: string) => v === '' ? null : parseFloat(v)
 
@@ -259,8 +262,7 @@ export default function HomePageClient() {
 
   const sessions = useMemo(() => {
     let rows = allSessions
-    if (dayFilter)     rows = rows.filter(s => s.se_day_of_week === dayFilter)
-    if (dateSeqFilter) rows = rows.filter(s => String(s.se_date_seq || '') === dateSeqFilter)
+    if (dayFilter) rows = rows.filter(s => s.se_day_of_week === dayFilter)
     return rows
   }, [allSessions, dayFilter, dateSeqFilter])
 
@@ -292,7 +294,12 @@ export default function HomePageClient() {
             )}
           </div>
 
-          {allPlayers.length === 0 ? (
+          {!loaded ? (
+            <button
+              onClick={() => setLoaded(true)}
+              className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700'
+            >Load</button>
+          ) : allPlayers.length === 0 ? (
             <p className='text-sm text-gray-400'>Loading…</p>
           ) : (
             <>
@@ -400,7 +407,12 @@ export default function HomePageClient() {
             <Link href='/admin' className='text-xs text-blue-600 hover:underline'>Admin →</Link>
           </div>
 
-          {allSessions.length === 0 && !loadingSessions ? (
+          {!loaded ? (
+            <button
+              onClick={() => setLoaded(true)}
+              className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700'
+            >Load</button>
+          ) : allSessions.length === 0 && !loadingSessions ? (
             <p className='text-sm text-gray-400'>No sessions for this year. <Link href='/admin' className='text-blue-600 hover:underline'>Import one now.</Link></p>
           ) : (
             <table className='w-full text-sm'>
@@ -451,7 +463,6 @@ export default function HomePageClient() {
                     <td className='py-1.5 font-mono text-xs text-gray-400 select-all'>{s.se_source_id}</td>
                     <td className='py-1.5'>{new Date(s.se_date).toISOString().slice(0, 10)}</td>
                     <td className='py-1.5'>{s.se_day_of_week}</td>
-                    <td className='py-1.5 text-gray-500'>{s.se_date_seq || '—'}</td>
                     <td className='py-1.5 capitalize'>{s.se_session_type}</td>
                   </tr>
                 ))}

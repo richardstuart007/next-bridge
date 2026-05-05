@@ -1,21 +1,21 @@
 import { NextResponse } from 'next/server'
-import { getTs3AllPlayerNames, getTs6AllPairNames, upsertTs7Names } from '@/src/lib/actions/raw'
+import { getTs3AllPlayerNames, getTs6AllPairNames, getTs61AllPairNames, upsertTs7Names } from '@/src/lib/actions/raw'
 import { toTitleCase } from '@/src/lib/scrape/parseHtml'
 import { write_Logging } from 'nextjs-shared/write_logging'
 
 /**
  * POST /api/scrape/build/ts7
  *
- * Extracts every unique player name from ts3_team_members and ts6_session,
- * converts to Title Case, and upserts into ts7_nz_players.
+ * Extracts every unique player name from ts3_team_members, ts6_session, and
+ * ts61_session_teams, converts to Title Case, and upserts into ts7_nz_players.
  * Existing rows (with NZ numbers already found) are preserved unchanged.
- * Only reads/writes ts* tables.
  */
 export async function POST() {
   try {
-    const [ts3Names, ts6Pairs] = await Promise.all([
+    const [ts3Names, ts6Pairs, ts61Names] = await Promise.all([
       getTs3AllPlayerNames(),
       getTs6AllPairNames(),
+      getTs61AllPairNames(),
     ])
 
     const names = new Set<string>()
@@ -31,6 +31,11 @@ export async function POST() {
         const n = toTitleCase(part.trim())
         if (n) names.add(n)
       }
+    }
+
+    for (const { name } of ts61Names) {
+      const n = toTitleCase(name.trim())
+      if (n) names.add(n)
     }
 
     const nameList = Array.from(names)

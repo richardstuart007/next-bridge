@@ -23,10 +23,15 @@ export async function GET(
       SELECT
         se.se_seid          AS session_id,
         se.se_date          AS date,
-        se.se_session_type  AS session_type,
         se.se_day_of_week   AS day_of_week,
-        se.se_date_seq      AS date_seq,
+        se.se_scoring       AS scoring,
+        se.se_session_type  AS session_type,
+        se.se_name          AS session_name,
+        se.se_club          AS club,
+        se.se_tournament    AS tournament,
+        se.se_event_type    AS event_type,
         re.re_percentage    AS percentage,
+        re.re_vp            AS vp,
         re.re_partner_plid  AS partner_id,
         p.pl_name           AS partner_name
       FROM tre_results re

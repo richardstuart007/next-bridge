@@ -1,19 +1,9 @@
 import * as cheerio from 'cheerio'
-import { parseAkbcDate, parseLabelDay } from './akbc'
+import { parseAkbcDate } from './akbc'
+import { parseTeamMatchHeader } from './parseHtml'
+import { fetchHtml } from './fetchHtml'
 
 const AKBC_BASE = 'https://auckland.nzbridgeclub.org'
-
-const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xhtml+xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-NZ,en;q=0.9'
-}
-
-async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: BROWSER_HEADERS })
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`)
-  return res.text()
-}
 
 // ── ts1_main ─────────────────────────────────────────────────────────────────
 
@@ -27,7 +17,7 @@ export interface RawTs1Row {
 }
 
 export async function scrapeYearPage(year: number): Promise<RawTs1Row[]> {
-  const html = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?year=${year}`)
+  const html = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?year=${year}`, 'akbc-raw')
   const $ = cheerio.load(html)
   const rows: RawTs1Row[] = []
   const seenIds = new Set<number>()
@@ -86,7 +76,7 @@ export interface RawTs5Row {
 }
 
 export async function scrapeEventPage(eventId: number): Promise<RawTs5Row[]> {
-  const html = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?headeventid=${eventId}`)
+  const html = await fetchHtml(`${AKBC_BASE}/resultslistbm.asp?headeventid=${eventId}`, 'akbc-raw')
   const $ = cheerio.load(html)
   const rows: RawTs5Row[] = []
   const seenIds = new Set<number>()
@@ -142,27 +132,29 @@ export async function scrapeEventPage(eventId: number): Promise<RawTs5Row[]> {
 export interface RawTs2Row {
   eventId: number
   url: string
-  place: number
   teamNum: number
-  vp: number[]
 }
 
 export async function scrapeTeamMatchData(eventId: number): Promise<RawTs2Row[]> {
-  const url = `${AKBC_BASE}/teamresults.asp?id=${eventId}&iswide=y&matchdata=v`
-  const html = await fetchHtml(url)
+  const url = `${AKBC_BASE}/teamresults.asp?id=${eventId}`
+  const html = await fetchHtml(url, 'akbc-raw')
   const $ = cheerio.load(html)
   const rows: RawTs2Row[] = []
 
-  // Find header row to locate match columns (M1, M2, ...)
-  let matchColIndices: number[] = []
+  // Scan header rows to find Team column by header text
+  let teamColIdx = -1
+
   $('tr').each((_i, tr) => {
-    if (matchColIndices.length > 0) return
+    if (teamColIdx !== -1) return
     const cells = $(tr).find('th, td')
     const headers: string[] = []
-    cells.each((_j, c) => { headers.push($(c).text().trim().toUpperCase()) })
-    const mCols = headers.map((h, idx) => ({ h, idx })).filter(x => /^M\d+$/.test(x.h))
-    if (mCols.length > 0) matchColIndices = mCols.map(x => x.idx)
+    cells.each((_j, c) => { headers.push($(c).text().trim()) })
+    const teamIdx = headers.findIndex(h => /^team/i.test(h))
+    if (teamIdx === -1) return
+    teamColIdx = teamIdx
   })
+
+  if (teamColIdx === -1) return rows
 
   const ROW_CLASSES = ['ResultsTableBody', 'ResultsTableBodyAlternateLine']
 
@@ -171,39 +163,16 @@ export async function scrapeTeamMatchData(eventId: number): Promise<RawTs2Row[]>
     if (!ROW_CLASSES.includes(cls)) return
 
     const cells = $(tr).find('td')
-    if (cells.length < 3) return
+    const teamCell = cells[teamColIdx]
+    if (!teamCell) return
 
-    const placeText = $(cells[0]).text().trim()
-    const place = parseInt(placeText) || 0
-
-    // Team cell: "ITCH (3)" or "ITCH(3)"
-    const teamCell = $(cells[2]).text().trim()
-    const teamNumMatch = teamCell.match(/\((\d+)\)/)
+    const teamText = $(teamCell).text().trim()
+    const teamNumMatch = teamText.match(/\((\d+)\)/)
     if (!teamNumMatch) return
     const teamNum = parseInt(teamNumMatch[1])
 
-    // Extract VP values from match columns
-    const vp: number[] = []
-    if (matchColIndices.length > 0) {
-      for (const idx of matchColIndices) {
-        const cell = cells[idx]
-        if (!cell) break
-        const val = parseFloat($(cell).text().trim())
-        if (isNaN(val)) break
-        vp.push(val)
-      }
-    } else {
-      // Fallback: columns 3..N-3 are match columns (skip Place, Cat, Team at start; Imps, VPs, W-D-L, Masterpoints at end)
-      const skip = 3
-      const tail = 4
-      for (let j = skip; j < cells.length - tail; j++) {
-        const val = parseFloat($(cells[j]).text().trim())
-        if (!isNaN(val) && val >= 0 && val <= 20) vp.push(val)
-        else break
-      }
-    }
-
-    if (vp.length > 0) rows.push({ eventId, url, place, teamNum, vp })
+    const teamUrl = `${AKBC_BASE}/teamdetailedresults.asp?id=${eventId}&team=${teamNum}`
+    rows.push({ eventId, url: teamUrl, teamNum })
   })
 
   return rows
@@ -221,7 +190,7 @@ export interface RawTs3Row {
 
 export async function scrapeTeamMembers(eventId: number): Promise<RawTs3Row[]> {
   const url = `${AKBC_BASE}/teammemberlist.asp?id=${eventId}`
-  const html = await fetchHtml(url)
+  const html = await fetchHtml(url, 'akbc-raw')
   const $ = cheerio.load(html)
   const rows: RawTs3Row[] = []
 
@@ -255,14 +224,16 @@ export interface RawTs4Row {
   teamNum: number
   opponentNums: number[]
   vps: number[]
+  showteamUrls: string[]  // parallel to vps — showteam.asp URL for each round ('' if not found)
 }
 
 export async function scrapeTeamRounds(eventId: number, teamNum: number): Promise<RawTs4Row> {
   const url = `${AKBC_BASE}/teamdetailedresults.asp?id=${eventId}&team=${teamNum}`
-  const html = await fetchHtml(url)
+  const html = await fetchHtml(url, 'akbc-raw')
   const $ = cheerio.load(html)
   const opponentNums: number[] = []
   const vps: number[] = []
+  const showteamUrls: string[] = []
 
   const ROW_CLASSES = ['ResultsTableBody', 'ResultsTableBodyAlternateLine']
 
@@ -284,9 +255,35 @@ export async function scrapeTeamRounds(eventId: number, teamNum: number): Promis
     const opponentMatch = opponentText.match(/\((\d+)\)/)
     opponentNums.push(opponentMatch ? parseInt(opponentMatch[1]) : 0)
     vps.push(vpsVal)
+
+    // Extract showteam.asp link anywhere in this row
+    const href = $(tr).find('a[href*="showteam.asp"]').first().attr('href') ?? ''
+    showteamUrls.push(href ? (href.startsWith('http') ? href : `${AKBC_BASE}/${href.replace(/^\//, '')}`) : '')
   })
 
-  return { eventId, url, teamNum, opponentNums, vps }
+  return { eventId, url, teamNum, opponentNums, vps, showteamUrls }
+}
+
+// ── ts61_session_teams ────────────────────────────────────────────────────────
+
+export interface RawTs61Row {
+  eventId: number
+  matchId: number   // id= param from showteam.asp URL (match-specific, not event_id)
+  roundNum: number  // 1-based position in team's match list
+  url: string
+  homePair1: string[]  // 2 player names
+  homePair2: string[]  // 2 player names
+  awayPair1: string[]  // 2 player names
+  awayPair2: string[]  // 2 player names
+}
+
+export async function scrapeTeamMatchPage(
+  url: string, eventId: number, matchId: number, roundNum: number
+): Promise<RawTs61Row | null> {
+  const html = await fetchHtml(url, 'akbc-raw')
+  const pairs = parseTeamMatchHeader(html)
+  if (!pairs) return null
+  return { eventId, matchId, roundNum, url, ...pairs }
 }
 
 // ── ts6_session ───────────────────────────────────────────────────────────────
@@ -305,7 +302,7 @@ export interface RawTs6Row {
 
 export async function scrapeSession(sourceId: number, eventId: number): Promise<RawTs6Row[]> {
   const url = `${AKBC_BASE}/resultsbm.asp?id=${sourceId}&umbid=0`
-  const html = await fetchHtml(url)
+  const html = await fetchHtml(url, 'akbc-raw')
   const $ = cheerio.load(html)
   const rows: RawTs6Row[] = []
 
@@ -344,4 +341,3 @@ export async function scrapeSession(sourceId: number, eventId: number): Promise<
 
   return rows
 }
-

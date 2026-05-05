@@ -4,7 +4,7 @@ const SECTIONS = [
   {
     href: '/admin/scrape',
     label: 'Raw Data Scraping',
-    description: 'Scrape AKBC year pages and events into ts* staging tables.',
+    description: 'Scrape NZ Bridge year pages and events into ts* staging tables.',
     step: '1',
   },
   {
@@ -16,19 +16,25 @@ const SECTIONS = [
   {
     href: '/admin/build',
     label: 'Build Tables',
-    description: 'Populate tse_sessions, trw_results_raw and tre_results from ts* data.',
+    description: 'Populate production tables (tpl_players, tse_sessions, tre_results, tpa_partners) from ts7 and ts8.',
     step: '3',
+  },
+  {
+    href: '/admin/builddata',
+    label: 'Build Data Viewer',
+    description: 'Inspect and validate the production tables populated by the build steps.',
+    step: '4',
   },
   {
     href: '/admin/stats',
     label: 'Update Stats',
-    description: 'Refresh player NZ numbers, averages, partnerships and lookup tables.',
-    step: '4',
+    description: 'Recompute averages, partnership stats and session date sequence from stored results.',
+    step: '5',
   },
 ]
 
 export default function AdminPage() {
-  if (process.env.NODE_ENV !== 'development') {
+  if (process.env.NEXT_PUBLIC_APPENV_ISADMIN !== 'true') {
     return <div className='p-8 text-gray-500'>Not available</div>
   }
   return (

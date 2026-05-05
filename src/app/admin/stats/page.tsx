@@ -2,7 +2,7 @@ import PlayerRefresh from '@/src/ui/admin/PlayerRefresh'
 import Link from 'next/link'
 
 export default function StatsPage() {
-  if (process.env.NODE_ENV !== 'development') {
+  if (process.env.NEXT_PUBLIC_APPENV_ISADMIN !== 'true') {
     return <div className='p-8 text-gray-500'>Not available</div>
   }
   return (

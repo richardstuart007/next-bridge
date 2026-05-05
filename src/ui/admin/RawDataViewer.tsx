@@ -10,6 +10,9 @@ import {
   getTs6BySourceId,
   getTs7All,
   getTs8ByNzNumber,
+  getTs8Sessions,
+  getTs8ByRunId,
+  getTs61ByEventId,
 } from '@/src/lib/actions/raw'
 
 type Row = Record<string, unknown>
@@ -104,7 +107,7 @@ function SectionHeader({ label, shown, total, loading }: { label: string; shown?
       <p className='text-xs font-semibold text-gray-500 uppercase tracking-wide'>{label}</p>
       {loading && <span className='text-xs text-blue-500'>Loading…</span>}
       {!loading && total !== undefined && total > 0 && (
-        <span className='text-xs text-gray-400'>{shown !== total ? `${shown} / ${total}` : total} rows</span>
+        <span className='text-xs text-gray-400'>{shown !== undefined && shown !== total ? `${shown} / ${total}` : total} rows</span>
       )}
     </div>
   )
@@ -125,7 +128,7 @@ export default function RawDataViewer() {
   // ts1 child panels
   const [childLoading,  setChildLoading]  = useState(false)
   const [ts5Rows,       setTs5Rows]       = useState<Row[]>([])
-  const [teamsRows,     setTeamsRows]     = useState<{ ts2: Row[]; ts3: Row[]; ts4: Row[] } | null>(null)
+  const [teamsRows,     setTeamsRows]     = useState<{ ts2: Row[]; ts3: Row[]; ts4: Row[]; ts61: Row[] } | null>(null)
   const [ts6DirectRows, setTs6DirectRows] = useState<Row[]>([])
   const [selectedTs5,   setSelectedTs5]   = useState<Row | null>(null)
   const [ts6Loading,    setTs6Loading]    = useState(false)
@@ -141,12 +144,26 @@ export default function RawDataViewer() {
   const [ts7GradeFilter,   setTs7GradeFilter]   = useState('')
   const [ts7StatusFilter,  setTs7StatusFilter]  = useState('all')
 
-  // ts8
-  const [ts8Rows,          setTs8Rows]          = useState<Row[]>([])
-  const [ts8Loading,       setTs8Loading]       = useState(false)
-  const [ts8EventFilter,   setTs8EventFilter]   = useState('')
-  const [ts8ClubFilter,    setTs8ClubFilter]    = useState('')
-  const [ts8ScoreFilter,   setTs8ScoreFilter]   = useState('all')
+  // ts8 (pair results for selected ts7 player)
+  const [ts8Rows,        setTs8Rows]        = useState<Row[]>([])
+  const [ts8Loading,     setTs8Loading]     = useState(false)
+  const [ts8Nz1Filter,   setTs8Nz1Filter]   = useState('')
+  const [ts8Nz2Filter,   setTs8Nz2Filter]   = useState('')
+  const [ts8EventFilter, setTs8EventFilter] = useState('')
+  const [ts8ClubFilter,  setTs8ClubFilter]  = useState('')
+  const [ts8ScoreFilter, setTs8ScoreFilter] = useState('all')
+
+  // NZ Bridge sessions panel (ts8 grouped by run_id)
+  const [nzSessions,             setNzSessions]             = useState<Row[]>([])
+  const [nzSessionsLoading,      setNzSessionsLoading]      = useState(false)
+  const [selectedNzSession,      setSelectedNzSession]      = useState<Row | null>(null)
+  const [nzSessionPairs,         setNzSessionPairs]         = useState<Row[]>([])
+  const [nzSessionPairsLoading,  setNzSessionPairsLoading]  = useState(false)
+  const [nzYearFilter,           setNzYearFilter]           = useState('all')
+  const [nzMonthFilter,          setNzMonthFilter]          = useState('all')
+  const [nzEventFilter,          setNzEventFilter]          = useState('')
+  const [nzClubFilter,           setNzClubFilter]           = useState('')
+  const [nzScoreFilter,          setNzScoreFilter]          = useState('all')
 
   const [error, setError] = useState<string | null>(null)
 
@@ -177,8 +194,8 @@ export default function RawDataViewer() {
       if (type === 'headevent') {
         setTs5Rows((await getTs5ByEventId(id)) as Row[])
       } else if (type === 'teamresults') {
-        const [ts2, ts3, ts4] = await Promise.all([getTs2ByEventId(id), getTs3ByEventId(id), getTs4ByEventId(id)])
-        setTeamsRows({ ts2: ts2 as Row[], ts3: ts3 as Row[], ts4: ts4 as Row[] })
+        const [ts2, ts3, ts4, ts61] = await Promise.all([getTs2ByEventId(id), getTs3ByEventId(id), getTs4ByEventId(id), getTs61ByEventId(id)])
+        setTeamsRows({ ts2: ts2 as Row[], ts3: ts3 as Row[], ts4: ts4 as Row[], ts61: ts61 as Row[] })
       } else if (type === 'resultsbm') {
         setTs6DirectRows((await getTs6BySourceId(id)) as Row[])
       }
@@ -213,6 +230,23 @@ export default function RawDataViewer() {
     finally { setTs8Loading(false) }
   }
 
+  async function loadNzSessions() {
+    setNzSessionsLoading(true); setError(null); setSelectedNzSession(null); setNzSessionPairs([])
+    setNzYearFilter('all'); setNzMonthFilter('all')
+    try { setNzSessions((await getTs8Sessions()) as Row[]) }
+    catch (err) { setError(String(err)) }
+    finally { setNzSessionsLoading(false) }
+  }
+
+  async function handleNzSessionClick(row: Row) {
+    if (selectedNzSession && rowKey(selectedNzSession) === rowKey(row)) { setSelectedNzSession(null); setNzSessionPairs([]); return }
+    setSelectedNzSession(row); setNzSessionPairs([])
+    setNzSessionPairsLoading(true)
+    try { setNzSessionPairs((await getTs8ByRunId(row.s8_run_id as number)) as Row[]) }
+    catch (err) { setError(String(err)) }
+    finally { setNzSessionPairsLoading(false) }
+  }
+
   // ── Filtered rows ─────────────────────────────────────────────────────────────
 
   const filteredTs1 = ts1Rows.filter(r => {
@@ -233,6 +267,8 @@ export default function RawDataViewer() {
   })
 
   const filteredTs8 = ts8Rows.filter(r => {
+    if (ts8Nz1Filter   && !String(r.s8_nz_number1 ?? '').includes(ts8Nz1Filter)) return false
+    if (ts8Nz2Filter   && !String(r.s8_nz_number2 ?? '').includes(ts8Nz2Filter)) return false
     if (ts8EventFilter && !String(r.s8_event_name ?? '').toLowerCase().includes(ts8EventFilter.toLowerCase())) return false
     if (ts8ClubFilter  && !String(r.s8_club ?? '').toLowerCase().includes(ts8ClubFilter.toLowerCase())) return false
     if (ts8ScoreFilter !== 'all' && r.s8_score_type !== ts8ScoreFilter) return false
@@ -257,9 +293,44 @@ export default function RawDataViewer() {
   }
 
   const ts8Filters: Record<string, React.ReactNode> = {
+    s8_nz_number1:  <FText placeholder='nz1…'   value={ts8Nz1Filter}   onChange={setTs8Nz1Filter} />,
+    s8_nz_number2:  <FText placeholder='nz2…'   value={ts8Nz2Filter}   onChange={setTs8Nz2Filter} />,
     s8_event_name:  <FText placeholder='event…' value={ts8EventFilter} onChange={setTs8EventFilter} />,
     s8_club:        <FText placeholder='club…'  value={ts8ClubFilter}  onChange={setTs8ClubFilter} />,
     s8_score_type:  <FSelect value={ts8ScoreFilter} onChange={setTs8ScoreFilter}><option value='all'>all</option><option value='PCT'>PCT</option><option value='VP'>VP</option></FSelect>,
+  }
+
+  const filteredNzSessions = nzSessions.filter(r => {
+    const d = String(r.s8_date ?? '')
+    if (nzYearFilter  !== 'all' && !d.startsWith(nzYearFilter))                                               return false
+    if (nzMonthFilter !== 'all' && d.slice(5, 7) !== nzMonthFilter)                                           return false
+    if (nzEventFilter && !String(r.s8_event_name ?? '').toLowerCase().includes(nzEventFilter.toLowerCase())) return false
+    if (nzClubFilter  && !String(r.s8_club       ?? '').toLowerCase().includes(nzClubFilter.toLowerCase()))  return false
+    if (nzScoreFilter !== 'all' && r.s8_score_type !== nzScoreFilter)                                        return false
+    return true
+  })
+
+  const NZ_YEARS  = ['all', '2026', '2025', '2024', '2023', '2022']
+  const NZ_MONTHS = [
+    ['all', 'all'], ['01', 'Jan'], ['02', 'Feb'], ['03', 'Mar'], ['04', 'Apr'],
+    ['05', 'May'], ['06', 'Jun'], ['07', 'Jul'], ['08', 'Aug'],
+    ['09', 'Sep'], ['10', 'Oct'], ['11', 'Nov'], ['12', 'Dec'],
+  ]
+
+  const nzSessionFilters: Record<string, React.ReactNode> = {
+    s8_date: (
+      <div className='flex gap-0.5'>
+        <FSelect value={nzYearFilter}  onChange={setNzYearFilter}>
+          {NZ_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+        </FSelect>
+        <FSelect value={nzMonthFilter} onChange={setNzMonthFilter}>
+          {NZ_MONTHS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </FSelect>
+      </div>
+    ),
+    s8_event_name: <FText placeholder='event…' value={nzEventFilter} onChange={setNzEventFilter} />,
+    s8_club:       <FText placeholder='club…'  value={nzClubFilter}  onChange={setNzClubFilter} />,
+    s8_score_type: <FSelect value={nzScoreFilter} onChange={setNzScoreFilter}><option value='all'>all</option><option value='PCT'>PCT</option><option value='VP'>VP</option></FSelect>,
   }
 
   const ts1Type = selectedTs1?.s1_type as string | undefined
@@ -295,10 +366,10 @@ export default function RawDataViewer() {
           <SectionHeader label='teams' loading={childLoading} />
           {teamsRows && (
             <div className='space-y-4'>
-              {(['ts2', 'ts3', 'ts4'] as const).map(t => (
+              {(['ts2', 'ts3', 'ts4', 'ts61'] as const).map(t => (
                 <div key={t}>
                   <p className='text-xs font-semibold text-gray-400 mb-1'>
-                    {t === 'ts2' ? 'ts2 — VP match summary' : t === 'ts3' ? 'ts3 — team members' : 'ts4 — team rounds'}
+                    {t === 'ts2' ? 'ts2 — VP match summary' : t === 'ts3' ? 'ts3 — team members' : t === 'ts4' ? 'ts4 — team rounds' : 'ts61 — match pair assignments'}
                   </p>
                   <DataTable rows={teamsRows[t]} />
                 </div>
@@ -334,11 +405,11 @@ export default function RawDataViewer() {
         {ts7Rows.length > 0 && <DataTable rows={filteredTs7} allRows={ts7Rows} onRowClick={handleTs7Click} isClickable={row => !!row.s7_nz_number} selected={selectedTs7} filters={ts7Filters} />}
       </div>
 
-      {/* ts8 — NZ results history */}
+      {/* ts8 — NZ pair results for selected ts7 player */}
       {selectedTs7 && (
         <div className='rounded border border-gray-200 p-3'>
           <div className='flex items-center gap-2 mb-1'>
-            <p className='text-xs font-semibold text-gray-500 uppercase tracking-wide'>ts8 — results history</p>
+            <p className='text-xs font-semibold text-gray-500 uppercase tracking-wide'>ts8 — pair results</p>
             {ts8Loading && <span className='text-xs text-blue-500'>Loading…</span>}
             {!ts8Loading && ts8Rows.length > 0 && (
               <span className='text-xs text-gray-400'>{filteredTs8.length !== ts8Rows.length ? `${filteredTs8.length} / ${ts8Rows.length}` : ts8Rows.length} rows</span>
@@ -348,6 +419,34 @@ export default function RawDataViewer() {
           <DataTable rows={filteredTs8} allRows={ts8Rows} filters={ts8Filters} />
         </div>
       )}
+
+      {/* NZ Bridge sessions (ts8 grouped by run_id) */}
+      <div className='rounded border border-gray-200 p-3'>
+        <div className='flex items-center gap-2 mb-1'>
+          <p className='text-xs font-semibold text-gray-500 uppercase tracking-wide'>NZ Bridge — sessions (ts8)</p>
+          {nzSessionsLoading && <span className='text-xs text-blue-500'>Loading…</span>}
+          {!nzSessionsLoading && nzSessions.length > 0 && (
+            <span className='text-xs text-gray-400'>{filteredNzSessions.length !== nzSessions.length ? `${filteredNzSessions.length} / ${nzSessions.length}` : nzSessions.length} rows</span>
+          )}
+          <div className='ml-auto'>
+            <button onClick={loadNzSessions} disabled={nzSessionsLoading}
+              className='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50'>
+              Load
+            </button>
+          </div>
+        </div>
+        {nzSessions.length > 0 && (
+          <>
+            <DataTable rows={filteredNzSessions} allRows={nzSessions} onRowClick={handleNzSessionClick} selected={selectedNzSession} filters={nzSessionFilters} />
+            {selectedNzSession && (
+              <div className='mt-3 pt-3 border-t border-gray-100'>
+                <SectionHeader label='ts8 — pairs in session' shown={nzSessionPairs.length} total={nzSessionPairs.length} loading={nzSessionPairsLoading} />
+                <DataTable rows={nzSessionPairs} />
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -9,36 +9,17 @@ export interface AuditCheck {
 }
 
 export async function auditSessionsFetch(): Promise<AuditCheck[]> {
-  const neverFetched = await table_query({
-    caller: 'audit/neverFetched',
-    query: `SELECT se_seid, se_date::text, se_source_id, se_scoring
-            FROM tse_sessions WHERE se_status = 'new'
-            ORDER BY se_date DESC`,
-    params: []
-  })
-
-  const fetchErrors = await table_query({
-    caller: 'audit/fetchErrors',
-    query: `SELECT se_seid, se_date::text, se_source_id FROM tse_sessions WHERE se_status = 'error' ORDER BY se_date DESC`,
-    params: []
-  })
-
-  const awaitingProcess = await table_query({
-    caller: 'audit/awaitingProcess',
-    query: `SELECT s.se_seid, s.se_date::text, s.se_source_id,
-              COUNT(rw.rw_rwid)::int AS raw_pairs
+  const noResults = await table_query({
+    caller: 'audit/noResults',
+    query: `SELECT s.se_seid, s.se_date::text, s.se_source_id, s.se_scoring
             FROM tse_sessions s
-            JOIN trw_results_raw rw ON rw.rw_seid = s.se_seid
-            WHERE s.se_status = 'fetched'
-            GROUP BY s.se_seid, s.se_date, s.se_source_id
+            WHERE NOT EXISTS (SELECT 1 FROM tre_results r WHERE r.re_seid = s.se_seid)
             ORDER BY s.se_date DESC`,
     params: []
   })
 
   return [
-    { label: 'Sessions not yet fetched', count: neverFetched.length, rows: neverFetched },
-    { label: 'Sessions with fetch errors', count: fetchErrors.length, rows: fetchErrors },
-    { label: 'Sessions fetched but not processed', count: awaitingProcess.length, rows: awaitingProcess },
+    { label: 'Sessions with no results', count: noResults.length, rows: noResults },
   ]
 }
 
@@ -46,14 +27,12 @@ export async function auditSessionsProcess(): Promise<AuditCheck[]> {
   const mismatch = await table_query({
     caller: 'audit/mismatch',
     query: `SELECT s.se_seid, s.se_date::text, s.se_source_id,
-              COUNT(DISTINCT rw.rw_rwid)::int AS raw_pairs,
-              COUNT(DISTINCT re.re_reid)::int AS results,
-              (COUNT(DISTINCT rw.rw_rwid) * 2)::int AS expected
+              COUNT(DISTINCT re.re_reid)::int AS results
             FROM tse_sessions s
-            JOIN trw_results_raw rw ON rw.rw_seid = s.se_seid
-            JOIN tre_results re ON re.re_seid = s.se_seid
+            LEFT JOIN tre_results re ON re.re_seid = s.se_seid
+            WHERE EXISTS (SELECT 1 FROM tre_results r WHERE r.re_seid = s.se_seid)
             GROUP BY s.se_seid, s.se_date, s.se_source_id
-            HAVING COUNT(DISTINCT re.re_reid) < COUNT(DISTINCT rw.rw_rwid) * 2 - 4
+            HAVING COUNT(DISTINCT re.re_reid) = 0
             ORDER BY s.se_date DESC`,
     params: []
   })
@@ -81,7 +60,7 @@ export async function auditSessionsProcess(): Promise<AuditCheck[]> {
   })
 
   return [
-    { label: 'Sessions with pair/result count mismatch', count: mismatch.length, rows: mismatch },
+    { label: 'Processed sessions with no results', count: mismatch.length, rows: mismatch },
     { label: 'Players with results but session_count = 0', count: missingCounts.length, rows: missingCounts },
     { label: 'Orphaned result rows (no session record)', count: orphaned.length, rows: orphaned },
   ]

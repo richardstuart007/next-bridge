@@ -9,7 +9,6 @@ interface SessionRow {
   se_seid: number
   se_date: string
   se_day_of_week: string
-  se_date_seq: number
   se_session_type: string
   se_scoring: string
   se_source_id: number
@@ -94,9 +93,8 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
         </h1>
         <div className='flex flex-wrap gap-4 text-sm text-gray-600 mt-1'>
           <span>{session.se_day_of_week}</span>
-          {session.se_date_seq > 0 && <span>Session {session.se_date_seq}</span>}
           <span className='capitalize'>{session.se_session_type}</span>
-          <span className={session.se_scoring === 'IMP' ? 'text-purple-600 font-medium' : ''}>{session.se_scoring}</span>
+          <span className={session.se_scoring === 'VP' ? 'text-purple-600 font-medium' : ''}>{session.se_scoring}</span>
         </div>
       </div>
 

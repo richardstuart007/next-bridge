@@ -1,19 +1,17 @@
-import { parsePlayerTable, parsePlayerTableByName, parseAllPlayerMatches, parsePlayerTableFuzzy, parseAllPlayerMatchesFuzzy, parsePlayerResultsHistory, type ParsedPlayer, type ParsedPlayerResult } from './parseHtml'
+import { parsePlayerTable, parsePlayerTableByName, parseAllPlayerMatches, parsePlayerTableFuzzy, parseAllPlayerMatchesFuzzy, parsePlayerResultsHistory, parseNzSessionPage, type ParsedPlayer, type ParsedPlayerResult, type ParsedSessionPair } from './parseHtml'
 import { write_Logging } from 'nextjs-shared/write_logging'
+import { fetchHtml } from './fetchHtml'
 
 const NZBRIDGE_BASE = 'https://www.nzbridge.co.nz'
-
-const FETCH_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,*/*;q=0.8'
-}
 
 async function fetchNzBridgePage(searchTerm: string): Promise<string | null> {
   const encoded = searchTerm.toLowerCase().split(/\s+/).map(encodeURIComponent).join('+')
   const url = `${NZBRIDGE_BASE}/online-points.html?mp_filter_name=${encoded}&mp_filter_number=&mp_search=Search`
-  const res = await fetch(url, { headers: FETCH_HEADERS })
-  if (!res.ok) return null
-  return res.text()
+  try {
+    return await fetchHtml(url, 'nzbridge')
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -23,12 +21,7 @@ async function fetchNzBridgePage(searchTerm: string): Promise<string | null> {
 export async function lookupPlayerByNumber(nzNumber: number): Promise<ParsedPlayer | null> {
   try {
     const url = `${NZBRIDGE_BASE}/online-points.html?mp_filter_name=&mp_filter_number=${nzNumber}&mp_search=Search`
-    const res = await fetch(url, { headers: FETCH_HEADERS })
-    if (!res.ok) {
-      await write_Logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `HTTP ${res.status} for NZ# ${nzNumber}`, lg_severity: 'W' })
-      return null
-    }
-    const html = await res.text()
+    const html = await fetchHtml(url, 'nzbridge')
     const result = parsePlayerTable(html)
     if (!result) {
       await write_Logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `No data returned for NZ# ${nzNumber}`, lg_severity: 'W' })
@@ -90,14 +83,23 @@ export async function lookupPlayer(name: string): Promise<ParsedPlayer | null> {
 export async function fetchPlayerResultsHistory(nzNumber: number): Promise<ParsedPlayerResult[]> {
   try {
     const url = `${NZBRIDGE_BASE}/online-points.html?mpsr=1&mp_user=${nzNumber}`
-    const res = await fetch(url, { headers: FETCH_HEADERS })
-    if (!res.ok) {
-      await write_Logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `HTTP ${res.status} for NZ# ${nzNumber}`, lg_severity: 'W' })
-      return []
-    }
-    return parsePlayerResultsHistory(await res.text())
+    return parsePlayerResultsHistory(await fetchHtml(url, 'nzbridge'))
   } catch (err) {
     await write_Logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
+    return []
+  }
+}
+
+/**
+ * Fetch and parse a NZbridge session results page by run_id.
+ * URL: /results.html?run_id=X
+ */
+export async function fetchNzSessionPage(runId: number): Promise<ParsedSessionPair[]> {
+  try {
+    const url = `${NZBRIDGE_BASE}/results.html?run_id=${runId}`
+    return parseNzSessionPage(await fetchHtml(url, 'nzbridge'))
+  } catch (err) {
+    await write_Logging({ lg_functionname: 'fetchNzSessionPage', lg_caller: 'nzbridge', lg_msg: `Error for run_id=${runId}: ${String(err)}`, lg_severity: 'E' })
     return []
   }
 }

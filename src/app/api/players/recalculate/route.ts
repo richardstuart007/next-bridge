@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
               ROUND(AVG(re.re_percentage)::numeric, 2)                                         AS avg_all,
               COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                               AS mp_count,
               ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)      AS mp_avg,
-              COUNT(*)        FILTER (WHERE s.se_scoring = 'IMP')                              AS imp_count,
-              ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'IMP')::numeric, 2)     AS imp_avg
+              COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                              AS imp_count,
+              ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)     AS imp_avg
             FROM tre_results re
             JOIN tse_sessions s ON s.se_seid = re.re_seid
             GROUP BY re.re_plid
@@ -75,8 +75,8 @@ export async function POST(request: NextRequest) {
                 ROUND(AVG(re.re_percentage)::numeric, 2)                                       AS avg_pct,
                 COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                             AS mp_sessions,
                 ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)    AS mp_avg,
-                COUNT(*)        FILTER (WHERE s.se_scoring = 'IMP')                            AS imp_sessions,
-                ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'IMP')::numeric, 2)   AS imp_avg
+                COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                            AS imp_sessions,
+                ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)   AS imp_avg
               FROM tre_results re
               JOIN tse_sessions s ON s.se_seid = re.re_seid
               WHERE re.re_plid < re.re_partner_plid
@@ -112,8 +112,7 @@ export async function POST(request: NextRequest) {
                 { column: 'pa_mp_sessions',  value: Number(row.mp_sessions) },
                 { column: 'pa_mp_avg_pct',   value: row.mp_avg ?? 0 },
                 { column: 'pa_imp_sessions', value: Number(row.imp_sessions) },
-                { column: 'pa_imp_avg_pct',  value: row.imp_avg ?? 0 },
-                { column: 'pa_last_updated', value: new Date().toISOString() }
+                { column: 'pa_imp_avg_pct',  value: row.imp_avg ?? 0 }
               ],
               conflictColumns: ['pa_plid1', 'pa_plid2']
             })
@@ -125,40 +124,21 @@ export async function POST(request: NextRequest) {
           await send({ processed, total, failed })
         }
 
-        // Back-fill re_pairid on results rows missing it
+        // Back-fill re_paid on results rows missing it
         await table_query({
           caller: 'recalculate/partners',
           query: `
             UPDATE tre_results re
-            SET re_pairid = pa.pa_paid
+            SET re_paid = pa.pa_paid
             FROM tpa_partners pa
             WHERE pa.pa_plid1 = LEAST(re.re_plid, re.re_partner_plid)
               AND pa.pa_plid2 = GREATEST(re.re_plid, re.re_partner_plid)
-              AND re.re_pairid IS NULL
+              AND re.re_paid IS NULL
           `,
           params: []
         })
 
         await send({ done: true, updated: rows.length, failed })
-
-      } else if (mode === 'dateseq') {
-        const result = await table_query({
-          caller: 'recalculate/dateseq',
-          query: `
-            WITH ranked AS (
-              SELECT se_seid, ROW_NUMBER() OVER (PARTITION BY se_date ORDER BY se_seid ASC) AS seq
-              FROM tse_sessions
-            )
-            UPDATE tse_sessions s
-            SET se_date_seq = r.seq
-            FROM ranked r
-            WHERE s.se_seid = r.se_seid
-            RETURNING s.se_seid
-          `,
-          params: []
-        })
-        const updated = Array.isArray(result) ? result.length : 0
-        await send({ done: true, updated, failed: 0 })
       }
     } catch (err) {
       await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: String(err), lg_severity: 'E' })

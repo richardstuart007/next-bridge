@@ -167,12 +167,10 @@ export function parsePlayerTableByName(html: string, name: string | null): Parse
     // If a target name is given, skip rows that don't match
     if (normTarget && rowName.toLowerCase().replace(/\s+/g, ' ').trim() !== normTarget) return
 
-    const club = $(cells[2]).text().trim()
-
     candidates.push({
       nz_bridge_number,
       name: rowName || '',
-      club,
+      club: normaliseClub($(cells[2]).text().trim()),
       rank: $(cells[3]).text().trim(),
       grade: $(cells[5]).text().trim(),
       rating: parseDecimal($(cells[6]).text().trim()),
@@ -211,7 +209,7 @@ export function parseAllPlayerMatches(html: string, name: string): ParsedPlayer[
     candidates.push({
       nz_bridge_number,
       name: rowName || '',
-      club: $(cells[2]).text().trim(),
+      club: normaliseClub($(cells[2]).text().trim()),
       rank: $(cells[3]).text().trim(),
       grade: $(cells[5]).text().trim(),
       rating: parseDecimal($(cells[6]).text().trim()),
@@ -243,7 +241,7 @@ function parseAllRows(html: string): ParsedPlayer[] {
     rows.push({
       nz_bridge_number,
       name: $(cells[0]).text().trim(),
-      club: $(cells[2]).text().trim(),
+      club: normaliseClub($(cells[2]).text().trim()),
       rank: $(cells[3]).text().trim(),
       grade: $(cells[5]).text().trim(),
       rating: parseDecimal($(cells[6]).text().trim()),
@@ -364,13 +362,17 @@ export interface ParsedPlayerResult {
   restricted: string        // 'restricted' | 'open' | ''
   eventType: string         // 'pairs' | 'teams' | 'swiss_pairs' | 'swiss_teams' | ''
   category: string          // 'Provincial' | 'Championship' | 'Junior' | 'Intermediate' | 'Open' | ''
+  runId: number             // NZbridge run_id from results.html?run_id=X; 0 if not found
+  url: string               // full session URL; '' if not found
 }
 
 function parseDMY(dateStr: string): string {
-  const m = dateStr.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{4})$/)
+  const m = dateStr.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{2,4})$/)
   if (!m) return ''
   const month = MONTH_MAP[m[2].toLowerCase()] ?? '01'
-  return `${m[3]}-${month}-${m[1].padStart(2, '0')}`
+  const yearStr = m[3]
+  const fullYear = yearStr.length === 4 ? yearStr : (parseInt(yearStr, 10) < 50 ? `20${yearStr}` : `19${yearStr}`)
+  return `${fullYear}-${month}-${m[1].padStart(2, '0')}`
 }
 
 function parseNullablePoints(val: string): number | null {
@@ -424,6 +426,7 @@ function parseEventFields(name: string) {
 /**
  * Parse the nzbridge.co.nz player results history page (?mpsr=1&mp_user=NNN).
  * Rows have columns: date | club | event name | place | score | A-pts | B-pts | C-pts
+ * The event name cell may contain a link to the session page (results.html?run_id=X).
  */
 export function parsePlayerResultsHistory(html: string): ParsedPlayerResult[] {
   const $ = cheerio.load(html)
@@ -437,17 +440,21 @@ export function parsePlayerResultsHistory(html: string): ParsedPlayerResult[] {
     const date = parseDMY(dateText)
     if (!date) return  // skip header rows and non-data rows
 
-    const club      = $(cells[1]).text().trim()
-    const eventName = $(cells[2]).text().trim()
-    const place     = $(cells[3]).text().trim()
+    const club       = $(cells[1]).text().trim()
+    const eventCell  = $(cells[2])
+    const eventName  = eventCell.text().trim()
+    const eventHref  = eventCell.find('a').attr('href') ?? ''
+    const runId      = extractRunIdFromHref(eventHref)
+    const url        = runId > 0 ? `https://www.nzbridge.co.nz/results.html?run_id=${runId}` : ''
+    const place      = $(cells[3]).text().trim()
     const { scoreValue, scoreType } = parseScore($(cells[4]).text())
-    const aPoints   = cells.length > 5 ? parseNullablePoints($(cells[5]).text()) : null
-    const bPoints   = cells.length > 6 ? parseNullablePoints($(cells[6]).text()) : null
-    const cPoints   = cells.length > 7 ? parseNullablePoints($(cells[7]).text()) : null
+    const aPoints    = cells.length > 5 ? parseNullablePoints($(cells[5]).text()) : null
+    const bPoints    = cells.length > 6 ? parseNullablePoints($(cells[6]).text()) : null
+    const cPoints    = cells.length > 7 ? parseNullablePoints($(cells[7]).text()) : null
 
     if (!eventName) return
     const { tournament, type, sessionNumber, restricted, eventType, category } = parseEventFields(eventName)
-    results.push({ date, club, eventName, place, scoreValue, scoreType, aPoints, bPoints, cPoints, tournament, type, sessionNumber, restricted, eventType, category })
+    results.push({ date, club, eventName, place, scoreValue, scoreType, aPoints, bPoints, cPoints, tournament, type, sessionNumber, restricted, eventType, category, runId, url })
   })
 
   return results
@@ -471,5 +478,147 @@ function extractNzNumbersFromHref(href: string): [number | undefined, number | u
     return [candidates[0], candidates[1]]
   } catch {
     return [undefined, undefined]
+  }
+}
+
+function extractRunIdFromHref(href: string): number {
+  if (!href) return 0
+  try {
+    const qs = href.includes('?') ? href.slice(href.indexOf('?') + 1) : href
+    const n = parseInt(new URLSearchParams(qs).get('run_id') ?? '', 10)
+    return isNaN(n) ? 0 : n
+  } catch {
+    return 0
+  }
+}
+
+// -----------------------------------------------------------------------
+// Club name normalisation
+// -----------------------------------------------------------------------
+
+const CLUB_TRANSLATIONS: Record<string, string> = {
+  'Remuera Bowls & Bridge Inc': 'Auckland',
+  '2020 Waiheke Bridge Club':   'Waiheke',
+}
+
+export function normaliseClub(raw: string): string {
+  const trimmed = raw.trim()
+  return CLUB_TRANSLATIONS[trimmed] ?? trimmed
+}
+
+// -----------------------------------------------------------------------
+// NZbridge session results page (results.html?run_id=X)
+// -----------------------------------------------------------------------
+
+export interface ParsedSessionPair {
+  date: string          // ISO YYYY-MM-DD
+  club: string          // normalised
+  eventName: string
+  sessionNum: number
+  place: string         // e.g. '1', '9='
+  names: string[]       // player names (2 for pairs, 4 for teams)
+  mptsCode: string      // e.g. '8B'
+  score: number         // e.g. 60.19 or 16.55
+  scoreType: 'PCT' | 'VP' | ''
+}
+
+/**
+ * Parse a NZbridge session results page (results.html?run_id=X).
+ * Columns: date | club | event | session | place | players | mpts | score | A | B | C
+ * Players cell is comma-separated: 2 names for pairs, 4 for teams.
+ */
+export function parseNzSessionPage(html: string): ParsedSessionPair[] {
+  const $ = cheerio.load(html)
+  const pairs: ParsedSessionPair[] = []
+
+  $('table tr').each((_i, row) => {
+    const cells = $(row).find('td')
+    if (cells.length < 8) return
+
+    const dateText = $(cells[0]).text().trim()
+    const date = parseDMY(dateText)
+    if (!date) return
+
+    const club       = normaliseClub($(cells[1]).text().trim())
+    const eventName  = $(cells[2]).text().trim()
+    const sessionNum = parseInt($(cells[3]).text().trim(), 10) || 1
+    const place      = $(cells[4]).text().trim()
+
+    const names = $(cells[5]).text().trim().split(',').map(n => toTitleCase(n.trim())).filter(Boolean)
+    if (names.length < 2) return
+
+    const mptsCode = $(cells[6]).text().trim()
+    const { scoreValue: score, scoreType } = parseScore($(cells[7]).text())
+
+    pairs.push({ date, club, eventName, sessionNum, place, names, mptsCode, score, scoreType })
+  })
+
+  return pairs
+}
+
+// -----------------------------------------------------------------------
+// AKBC showteam.asp page — team match pair header
+// -----------------------------------------------------------------------
+
+export interface ParsedTeamMatchPairs {
+  homePair1: string[]  // 2 player names at home table (first pair)
+  homePair2: string[]  // 2 player names at home table (second pair)
+  awayPair1: string[]  // 2 player names at away table (first pair)
+  awayPair2: string[]  // 2 player names at away table (second pair)
+}
+
+/**
+ * Parse the header section of an AKBC showteam.asp page.
+ * The header contains "Home Table" / "Away Table" column headers, then 2 rows
+ * each with a pair of player names (ALL CAPS, separated by <br>) per table.
+ * Stops parsing at the "Board No" row to avoid the board-by-board data.
+ */
+export function parseTeamMatchHeader(html: string): ParsedTeamMatchPairs | null {
+  const $ = cheerio.load(html)
+
+  // Find the row containing both "Home Table" and "Away Table" headings
+  let headerRowEl: ReturnType<typeof $> | null = null
+  $('tr').each((_i, tr) => {
+    if (headerRowEl) return
+    const text = $(tr).text()
+    if (/home\s+table/i.test(text) && /away\s+table/i.test(text)) headerRowEl = $(tr)
+  })
+  if (!headerRowEl) return null
+
+  // Extract player names from a cell — names separated by <br> tags
+  const getCellNames = (cell: ReturnType<typeof $>): string[] =>
+    (cell.html() ?? '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .split('\n')
+      .map(n => toTitleCase(n.trim()))
+      .filter(n => /[a-zA-Z]{2,}/.test(n))
+
+  // Collect all name-containing cells from the pair section rows.
+  // The header row uses colspan so its cell indices don't match the pair rows —
+  // instead we scan every cell and collect those that contain 2+ names.
+  // Layout: row1=[homePair1, awayPair1], row2=[homePair2, awayPair2] (left→right).
+  const allPairs: string[][] = []
+  let inPairSection = false
+
+  $('tr').each((_i, tr) => {
+    if (headerRowEl && $(tr).is(headerRowEl)) { inPairSection = true; return }
+    if (!inPairSection) return
+    if (/board\s*(no|#|\d)/i.test($(tr).text())) { inPairSection = false; return }
+
+    $(tr).find('td, th').each((_j, cell) => {
+      const names = getCellNames($(cell))
+      if (names.length >= 2) allPairs.push(names.slice(0, 2))
+    })
+  })
+
+  if (allPairs.length < 4) return null
+
+  return {
+    homePair1: allPairs[0],
+    awayPair1: allPairs[1],
+    homePair2: allPairs[2],
+    awayPair2: allPairs[3],
   }
 }

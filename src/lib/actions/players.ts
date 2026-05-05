@@ -30,7 +30,11 @@ export async function getPlayerByNzNumber(nzNumber: number) {
 export async function getPlayerByName(name: string) {
   const rows = await table_query({
     caller: 'getPlayerByName',
-    query: `SELECT * FROM ${PLAYERS_TABLE} WHERE LOWER(TRIM(REGEXP_REPLACE(pl_name, '\\s+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE($1, '\\s+', ' ', 'g')))`,
+    query: `SELECT * FROM ${PLAYERS_TABLE}
+            WHERE LOWER(TRIM(REGEXP_REPLACE(pl_name, '\\s+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE($1, '\\s+', ' ', 'g')))
+            ORDER BY
+              CASE WHEN pl_club = 'Archive' THEN 1 ELSE 0 END ASC,
+              pl_rating DESC`,
     params: [name]
   })
   return rows[0] ?? null
@@ -186,8 +190,7 @@ export async function upsertPlayer(data: {
     { column: 'pl_rating',           value: data.rating    ?? 0 },
     { column: 'pl_a_points',         value: data.a_points  ?? 0 },
     { column: 'pl_b_points',         value: data.b_points  ?? 0 },
-    { column: 'pl_c_points',         value: data.c_points  ?? 0 },
-    { column: 'pl_last_updated',     value: new Date().toISOString() }
+    { column: 'pl_c_points',         value: data.c_points  ?? 0 }
   ]
 
   // If a player with this name already exists, update them (covers both 0 and real NZ number)
@@ -257,23 +260,22 @@ export async function updateAllPartnerStats(): Promise<number> {
         { column: 'pa_plid1',        value: row.plid1 },
         { column: 'pa_plid2',        value: row.plid2 },
         { column: 'pa_sessions',     value: Number(row.sessions) },
-        { column: 'pa_avg_pct',      value: row.avg_pct },
-        { column: 'pa_last_updated', value: new Date().toISOString() }
+        { column: 'pa_avg_pct',      value: row.avg_pct }
       ],
       conflictColumns: ['pa_plid1', 'pa_plid2']
     })
   }
 
-  // Retroactively fill re_pairid on existing result rows that are missing it
+  // Retroactively fill re_paid on existing result rows that are missing it
   await table_query({
     caller: 'updateAllPartnerStats',
     query: `
       UPDATE tre_results re
-      SET re_pairid = pa.pa_paid
+      SET re_paid = pa.pa_paid
       FROM tpa_partners pa
       WHERE pa.pa_plid1 = LEAST(re.re_plid, re.re_partner_plid)
         AND pa.pa_plid2 = GREATEST(re.re_plid, re.re_partner_plid)
-        AND re.re_pairid IS NULL
+        AND re.re_paid IS NULL
     `,
     params: []
   })
@@ -284,7 +286,7 @@ export async function updateAllPartnerStats(): Promise<number> {
 /**
  * Upsert a tpa_partners row for a pair and return its pa_paid.
  * plid1/plid2 are stored in alphabetical name order (first name → plid1, second → plid2).
- * Used during session import so re_pairid can be set immediately.
+ * Used during session import so re_paid can be set immediately.
  */
 export async function getOrCreatePartnerRow(
   plid1: number, plid2: number,
@@ -298,9 +300,8 @@ export async function getOrCreatePartnerRow(
     caller: 'getOrCreatePartnerRow',
     table: PARTNERS_TABLE,
     columnValuePairs: [
-      { column: 'pa_plid1',        value: lo },
-      { column: 'pa_plid2',        value: hi },
-      { column: 'pa_last_updated', value: new Date().toISOString() }
+      { column: 'pa_plid1', value: lo },
+      { column: 'pa_plid2', value: hi }
     ],
     conflictColumns: ['pa_plid1', 'pa_plid2']
   })

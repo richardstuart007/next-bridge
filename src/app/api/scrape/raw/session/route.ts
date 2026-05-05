@@ -9,6 +9,9 @@ export async function POST(request: NextRequest) {
   if (isNaN(sourceId)) return NextResponse.json({ error: 'Missing source_id' }, { status: 400 })
   try {
     const rows = await scrapeSession(sourceId, eventId)
+    if (rows.length === 0) {
+      await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/session', lg_msg: `No pairs parsed for source_id=${sourceId} event_id=${eventId} — page may be blocked or empty`, lg_severity: 'W' })
+    }
     await clearTs6(sourceId)
     await insertTs6Rows(rows)
     return NextResponse.json({ sourceId, count: rows.length })

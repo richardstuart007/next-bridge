@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPlayerCounts } from '@/src/lib/actions/players'
-import { getTs7ByMode } from '@/src/lib/actions/raw'
+import { getTs7FoundWithStats } from '@/src/lib/actions/raw'
 import { upsertPlayer } from '@/src/lib/actions/players'
 import { write_Logging } from 'nextjs-shared/write_logging'
 
@@ -22,8 +22,8 @@ export async function POST(_request: NextRequest) {
 
   ;(async () => {
     try {
-      const rows = (await getTs7ByMode('refresh')) as any[]
-      const found = rows.filter(r => r.s7_status === 'found')
+      const rows = (await getTs7FoundWithStats()) as any[]
+      const found = rows
       const total = rows.length
       let updated = 0; let failed = 0
       const warnings: string[] = []

@@ -10,7 +10,6 @@ interface ResultRow {
   date: string
   session_type: string
   day_of_week: string
-  date_seq: number
   percentage: number
   partner_id: number
   partner_name: string
@@ -68,13 +67,23 @@ export default function PerformanceChart({ results }: Props) {
       }
     })
 
+    const dateCounts = new Map<string, number>()
+    const dateSeq: number[] = sorted.map(r => {
+      const n = (dateCounts.get(r.date) ?? 0) + 1
+      dateCounts.set(r.date, n)
+      return n
+    })
+    const dateTotal = new Map<string, number>()
+    sorted.forEach(r => dateTotal.set(r.date, dateCounts.get(r.date) ?? 1))
+
     const datasets: Datasets[] = partnerOrder.map((partnerId, idx) => {
       const data: (number | null)[] = sorted.map(r =>
         r.partner_id === partnerId ? parseFloat(String(r.percentage)) : null
       )
-      const tooltipData: string[] = sorted.map(r =>
-        `${new Date(r.date).toISOString().slice(0, 10)} · ${r.day_of_week}${r.date_seq > 0 ? ` #${r.date_seq}` : ''}`
-      )
+      const tooltipData: string[] = sorted.map((r, i) => {
+        const seq = (dateTotal.get(r.date) ?? 1) > 1 ? ` #${dateSeq[i]}` : ''
+        return `${new Date(r.date).toISOString().slice(0, 10)} · ${r.day_of_week}${seq}`
+      })
       const partnerRows = sorted.filter(r => r.partner_id === partnerId)
       const partnerAvg = partnerRows.reduce((sum, r) => sum + parseFloat(String(r.percentage)), 0) / partnerRows.length
       const partnerAvgFixed = parseFloat(partnerAvg.toFixed(1))

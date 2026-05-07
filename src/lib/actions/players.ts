@@ -104,25 +104,6 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
   return { withNumber, withoutNumber: total - withNumber }
 }
 
-/** Find a player by name; insert by name only if not found. Returns pl_plid or null. */
-export async function findOrCreatePlayerByName(name: string): Promise<number | null> {
-  const existing = await getPlayerByName(name)
-  if (existing) return existing.pl_plid as number
-  const plId = await insertPlayerByName(name)
-  return plId ?? null
-}
-
-/** Insert a player by name only (no NZ bridge number yet). Returns the new pl_plid. */
-export async function insertPlayerByName(name: string): Promise<number> {
-  const normalised = name.trim().replace(/\s+/g, ' ')
-  const rows = await table_write({
-    caller: 'insertPlayerByName',
-    table: PLAYERS_TABLE,
-    columnValuePairs: [{ column: 'pl_name', value: normalised }]
-  })
-  return rows[0]?.pl_plid
-}
-
 /** Recalculate and store session count and average percentage for all players. Returns count updated. */
 export async function updateAllPlayerAverages(): Promise<number> {
   // Step 1: compute session counts

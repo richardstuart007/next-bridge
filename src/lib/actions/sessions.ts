@@ -75,25 +75,6 @@ export async function getSessionBySourceId(seSourceId: number) {
   return rows[0] ?? null
 }
 
-export async function insertSession(data: {
-  date: string
-  day_of_week: string
-  session_type: string
-  scoring: string
-  source_id: number
-}) {
-  return table_write({
-    caller: 'insertSession',
-    table: SESSIONS_TABLE,
-    columnValuePairs: [
-      { column: 'se_date',         value: data.date },
-      { column: 'se_day_of_week',  value: data.day_of_week },
-      { column: 'se_session_type', value: data.session_type },
-      { column: 'se_scoring',      value: data.scoring },
-      { column: 'se_source_id',    value: data.source_id }
-    ]
-  })
-}
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 

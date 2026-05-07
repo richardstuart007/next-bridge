@@ -109,7 +109,7 @@ export async function updateAllPlayerAverages(): Promise<number> {
   // Step 1: compute session counts
   const countRows = await table_query({
     caller: 'updateAllPlayerAverages',
-    query: `SELECT re_plid, COUNT(*) AS session_count FROM tre_results GROUP BY re_plid`,
+    query: `SELECT re_plid1, COUNT(*) AS session_count FROM tre_results GROUP BY re_plid1`,
     params: []
   })
   for (const row of countRows) {
@@ -117,14 +117,14 @@ export async function updateAllPlayerAverages(): Promise<number> {
       caller: 'updateAllPlayerAverages',
       table: PLAYERS_TABLE,
       columnValuePairs: [{ column: 'pl_session_count', value: Number(row.session_count) }],
-      whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid }]
+      whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid1 }]
     })
   }
 
   // Step 2: compute averages
   const avgRows = await table_query({
     caller: 'updateAllPlayerAverages',
-    query: `SELECT re_plid, ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct FROM tre_results GROUP BY re_plid`,
+    query: `SELECT re_plid1, ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct FROM tre_results GROUP BY re_plid1`,
     params: []
   })
   for (const row of avgRows) {
@@ -132,7 +132,7 @@ export async function updateAllPlayerAverages(): Promise<number> {
       caller: 'updateAllPlayerAverages',
       table: PLAYERS_TABLE,
       columnValuePairs: [{ column: 'pl_avg_percentage', value: row.avg_pct }],
-      whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid }]
+      whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid1 }]
     })
   }
 
@@ -208,27 +208,27 @@ const PARTNERS_TABLE = 'tpa_partners'
 
 /** Recompute and store session count, avg %, and name key for every partnership. Returns count upserted. */
 export async function updateAllPartnerStats(): Promise<number> {
-  // Deduplicate pairs with re_plid < re_partner_plid, then assign plid1/plid2 by alphabetical name order
+  // Deduplicate pairs with re_plid1 < re_plid2, then assign plid1/plid2 by alphabetical name order
   const rows = await table_query({
     caller: 'updateAllPartnerStats',
     query: `
       WITH pairs AS (
         SELECT
-          re_plid, re_partner_plid,
+          re_plid1, re_plid2,
           COUNT(*)                               AS sessions,
           ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct
         FROM tre_results
-        WHERE re_plid < re_partner_plid
-        GROUP BY re_plid, re_partner_plid
+        WHERE re_plid1 < re_plid2
+        GROUP BY re_plid1, re_plid2
       )
       SELECT
-        CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid         ELSE pairs.re_partner_plid END AS plid1,
-        CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_partner_plid ELSE pairs.re_plid         END AS plid2,
+        CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid1         ELSE pairs.re_plid2 END AS plid1,
+        CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid2 ELSE pairs.re_plid1         END AS plid2,
         pairs.sessions,
         pairs.avg_pct
       FROM pairs
-      JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid
-      JOIN tpl_players p2 ON p2.pl_plid = pairs.re_partner_plid
+      JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid1
+      JOIN tpl_players p2 ON p2.pl_plid = pairs.re_plid2
     `,
     params: []
   })
@@ -254,8 +254,8 @@ export async function updateAllPartnerStats(): Promise<number> {
       UPDATE tre_results re
       SET re_paid = pa.pa_paid
       FROM tpa_partners pa
-      WHERE pa.pa_plid1 = LEAST(re.re_plid, re.re_partner_plid)
-        AND pa.pa_plid2 = GREATEST(re.re_plid, re.re_partner_plid)
+      WHERE pa.pa_plid1 = LEAST(re.re_plid1, re.re_plid2)
+        AND pa.pa_plid2 = GREATEST(re.re_plid1, re.re_plid2)
         AND re.re_paid IS NULL
     `,
     params: []

@@ -32,12 +32,12 @@ export async function GET(
         se.se_event_type    AS event_type,
         re.re_percentage    AS percentage,
         re.re_vp            AS vp,
-        re.re_partner_plid  AS partner_id,
+        re.re_plid2  AS partner_id,
         p.pl_name           AS partner_name
       FROM tre_results re
       JOIN tse_sessions se ON se.se_seid = re.re_seid
-      LEFT JOIN tpl_players p ON p.pl_plid = re.re_partner_plid
-      WHERE re.re_plid = $1
+      LEFT JOIN tpl_players p ON p.pl_plid = re.re_plid2
+      WHERE re.re_plid1 = $1
     `
     const queryParams: (string | number)[] = [plId]
     let paramIndex = 2
@@ -51,7 +51,7 @@ export async function GET(
       queryParams.push(dayOfWeek)
     }
     if (partnerId !== null && !isNaN(partnerId)) {
-      query += ` AND re.re_partner_plid = $${paramIndex++}`
+      query += ` AND re.re_plid2 = $${paramIndex++}`
       queryParams.push(partnerId)
     }
 

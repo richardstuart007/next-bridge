@@ -42,7 +42,7 @@ export async function auditSessionsProcess(): Promise<AuditCheck[]> {
     query: `SELECT p.pl_plid, p.pl_name,
               COUNT(r.re_reid)::int AS result_rows
             FROM tpl_players p
-            JOIN tre_results r ON r.re_plid = p.pl_plid
+            JOIN tre_results r ON r.re_plid1 = p.pl_plid
             WHERE p.pl_session_count = 0
             GROUP BY p.pl_plid, p.pl_name
             ORDER BY p.pl_name`,
@@ -88,7 +88,7 @@ export async function auditAverages(): Promise<AuditCheck[]> {
               p.pl_session_count AS stored_count,
               COUNT(DISTINCT r.re_seid)::int AS actual_count
             FROM tpl_players p
-            JOIN tre_results r ON r.re_plid = p.pl_plid
+            JOIN tre_results r ON r.re_plid1 = p.pl_plid
             GROUP BY p.pl_plid, p.pl_name, p.pl_session_count
             HAVING p.pl_session_count <> COUNT(DISTINCT r.re_seid)
             ORDER BY p.pl_name`,

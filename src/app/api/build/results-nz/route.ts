@@ -24,7 +24,7 @@ export async function POST() {
     // score type (neither PCT nor VP) are excluded.
     const result = await table_query({
       caller: 'build/results-nz/insert',
-      query: `INSERT INTO tre_results (re_seid, re_plid, re_partner_plid, re_percentage, re_vp)
+      query: `INSERT INTO tre_results (re_seid, re_plid1, re_plid2, re_percentage, re_vp)
               SELECT * FROM (
                 SELECT s.se_seid, p1.pl_plid, p2.pl_plid,
                   CASE WHEN t.s8_score_type = 'VP'

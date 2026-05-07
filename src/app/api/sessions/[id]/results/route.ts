@@ -24,8 +24,8 @@ export async function GET(
         WITH ranked AS (
           SELECT
             re.re_percentage,
-            re.re_plid,
-            re.re_partner_plid,
+            re.re_plid1,
+            re.re_plid2,
             p1.pl_name          AS name1,
             p2.pl_name          AS name2,
             COALESCE(p1.pl_nz_bridge_number, 0) AS nz1,
@@ -35,17 +35,17 @@ export async function GET(
             CASE WHEN COALESCE(p2.pl_nz_bridge_number, 0) = 0 THEN 2147483647
                  ELSE p2.pl_nz_bridge_number END AS sort2
           FROM tre_results re
-          JOIN tpl_players p1 ON p1.pl_plid = re.re_plid
-          JOIN tpl_players p2 ON p2.pl_plid = re.re_partner_plid
+          JOIN tpl_players p1 ON p1.pl_plid = re.re_plid1
+          JOIN tpl_players p2 ON p2.pl_plid = re.re_plid2
           WHERE re.re_seid = $1
-            AND re.re_plid < re.re_partner_plid
+            AND re.re_plid1 < re.re_plid2
         )
         SELECT
           re_percentage      AS percentage,
-          CASE WHEN sort1 <= sort2 THEN re_plid         ELSE re_partner_plid END AS pl_id,
+          CASE WHEN sort1 <= sort2 THEN re_plid1         ELSE re_plid2 END AS pl_id,
           CASE WHEN sort1 <= sort2 THEN name1           ELSE name2           END AS player_name,
           CASE WHEN sort1 <= sort2 THEN nz1             ELSE nz2             END AS player_nz_number,
-          CASE WHEN sort1 <= sort2 THEN re_partner_plid ELSE re_plid         END AS partner_pl_id,
+          CASE WHEN sort1 <= sort2 THEN re_plid2 ELSE re_plid1         END AS partner_pl_id,
           CASE WHEN sort1 <= sort2 THEN name2           ELSE name1           END AS partner_name,
           CASE WHEN sort1 <= sort2 THEN nz2             ELSE nz1             END AS partner_nz_number
         FROM ranked

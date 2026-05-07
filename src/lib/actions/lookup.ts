@@ -87,3 +87,11 @@ export async function populateGrades(): Promise<{ inserted: number }> {
   })
   return { inserted: rows[0]?.n ?? 0 }
 }
+
+export async function getAllEventTypes() {
+  return table_fetch({ caller: 'getAllEventTypes', table: 'tet_event_types', orderBy: 'et_event_type ASC', skipCache: true })
+}
+
+export async function getAllTournaments() {
+  return table_fetch({ caller: 'getAllTournaments', table: 'ttt_tournament_types', orderBy: 'tt_tournament ASC', skipCache: true })
+}

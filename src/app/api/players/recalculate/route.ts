@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
           caller: 'recalculate/averages',
           query: `
             SELECT
-              re.re_plid,
+              re.re_plid1,
               COUNT(*)                                                                          AS total_count,
               ROUND(AVG(re.re_percentage)::numeric, 2)                                         AS avg_all,
               COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                               AS mp_count,
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
               ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)     AS imp_avg
             FROM tre_results re
             JOIN tse_sessions s ON s.se_seid = re.re_seid
-            GROUP BY re.re_plid
+            GROUP BY re.re_plid1
           `,
           params: []
         })
@@ -52,11 +52,11 @@ export async function POST(request: NextRequest) {
                 { column: 'pl_imp_session_count',  value: Number(row.imp_count) },
                 { column: 'pl_imp_avg_percentage', value: row.imp_avg ?? 0 }
               ],
-              whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid }]
+              whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid1 }]
             })
           } catch (err) {
             failed++
-            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `averages update failed for plid ${row.re_plid}: ${String(err)}`, lg_severity: 'E' })
+            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `averages update failed for plid ${row.re_plid1}: ${String(err)}`, lg_severity: 'E' })
           }
           processed++
           await send({ step: 'averages', processed, total, failed })
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
           query: `
             WITH pairs AS (
               SELECT
-                re.re_plid, re.re_partner_plid,
+                re.re_plid1, re.re_plid2,
                 COUNT(*)                                                                        AS sessions,
                 ROUND(AVG(re.re_percentage)::numeric, 2)                                       AS avg_pct,
                 COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                             AS mp_sessions,
@@ -79,18 +79,18 @@ export async function POST(request: NextRequest) {
                 ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)   AS imp_avg
               FROM tre_results re
               JOIN tse_sessions s ON s.se_seid = re.re_seid
-              WHERE re.re_plid < re.re_partner_plid
-              GROUP BY re.re_plid, re.re_partner_plid
+              WHERE re.re_plid1 < re.re_plid2
+              GROUP BY re.re_plid1, re.re_plid2
             )
             SELECT
-              CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid         ELSE pairs.re_partner_plid END AS plid1,
-              CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_partner_plid ELSE pairs.re_plid         END AS plid2,
+              CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid1         ELSE pairs.re_plid2 END AS plid1,
+              CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid2 ELSE pairs.re_plid1         END AS plid2,
               pairs.sessions, pairs.avg_pct,
               pairs.mp_sessions, pairs.mp_avg,
               pairs.imp_sessions, pairs.imp_avg
             FROM pairs
-            JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid
-            JOIN tpl_players p2 ON p2.pl_plid = pairs.re_partner_plid
+            JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid1
+            JOIN tpl_players p2 ON p2.pl_plid = pairs.re_plid2
           `,
           params: []
         })
@@ -131,8 +131,8 @@ export async function POST(request: NextRequest) {
             UPDATE tre_results re
             SET re_paid = pa.pa_paid
             FROM tpa_partners pa
-            WHERE pa.pa_plid1 = LEAST(re.re_plid, re.re_partner_plid)
-              AND pa.pa_plid2 = GREATEST(re.re_plid, re.re_partner_plid)
+            WHERE pa.pa_plid1 = LEAST(re.re_plid1, re.re_plid2)
+              AND pa.pa_plid2 = GREATEST(re.re_plid1, re.re_plid2)
               AND re.re_paid IS NULL
           `,
           params: []

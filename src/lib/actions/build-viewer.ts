@@ -9,10 +9,10 @@ export async function getResultsBySeid(seid: number) {
     query: `SELECT p1.pl_name AS player, p2.pl_name AS partner,
                    re.re_percentage AS pct, re.re_vp AS vp
             FROM tre_results re
-            JOIN tpl_players p1 ON p1.pl_plid = re.re_plid
-            JOIN tpl_players p2 ON p2.pl_plid = re.re_partner_plid
+            JOIN tpl_players p1 ON p1.pl_plid = re.re_plid1
+            JOIN tpl_players p2 ON p2.pl_plid = re.re_plid2
             WHERE re.re_seid = $1
-              AND re.re_plid < re.re_partner_plid
+              AND re.re_plid1 < re.re_plid2
             ORDER BY re.re_percentage DESC`,
     params: [seid]
   })
@@ -27,8 +27,8 @@ export async function getResultsByPlid(plid: number) {
                    re.re_percentage AS pct, re.re_vp AS vp
             FROM tre_results re
             JOIN tse_sessions s ON s.se_seid = re.re_seid
-            JOIN tpl_players p ON p.pl_plid = re.re_partner_plid
-            WHERE re.re_plid = $1
+            JOIN tpl_players p ON p.pl_plid = re.re_plid2
+            WHERE re.re_plid1 = $1
             ORDER BY s.se_date DESC`,
     params: [plid]
   })

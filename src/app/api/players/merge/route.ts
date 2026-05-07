@@ -50,18 +50,18 @@ export async function POST(request: NextRequest) {
     // 1. Update tre_results player ID columns
     await table_query({
       caller: 'players/merge',
-      query: `UPDATE tre_results SET re_plid = $1 WHERE re_plid = $2`,
+      query: `UPDATE tre_results SET re_plid1 = $1 WHERE re_plid1 = $2`,
       params: [keep_plid, discard_plid]
     })
     await table_query({
       caller: 'players/merge',
-      query: `UPDATE tre_results SET re_partner_plid = $1 WHERE re_partner_plid = $2`,
+      query: `UPDATE tre_results SET re_plid2 = $1 WHERE re_plid2 = $2`,
       params: [keep_plid, discard_plid]
     })
 
     // 3a. Clear re_paid on ALL result rows that will lose their partnership row,
     //     so the back-fill at the end can reassign them correctly.
-    //     (Rows transferred from discard_plid already have re_plid = keep_plid at this point,
+    //     (Rows transferred from discard_plid already have re_plid1 = keep_plid at this point,
     //     but their re_paid still points to the about-to-be-deleted partnership rows.)
     await table_query({
       caller: 'players/merge',
@@ -104,10 +104,10 @@ export async function POST(request: NextRequest) {
     })
 
     // 4b. Remove any self-partnership rows created by the merge
-    //     (happens if both spellings appeared as a pair in AKBC — re_plid = re_partner_plid = keep_plid)
+    //     (happens if both spellings appeared as a pair in AKBC — re_plid1 = re_plid2 = keep_plid)
     await table_query({
       caller: 'players/merge',
-      query: `DELETE FROM tre_results WHERE re_plid = $1 AND re_partner_plid = $1`,
+      query: `DELETE FROM tre_results WHERE re_plid1 = $1 AND re_plid2 = $1`,
       params: [keep_plid]
     })
 
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
           ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)    AS imp_avg
         FROM tre_results re
         JOIN tse_sessions s ON s.se_seid = re.re_seid
-        WHERE re.re_plid = $1
+        WHERE re.re_plid1 = $1
       `,
       params: [keep_plid]
     })
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
       query: `
         WITH pairs AS (
           SELECT
-            re.re_plid, re.re_partner_plid,
+            re.re_plid1, re.re_plid2,
             COUNT(*)                                                                       AS sessions,
             ROUND(AVG(re.re_percentage)::numeric, 2)                                      AS avg_pct,
             COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                            AS mp_sessions,
@@ -161,19 +161,19 @@ export async function POST(request: NextRequest) {
             ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)  AS imp_avg
           FROM tre_results re
           JOIN tse_sessions s ON s.se_seid = re.re_seid
-          WHERE re.re_plid < re.re_partner_plid
-            AND (re.re_plid = $1 OR re.re_partner_plid = $1)
-          GROUP BY re.re_plid, re.re_partner_plid
+          WHERE re.re_plid1 < re.re_plid2
+            AND (re.re_plid1 = $1 OR re.re_plid2 = $1)
+          GROUP BY re.re_plid1, re.re_plid2
         )
         SELECT
-          CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid         ELSE pairs.re_partner_plid END AS plid1,
-          CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_partner_plid ELSE pairs.re_plid         END AS plid2,
+          CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid1         ELSE pairs.re_plid2 END AS plid1,
+          CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid2 ELSE pairs.re_plid1         END AS plid2,
           pairs.sessions, pairs.avg_pct,
           pairs.mp_sessions, pairs.mp_avg,
           pairs.imp_sessions, pairs.imp_avg
         FROM pairs
-        JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid
-        JOIN tpl_players p2 ON p2.pl_plid = pairs.re_partner_plid
+        JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid1
+        JOIN tpl_players p2 ON p2.pl_plid = pairs.re_plid2
       `,
       params: [keep_plid]
     })
@@ -207,10 +207,10 @@ export async function POST(request: NextRequest) {
         SET re_paid = pa.pa_paid
         FROM tpa_partners pa
         WHERE (
-          (pa.pa_plid1 = re.re_plid AND pa.pa_plid2 = re.re_partner_plid) OR
-          (pa.pa_plid1 = re.re_partner_plid AND pa.pa_plid2 = re.re_plid)
+          (pa.pa_plid1 = re.re_plid1 AND pa.pa_plid2 = re.re_plid2) OR
+          (pa.pa_plid1 = re.re_plid2 AND pa.pa_plid2 = re.re_plid1)
         )
-        AND (re.re_plid = $1 OR re.re_partner_plid = $1)
+        AND (re.re_plid1 = $1 OR re.re_plid2 = $1)
         AND re.re_paid IS NULL
       `,
       params: [keep_plid]

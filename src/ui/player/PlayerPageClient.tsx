@@ -511,7 +511,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
         <div className='rounded border border-gray-200 p-4'>
           {results.length === 0
             ? <div className='text-sm text-gray-400 py-4 text-center'>No results recorded yet</div>
-            : <PerformanceChart results={results} />}
+            : <PerformanceChart results={sessionsSorted} />}
         </div>
       )}
     </div>

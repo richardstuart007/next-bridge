@@ -19,8 +19,6 @@ interface Props {
   results: ResultRow[]
 }
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-
 const PARTNER_COLORS = [
   'rgba(54, 162, 235, 1)',
   'rgba(255, 99, 132, 1)',
@@ -34,34 +32,30 @@ const PARTNER_COLORS = [
   'rgba(100, 100, 200, 1)'
 ]
 
+function rollingAvg(values: number[], window: number): number[] {
+  return values.map((_, i) => {
+    const slice = values.slice(Math.max(0, i - window + 1), i + 1)
+    return slice.reduce((s, v) => s + v, 0) / slice.length
+  })
+}
+
 export default function PerformanceChart({ results }: Props) {
   const router = useRouter()
-  const [sessionTypeFilter, setSessionTypeFilter] = useState<'all' | 'club' | 'online'>('all')
-  const [dayFilter, setDayFilter] = useState('')
-  const [minResults, setMinResults] = useState(3)
+  const [smoothing, setSmoothing] = useState(0)
 
-  // Apply filters then sort by date so x-axis is chronological
-  const sorted = useMemo(() => {
-    let rows = results
-    if (sessionTypeFilter !== 'all') rows = rows.filter(r => r.session_type === sessionTypeFilter)
-    if (dayFilter) rows = rows.filter(r => r.day_of_week === dayFilter)
-    return [...rows].sort((a, b) => (a.date < b.date ? -1 : 1))
-  }, [results, sessionTypeFilter, dayFilter])
+  const sorted = useMemo(() =>
+    [...results].sort((a, b) => (a.date < b.date ? -1 : 1))
+  , [results])
 
   const { partnerOrder, ...graphData }: GraphStructure & { partnerOrder: number[] } = useMemo(() => {
     if (sorted.length === 0) return { labels: [], datasets: [], partnerOrder: [] }
 
-    // X-axis: sequential session numbers 1, 2, 3…
     const labels = sorted.map((_, i) => String(i + 1))
-
-    // Count results per partner, then filter to those meeting the minimum
-    const partnerCounts = new Map<number, number>()
-    sorted.forEach(r => partnerCounts.set(r.partner_id, (partnerCounts.get(r.partner_id) ?? 0) + 1))
 
     const partnerOrder: number[] = []
     const partnerNames = new Map<number, string>()
     sorted.forEach(r => {
-      if (!partnerNames.has(r.partner_id) && (partnerCounts.get(r.partner_id) ?? 0) >= minResults) {
+      if (!partnerNames.has(r.partner_id)) {
         partnerOrder.push(r.partner_id)
         partnerNames.set(r.partner_id, r.partner_name)
       }
@@ -77,18 +71,25 @@ export default function PerformanceChart({ results }: Props) {
     sorted.forEach(r => dateTotal.set(r.date, dateCounts.get(r.date) ?? 1))
 
     const datasets: Datasets[] = partnerOrder.map((partnerId, idx) => {
-      const data: (number | null)[] = sorted.map(r =>
-        r.partner_id === partnerId ? parseFloat(String(r.percentage)) : null
-      )
+      // Collect this partner's own sessions in chronological order
+      const partnerSlots = sorted
+        .map((r, i) => r.partner_id === partnerId ? { i, v: parseFloat(String(r.percentage)) } : null)
+        .filter((x): x is { i: number; v: number } => x !== null)
+
+      const rawVals = partnerSlots.map(x => x.v)
+      const smoothedVals = smoothing > 0 ? rollingAvg(rawVals, smoothing) : rawVals
+      const smoothedMap = new Map(partnerSlots.map((x, k) => [x.i, smoothedVals[k]]))
+
+      const data: (number | null)[] = sorted.map((_, i) => smoothedMap.get(i) ?? null)
+
       const tooltipData: string[] = sorted.map((r, i) => {
         const seq = (dateTotal.get(r.date) ?? 1) > 1 ? ` #${dateSeq[i]}` : ''
         return `${new Date(r.date).toISOString().slice(0, 10)} · ${r.day_of_week}${seq}`
       })
-      const partnerRows = sorted.filter(r => r.partner_id === partnerId)
-      const partnerAvg = partnerRows.reduce((sum, r) => sum + parseFloat(String(r.percentage)), 0) / partnerRows.length
-      const partnerAvgFixed = parseFloat(partnerAvg.toFixed(1))
+
+      const partnerAvg = rawVals.reduce((s, v) => s + v, 0) / rawVals.length
       return {
-        label: `${partnerNames.get(partnerId) ?? `Partner ${partnerId}`} (${partnerAvgFixed}%)`,
+        label: `${partnerNames.get(partnerId) ?? `Partner ${partnerId}`} (${parseFloat(partnerAvg.toFixed(1))}%)`,
         data,
         keys: sorted.map(r => r.session_id),
         keyType: 'seid',
@@ -99,7 +100,7 @@ export default function PerformanceChart({ results }: Props) {
     })
 
     return { labels, datasets, partnerOrder }
-  }, [sorted, minResults])
+  }, [sorted, smoothing])
 
   const overallAvg = sorted.length > 0
     ? parseFloat((sorted.reduce((sum, r) => sum + parseFloat(String(r.percentage)), 0) / sorted.length).toFixed(1))
@@ -107,54 +108,33 @@ export default function PerformanceChart({ results }: Props) {
 
   return (
     <div className='space-y-3'>
-      {/* Heading with average */}
-      <div className='flex items-baseline gap-3'>
+      <div className='flex items-baseline gap-4'>
         <h2 className='text-base font-semibold text-gray-800'>Performance Over Time</h2>
         {overallAvg !== null && (
           <span className='text-sm text-gray-500'>avg <span className='font-medium text-gray-700'>{overallAvg}%</span></span>
         )}
-      </div>
-      {/* Filters */}
-      <div className='flex flex-wrap gap-2 text-sm'>
-        {(['all', 'club', 'online'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setSessionTypeFilter(f)}
-            className={`rounded px-3 py-1 border ${
-              sessionTypeFilter === f
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-            }`}
+        <div className='flex items-center gap-1.5 ml-auto'>
+          <label className='text-xs text-gray-500'>Smooth</label>
+          <select
+            value={smoothing}
+            onChange={e => setSmoothing(parseInt(e.target.value, 10))}
+            className='rounded border border-gray-300 px-2 py-0.5 text-xs'
           >
-            {f.charAt(0).toUpperCase() + f.slice(1)}
-          </button>
-        ))}
-        <select
-          value={dayFilter}
-          onChange={e => setDayFilter(e.target.value)}
-          className='rounded border border-gray-300 px-2 py-1 text-sm'
-        >
-          <option value=''>All days</option>
-          {DAYS.map(d => <option key={d}>{d}</option>)}
-        </select>
-        <select
-          value={minResults}
-          onChange={e => setMinResults(parseInt(e.target.value, 10))}
-          className='rounded border border-gray-300 px-2 py-1 text-sm'
-        >
-          {[2, 3, 4, 5, 10].map(n => (
-            <option key={n} value={n}>Min {n} session{n !== 1 ? 's' : ''}</option>
-          ))}
-        </select>
+            <option value={0}>Off</option>
+            <option value={5}>5 sessions</option>
+            <option value={10}>10 sessions</option>
+            <option value={15}>15 sessions</option>
+            <option value={20}>20 sessions</option>
+          </select>
+        </div>
       </div>
 
-      {/* Chart */}
       {sorted.length === 0 ? (
         <div className='flex items-center justify-center h-48 text-gray-400 text-sm'>
           No results for this filter
         </div>
       ) : (
-        <div className='h-72'>
+        <div className='h-[576px]'>
           <MyLineChart
             LineGraphData={graphData}
             GridDisplayY={true}
@@ -165,7 +145,7 @@ export default function PerformanceChart({ results }: Props) {
       )}
 
       <p className='text-xs text-gray-500'>
-        {sorted.length} session{sorted.length !== 1 ? 's' : ''} shown
+        {sorted.length} session{sorted.length !== 1 ? 's' : ''}
         {' · '}{graphData.datasets.length} partner{graphData.datasets.length !== 1 ? 's' : ''}
         {' · '}click point → session · click legend → player
       </p>

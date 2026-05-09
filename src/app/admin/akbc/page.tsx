@@ -2,39 +2,45 @@ import Link from 'next/link'
 
 const SECTIONS = [
   {
-    href: '/admin/scrape',
+    href: '/admin/akbc/scrape',
     label: 'Raw Data Scraping',
-    description: 'Import NZ Bridge results by date range into ts9 staging table.',
+    description: 'Scrape AKBC year pages and events into ts1–ts6 staging tables.',
     step: '1',
   },
   {
-    href: '/admin/build',
-    label: 'Build Tables',
-    description: 'Populate production tables (tse_sessions, tre_results, tpa_partners) from ts9.',
+    href: '/admin/akbc/rawdata',
+    label: 'Raw Data Viewer',
+    description: 'Inspect and validate the contents of the ts* staging tables.',
     step: '2',
   },
   {
-    href: '/admin/builddata',
-    label: 'Build Data Viewer',
-    description: 'Inspect and validate the production tables populated by the build steps.',
+    href: '/admin/akbc/build',
+    label: 'Build Tables',
+    description: 'Populate production tables (tpl_players, tse_sessions, tre_results) from ts7 and ts8.',
     step: '3',
   },
   {
-    href: '/admin/stats',
+    href: '/admin/akbc/builddata',
+    label: 'Build Data Viewer',
+    description: 'Inspect and validate the production tables populated by the build steps.',
+    step: '4',
+  },
+  {
+    href: '/admin/akbc/stats',
     label: 'Update Stats',
     description: 'Recompute averages, partnership stats and session date sequence from stored results.',
-    step: '4',
+    step: '5',
   },
 ]
 
-export default function AdminPage() {
+export default function AkbcPage() {
   if (process.env.NEXT_PUBLIC_APPENV_ISADMIN !== 'true') {
     return <div className='p-8 text-gray-500'>Not available</div>
   }
   return (
     <div className='p-8 max-w-2xl'>
-      <h1 className='text-xl font-bold text-gray-900 mb-1'>Admin</h1>
-      <p className='text-sm text-gray-400 mb-6'>Active pipeline — ts9 NZ Bridge import.</p>
+      <h1 className='text-xl font-bold text-gray-900 mb-1'>AKBC</h1>
+      <p className='text-sm text-gray-400 mb-6'>Legacy pipeline — ts1–ts8. Read-only archive, no longer updated.</p>
       <div className='space-y-3'>
         {SECTIONS.map(s => (
           <Link key={s.href} href={s.href}

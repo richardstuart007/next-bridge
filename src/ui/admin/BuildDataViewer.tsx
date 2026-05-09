@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { getAllPlayers } from '@/src/lib/actions/players'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { getResultsBySeid, getResultsByPlid, getAllPartners } from '@/src/lib/actions/build-viewer'
+import { getAllTournaments } from '@/src/lib/actions/lookup'
+import { EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 
 type Row = Record<string, unknown>
 
@@ -33,13 +35,25 @@ function FSelect({ value, onChange, children }: { value: string; onChange: (v: s
   )
 }
 
-function DataTable({ rows, allRows, onRowClick, isClickable, selected, filters }: {
+function FMultiSelect({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
+  return (
+    <select multiple value={value}
+      onChange={e => onChange(Array.from(e.target.selectedOptions, o => o.value))}
+      className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs focus:outline-none'
+      size={4}>
+      {options.map(o => <option key={o} value={o}>{o}</option>)}
+    </select>
+  )
+}
+
+function DataTable({ rows, allRows, onRowClick, isClickable, selected, filters, cellRenderers }: {
   rows: Row[]
   allRows?: Row[]
   onRowClick?: (row: Row) => void
   isClickable?: boolean
   selected?: Row | null
   filters?: Record<string, React.ReactNode>
+  cellRenderers?: Record<string, (val: unknown, row: Row) => React.ReactNode>
 }) {
   const source = allRows ?? rows
   if (source.length === 0) return <p className='text-xs text-gray-400 py-2'>No rows</p>
@@ -74,7 +88,9 @@ function DataTable({ rows, allRows, onRowClick, isClickable, selected, filters }
                     className={`border-t border-gray-100 ${isSelected ? 'bg-blue-100' : clickable ? 'cursor-pointer hover:bg-blue-50' : 'hover:bg-gray-50'}`}
                     onClick={() => clickable && onRowClick?.(row)}>
                     {cols.map(col => (
-                      <td key={col} className='px-2 py-1 text-gray-700'>{renderCell(row[col])}</td>
+                      <td key={col} className='px-2 py-1 text-gray-700'>
+                        {cellRenderers?.[col] ? cellRenderers[col](row[col], row) : renderCell(row[col])}
+                      </td>
                     ))}
                   </tr>
                 )
@@ -117,19 +133,32 @@ export default function BuildDataViewer() {
   const [plRankFilter,   setPlRankFilter]   = useState('')
 
   // tse_sessions
-  const [sessYear,        setSessYear]        = useState(new Date().getFullYear())
-  const [sessions,        setSessions]        = useState<Row[]>([])
-  const [sessLoading,     setSessLoading]     = useState(false)
-  const [selectedSess,    setSelectedSess]    = useState<Row | null>(null)
-  const [sessResults,     setSessResults]     = useState<Row[]>([])
-  const [sessNameFilter,  setSessNameFilter]  = useState('')
-  const [sessScoringFilter, setSessScoringFilter] = useState('all')
+  const [sessYear,           setSessYear]           = useState(new Date().getFullYear())
+  const [sessions,           setSessions]           = useState<Row[]>([])
+  const [sessLoading,        setSessLoading]        = useState(false)
+  const [selectedSess,       setSelectedSess]       = useState<Row | null>(null)
+  const [sessResults,        setSessResults]        = useState<Row[]>([])
+  const [sessNameFilter,     setSessNameFilter]     = useState('')
+  const [sessScoringFilter,  setSessScoringFilter]  = useState('all')
+  const [sessTypeFilter,     setSessTypeFilter]     = useState('all')
+  const [sessClubFilter,     setSessClubFilter]     = useState('')
+  const [sessTournamentFilter, setSessTournamentFilter] = useState<string[]>([])
+  const [sessEventTypeFilter, setSessEventTypeFilter] = useState<Set<string>>(new Set())
+  const [sessDayFilter,      setSessDayFilter]      = useState('all')
+  const [sessSourceFilter,   setSessSourceFilter]   = useState('')
+  const [tournamentTypes,    setTournamentTypes]    = useState<string[]>([])
 
   // tpa_partners
   const [partners,        setPartners]        = useState<Row[]>([])
   const [partnersLoading, setPartnersLoading] = useState(false)
   const [paNameFilter,    setPaNameFilter]    = useState('')
 
+
+  useEffect(() => {
+    getAllTournaments()
+      .then(rows => setTournamentTypes((rows as { tt_tournament: string }[]).map(r => r.tt_tournament).sort()))
+      .catch(() => {})
+  }, [])
 
   async function loadPlayers() {
     setPlayersLoading(true); setError(null); setSelectedPlayer(null); setPlayerResults([])
@@ -176,8 +205,14 @@ export default function BuildDataViewer() {
   })
 
   const filteredSessions = sessions.filter(r => {
-    if (sessNameFilter && !String(r.se_name ?? '').toLowerCase().includes(sessNameFilter.toLowerCase())) return false
-    if (sessScoringFilter !== 'all' && r.se_scoring !== sessScoringFilter) return false
+    if (sessNameFilter      && !String(r.se_name       ?? '').toLowerCase().includes(sessNameFilter.toLowerCase()))  return false
+    if (sessClubFilter      && !String(r.se_club       ?? '').toLowerCase().includes(sessClubFilter.toLowerCase()))  return false
+    if (sessSourceFilter    && !String(r.se_source_id  ?? '').includes(sessSourceFilter))                            return false
+    if (sessScoringFilter   !== 'all' && r.se_scoring    !== sessScoringFilter)   return false
+    if (sessTypeFilter      !== 'all' && r.se_session_type !== sessTypeFilter)     return false
+    if (sessEventTypeFilter.size > 0 && !sessEventTypeFilter.has(String(r.se_event_type ?? ''))) return false
+    if (sessDayFilter       !== 'all' && r.se_day_of_week !== sessDayFilter)       return false
+    if (sessTournamentFilter.length > 0 && !sessTournamentFilter.includes(String(r.se_tournament ?? ''))) return false
     return true
   })
 
@@ -195,8 +230,32 @@ export default function BuildDataViewer() {
   }
 
   const sessFilters: Record<string, React.ReactNode> = {
-    se_name:    <FText placeholder='name…' value={sessNameFilter} onChange={setSessNameFilter} />,
-    se_scoring: <FSelect value={sessScoringFilter} onChange={setSessScoringFilter}><option value='all'>all</option><option value='MP'>MP</option><option value='VP'>VP</option></FSelect>,
+    se_source_id:    <FText placeholder='id…'   value={sessSourceFilter}   onChange={setSessSourceFilter} />,
+    se_day_of_week:  <FSelect value={sessDayFilter} onChange={setSessDayFilter}>
+                       <option value='all'>all</option>
+                       {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
+                     </FSelect>,
+    se_scoring:      <FSelect value={sessScoringFilter} onChange={setSessScoringFilter}>
+                       <option value='all'>all</option><option value='MP'>MP</option><option value='VP'>VP</option>
+                     </FSelect>,
+    se_session_type: <FSelect value={sessTypeFilter} onChange={setSessTypeFilter}>
+                       <option value='all'>all</option><option value='club'>club</option><option value='online'>online</option>
+                     </FSelect>,
+    se_name:         <FText placeholder='name…' value={sessNameFilter} onChange={setSessNameFilter} />,
+    se_club:         <FText placeholder='club…' value={sessClubFilter} onChange={setSessClubFilter} />,
+    se_tournament:   <FMultiSelect options={tournamentTypes} value={sessTournamentFilter} onChange={setSessTournamentFilter} />,
+    se_event_type:   <EventTypeSelect mode='any' selected={sessEventTypeFilter} onChange={setSessEventTypeFilter} placeholder='all' />,
+  }
+
+  const sessCellRenderers: Record<string, (val: unknown) => React.ReactNode> = {
+    se_source_id: val => (
+      <a href={`https://www.nzbridge.co.nz/results.html?run_id=${val}`}
+         target='_blank' rel='noopener noreferrer'
+         className='text-blue-600 hover:underline'
+         onClick={e => e.stopPropagation()}>
+        {String(val)}
+      </a>
+    ),
   }
 
   const paFilters: Record<string, React.ReactNode> = {
@@ -243,7 +302,7 @@ export default function BuildDataViewer() {
         </SectionHeader>
         {sessions.length > 0 && (
           <DataTable rows={filteredSessions} allRows={sessions} onRowClick={handleSessClick}
-            isClickable selected={selectedSess} filters={sessFilters} />
+            isClickable selected={selectedSess} filters={sessFilters} cellRenderers={sessCellRenderers} />
         )}
         {selectedSess && (
           <div className='mt-3 pt-3 border-t border-gray-100'>

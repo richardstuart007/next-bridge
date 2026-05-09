@@ -182,12 +182,14 @@ export function MyLineChart({
   LineGraphData,
   GridDisplayX = false,
   GridDisplayY = true,
+  xMaxTicksLimit,
   onPointClick,
   onLegendClick
 }: {
   LineGraphData: StackDataStructure
   GridDisplayX?: boolean
   GridDisplayY?: boolean
+  xMaxTicksLimit?: number
   onPointClick?: (key: number) => void
   onLegendClick?: (datasetIndex: number) => void
 }) {
@@ -206,6 +208,7 @@ export function MyLineChart({
     ...dataset,
     borderColor: dataset.borderColor || defaultBorderColors[index % defaultBorderColors.length],
     backgroundColor: 'transparent',
+    borderWidth: 1,
     tension: dataset.tension ?? 0.3,
     pointRadius: 2,
     pointHoverRadius: 6,
@@ -220,7 +223,7 @@ export function MyLineChart({
     maintainAspectRatio: false,
     hover: { mode: 'index' as const, intersect: false, animationDuration: 0 },
     scales: {
-      x: { grid: { display: GridDisplayX } },
+      x: { grid: { display: GridDisplayX }, ticks: xMaxTicksLimit ? { maxTicksLimit: xMaxTicksLimit } : {} },
       y: { grid: { display: GridDisplayY }, beginAtZero: false }
     },
     plugins: {

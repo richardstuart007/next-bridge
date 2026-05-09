@@ -2,9 +2,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getAllPlayers } from '@/src/lib/actions/players'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
-import { getAllRanks, getAllClubs, getAllGrades } from '@/src/lib/actions/lookup'
+import { ClubSelect, GradeSelect, RankSelect, TournamentSelect } from '@/src/ui/shared/LookupSelects'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
 
@@ -19,18 +18,21 @@ interface PlayerRow {
   pl_a_points: number
   pl_session_count: number
   pl_avg_percentage: number
+  pl_all_results: boolean
 }
 
 interface SessionRow {
   se_seid: number
   se_date: string
   se_day_of_week: string
-  se_session_type: string
   se_source_id: number
+  se_scoring: string
+  se_name: string
+  se_tournament: string
+  se_club: string
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-const YEARS = [2026, 2025, 2024]
 const SELECT_CLS = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
 const INPUT_CLS  = 'w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal'
 const NUM_CLS    = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
@@ -39,62 +41,6 @@ function normalizeRank(rank: string): string {
   const lower = (rank ?? '').toLowerCase()
   if (!lower || lower === 'n/a' || lower === 'no rank' || lower === 'unknown') return 'No Rank'
   return rank
-}
-
-// ── Multi-select checkbox dropdown ────────────────────────────────────────────
-function MultiSelect({
-  options, selected, onChange, placeholder
-}: {
-  options: string[]
-  selected: Set<string>
-  onChange: (s: Set<string>) => void
-  placeholder: string
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [open])
-
-  const label = selected.size === 0 ? placeholder : `${selected.size} selected`
-
-  return (
-    <div ref={ref} className='relative'>
-      <button
-        type='button'
-        onClick={() => setOpen(v => !v)}
-        className='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate'
-      >{label}</button>
-      {open && (
-        <div className='absolute left-0 top-full z-20 bg-white border border-gray-200 rounded shadow-lg min-w-max max-h-56 overflow-y-auto'>
-          {options.length === 0
-            ? <div className='px-3 py-2 text-xs text-gray-400'>No values</div>
-            : options.map(opt => (
-              <label key={opt} className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap'>
-                <input
-                  type='checkbox'
-                  checked={selected.has(opt)}
-                  onChange={e => {
-                    const next = new Set(selected)
-                    if (e.target.checked) next.add(opt)
-                    else next.delete(opt)
-                    onChange(next)
-                  }}
-                />
-                {opt || '(blank)'}
-              </label>
-            ))
-          }
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ── Number range filter pair (avg% only) ─────────────────────────────────────
@@ -129,10 +75,9 @@ export default function HomePageClient() {
 
   const [activeTab, setActiveTab] = useState<'players' | 'sessions'>('players')
 
-  // ── Lookup data ──
-  const [rankOptions,  setRankOptions]  = useState<string[]>([])
-  const [clubOptions,  setClubOptions]  = useState<string[]>([])
-  const [gradeOptions, setGradeOptions] = useState<string[]>([])
+  // ── Option counts for filter comparisons (populated via onOptionsLoaded callbacks) ──
+  const [tournamentOptions, setTournamentOptions] = useState<string[]>([])
+  const [sessClubOptions,   setSessClubOptions]   = useState<string[]>([])
 
   // ── Players ──
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([])
@@ -150,17 +95,21 @@ export default function HomePageClient() {
   const [fAvgMin,    setFAvgMin]    = useState('')
   const [fAvgMax,    setFAvgMax]    = useState('')
   const [fSessMin,   setFSessMin]   = useState('')
+  const [fTracked,   setFTracked]   = useState(false)
+  const [fExcludeNz0, setFExcludeNz0] = useState(true)
 
   // ── Sessions ──
   const [allSessions,         setAllSessions]         = useState<SessionRow[]>([])
-  const [sessionYear,         setSessionYear]         = useState<string>('2026')
+  const [dateFrom,            setDateFrom]            = useState('')
+  const [dateTo,              setDateTo]              = useState('')
   const [dayFilter,           setDayFilter]           = useState('')
-  const [dateSeqFilter,       setDateSeqFilter]       = useState('')
+  const [scoringFilter,       setScoringFilter]       = useState('')
+  const [sessNameFilter,      setSessNameFilter]      = useState('')
+  const [fTournaments,        setFTournaments]        = useState<Set<string>>(new Set())
+  const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new Set())
   const [sessionPage,         setSessionPage]         = useState(1)
   const [sessionItemsPerPage, setSessionItemsPerPage] = useState(10)
   const [loadingSessions,     setLoadingSessions]     = useState(false)
-
-  const [loaded, setLoaded] = useState(false)
 
   // ── Restore from sessionStorage on mount ──
   useEffect(() => {
@@ -179,10 +128,11 @@ export default function HomePageClient() {
       if (s.fAMin)              setFAMin(s.fAMin)
       if (s.fAvgMin)            setFAvgMin(s.fAvgMin)
       if (s.fAvgMax)            setFAvgMax(s.fAvgMax)
-      if (s.fSessMin)           setFSessMin(s.fSessMin)
-      if (s.playerPage)         setPlayerPage(s.playerPage)
-      if (s.playerItemsPerPage) setPlayerItemsPerPage(s.playerItemsPerPage)
-      if (s.sessionYear)        setSessionYear(s.sessionYear)
+      if (s.fSessMin)                    setFSessMin(s.fSessMin)
+      if (s.fTracked)                    setFTracked(s.fTracked)
+      if (s.fExcludeNz0 !== undefined)   setFExcludeNz0(s.fExcludeNz0)
+      if (s.playerPage)                  setPlayerPage(s.playerPage)
+      if (s.playerItemsPerPage)          setPlayerItemsPerPage(s.playerItemsPerPage)
     }
     restoredRef.current = true
   }, [])
@@ -192,45 +142,41 @@ export default function HomePageClient() {
     if (!restoredRef.current) return
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-        activeTab, fName, fNz,
+        activeTab, fName, fNz, fTracked, fExcludeNz0,
         fRanks: [...fRanks], fGrades: [...fGrades], fClubs: [...fClubs],
         fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin,
-        playerPage, playerItemsPerPage, sessionYear,
+        playerPage, playerItemsPerPage,
       }))
     } catch {}
-  }, [activeTab, fName, fNz, fRanks, fGrades, fClubs,
+  }, [activeTab, fName, fNz, fTracked, fExcludeNz0, fRanks, fGrades, fClubs,
       fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin,
-      playerPage, playerItemsPerPage, sessionYear])
+      playerPage, playerItemsPerPage])
 
   useEffect(() => {
-    if (!loaded) return
-    getAllPlayers().then(rows => setAllPlayers(rows as PlayerRow[])).catch(console.error)
-    getAllRanks().then(rows  => setRankOptions((rows as {rk_rank: string}[]).map(r => r.rk_rank))).catch(console.error)
-    getAllClubs().then(rows  => {
-      const options = (rows as {cl_club: string}[]).map(r => r.cl_club)
-      setClubOptions(options)
-      if (!clubsReadyRef.current) {
-        setFClubs(new Set(options.filter(c => c !== 'Archive')))
-        clubsReadyRef.current = true
-      }
-    }).catch(console.error)
-    getAllGrades().then(rows => setGradeOptions((rows as {gr_grade: string}[]).map(r => r.gr_grade))).catch(console.error)
-  }, [loaded])
+    fetch('/api/admin/players')
+      .then(r => r.json())
+      .then(rows => setAllPlayers(rows as PlayerRow[]))
+      .catch(console.error)
+  }, [])
 
   useEffect(() => {
-    if (!loaded) return
     setLoadingSessions(true)
-    setSessionPage(1)
-    getSessionsByYear(sessionYear ? parseInt(sessionYear, 10) : null)
-      .then(rows => setAllSessions(rows as SessionRow[]))
+    getSessionsByYear(null)
+      .then(rows => {
+        setAllSessions(rows as SessionRow[])
+      })
       .catch(console.error)
       .finally(() => setLoadingSessions(false))
-  }, [loaded, sessionYear])
+  }, [])
 
   const num = (v: string) => v === '' ? null : parseFloat(v)
 
+  const isTracked = (p: PlayerRow) => p.pl_all_results === true || (p.pl_all_results as unknown) === 't' || (p.pl_all_results as unknown) === 'true' || (p.pl_all_results as unknown) === 1
+
   const filteredPlayers = useMemo(() => {
     let rows = allPlayers
+    if (fTracked)        rows = rows.filter(p => isTracked(p))
+    if (fExcludeNz0)     rows = rows.filter(p => (p.pl_nz_bridge_number ?? 0) > 0)
     if (fName)           rows = rows.filter(p => p.pl_name.toLowerCase().includes(fName.toLowerCase()))
     if (fNz)             rows = rows.filter(p => String(p.pl_nz_bridge_number ?? '').includes(fNz))
     if (fRanks.size > 0) rows = rows.filter(p => fRanks.has(normalizeRank(p.pl_rank)))
@@ -246,27 +192,34 @@ export default function HomePageClient() {
     const sMin = num(fSessMin)
     if (sMin !== null)   rows = rows.filter(p => p.pl_session_count >= sMin)
     return rows
-  }, [allPlayers, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin])
+  }, [allPlayers, fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin])
 
-  const hasPlayerFilter = fName || fNz || fRanks.size || fGrades.size || fClubs.size ||
+  const hasPlayerFilter = fTracked || fName || fNz || fRanks.size || fGrades.size || fClubs.size ||
     fRatingMin || fAMin || fAvgMin || fAvgMax || fSessMin
 
   function clearPlayerFilters() {
+    setFTracked(false); setFExcludeNz0(true)
     setFName(''); setFNz(''); setFRanks(new Set()); setFGrades(new Set()); setFClubs(new Set())
     setFRatingMin(''); setFAMin(''); setFAvgMin(''); setFAvgMax(''); setFSessMin('')
   }
 
   useEffect(() => {
     if (restoredRef.current) setPlayerPage(1)
-  }, [fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin])
+  }, [fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin])
 
   const sessions = useMemo(() => {
     let rows = allSessions
-    if (dayFilter) rows = rows.filter(s => s.se_day_of_week === dayFilter)
+    if (dateFrom)      rows = rows.filter(s => s.se_date.slice(0, 10) >= dateFrom)
+    if (dateTo)        rows = rows.filter(s => s.se_date.slice(0, 10) <= dateTo)
+    if (dayFilter)     rows = rows.filter(s => s.se_day_of_week === dayFilter)
+    if (scoringFilter) rows = rows.filter(s => s.se_scoring === scoringFilter)
+    if (sessNameFilter) rows = rows.filter(s => s.se_name.toLowerCase().includes(sessNameFilter.toLowerCase()))
+    if (fTournaments.size < tournamentOptions.length) rows = rows.filter(s => fTournaments.has(s.se_tournament ?? ''))
+    if (fSessClubs.size < sessClubOptions.length) rows = rows.filter(s => fSessClubs.has(s.se_club ?? ''))
     return rows
-  }, [allSessions, dayFilter, dateSeqFilter])
+  }, [allSessions, dateFrom, dateTo, dayFilter, scoringFilter, sessNameFilter, fTournaments, tournamentOptions.length, fSessClubs, sessClubOptions.length])
 
-  useEffect(() => { setSessionPage(1) }, [dayFilter, dateSeqFilter])
+  useEffect(() => { setSessionPage(1) }, [dateFrom, dateTo, dayFilter, scoringFilter, sessNameFilter, fTournaments, fSessClubs])
 
   return (
     <div className='space-y-4'>
@@ -294,12 +247,7 @@ export default function HomePageClient() {
             )}
           </div>
 
-          {!loaded ? (
-            <button
-              onClick={() => setLoaded(true)}
-              className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700'
-            >Load</button>
-          ) : allPlayers.length === 0 ? (
+          {allPlayers.length === 0 ? (
             <p className='text-sm text-gray-400'>Loading…</p>
           ) : (
             <>
@@ -316,6 +264,7 @@ export default function HomePageClient() {
                       <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>A Pts</th>
                       <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Avg %</th>
                       <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>Sessions</th>
+                      <th className='py-1.5 text-center text-xs text-gray-500 font-medium w-16'>Tracked</th>
                     </tr>
                     <tr className='border-b border-gray-100 bg-gray-50 align-top'>
                       <td className='py-1 pr-1'>
@@ -325,15 +274,25 @@ export default function HomePageClient() {
                       <td className='py-1 pr-1'>
                         <input type='text' value={fNz} onChange={e => setFNz(e.target.value)}
                           placeholder='Filter…' className={INPUT_CLS} />
+                        <label className='flex items-center gap-1 mt-0.5 cursor-pointer text-xs text-gray-500 whitespace-nowrap'>
+                          <input type='checkbox' checked={fExcludeNz0} onChange={e => setFExcludeNz0(e.target.checked)} />
+                          Excl. 0
+                        </label>
                       </td>
                       <td className='py-1 pr-1'>
-                        <MultiSelect options={rankOptions} selected={fRanks} onChange={setFRanks} placeholder='All' />
+                        <RankSelect mode='any' selected={fRanks} onChange={setFRanks} placeholder='All' />
                       </td>
                       <td className='py-1 pr-1'>
-                        <MultiSelect options={gradeOptions} selected={fGrades} onChange={setFGrades} placeholder='All' />
+                        <GradeSelect mode='any' selected={fGrades} onChange={setFGrades} placeholder='All' />
                       </td>
                       <td className='py-1 pr-1'>
-                        <MultiSelect options={clubOptions} selected={fClubs} onChange={setFClubs} placeholder='All' />
+                        <ClubSelect mode='any' selected={fClubs} onChange={setFClubs} placeholder='All'
+                          onOptionsLoaded={opts => {
+                            if (!clubsReadyRef.current) {
+                              setFClubs(new Set(opts.filter(c => c !== 'Archive')))
+                              clubsReadyRef.current = true
+                            }
+                          }} />
                       </td>
                       <td className='py-1 pr-1'>
                         <input type='number' placeholder='Min' value={fRatingMin} step='0.01'
@@ -346,16 +305,21 @@ export default function HomePageClient() {
                       <td className='py-1 pr-1'>
                         <NumRange min={fAvgMin} max={fAvgMax} onMin={setFAvgMin} onMax={setFAvgMax} step='0.01' />
                       </td>
-                      <td className='py-1'>
+                      <td className='py-1 pr-1'>
                         <input type='number' placeholder='Min' value={fSessMin}
                           onChange={e => setFSessMin(e.target.value)} className={NUM_CLS} />
+                      </td>
+                      <td className='py-1 text-center'>
+                        <label className='flex items-center justify-center cursor-pointer' title='Tracked only'>
+                          <input type='checkbox' checked={fTracked} onChange={e => setFTracked(e.target.checked)} />
+                        </label>
                       </td>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredPlayers.slice((playerPage - 1) * playerItemsPerPage, playerPage * playerItemsPerPage).map(p => (
                       <tr key={p.pl_plid}
-                        className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
+                        className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${isTracked(p) ? 'bg-green-50' : ''}`}
                         onClick={() => router.push(`/player/${p.pl_plid}`)}
                       >
                         <td className='py-1.5 font-medium text-blue-600'>{p.pl_name}</td>
@@ -367,6 +331,9 @@ export default function HomePageClient() {
                         <td className='py-1.5 text-right text-gray-700 font-mono text-xs'>{p.pl_a_points > 0 ? parseFloat(String(p.pl_a_points)).toFixed(2) : '—'}</td>
                         <td className='py-1.5 text-right font-medium'>{p.pl_avg_percentage > 0 ? parseFloat(String(p.pl_avg_percentage)).toFixed(2) + '%' : '—'}</td>
                         <td className='py-1.5 text-right text-gray-600'>{p.pl_session_count > 0 ? p.pl_session_count : '—'}</td>
+                        <td className='py-1.5 text-center'>
+                          {isTracked(p) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -407,13 +374,8 @@ export default function HomePageClient() {
             <Link href='/admin' className='text-xs text-blue-600 hover:underline'>Admin →</Link>
           </div>
 
-          {!loaded ? (
-            <button
-              onClick={() => setLoaded(true)}
-              className='rounded bg-blue-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-blue-700'
-            >Load</button>
-          ) : allSessions.length === 0 && !loadingSessions ? (
-            <p className='text-sm text-gray-400'>No sessions for this year. <Link href='/admin' className='text-blue-600 hover:underline'>Import one now.</Link></p>
+          {allSessions.length === 0 && !loadingSessions ? (
+            <p className='text-sm text-gray-400'>No sessions found. <Link href='/admin' className='text-blue-600 hover:underline'>Import one now.</Link></p>
           ) : (
             <table className='w-full text-sm'>
               <thead>
@@ -421,16 +383,18 @@ export default function HomePageClient() {
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>ID</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-36'>Date</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-28'>Day</th>
-                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Seq</th>
-                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Type</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Type</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Scoring</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium whitespace-nowrap'>Club</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Tournament Name</th>
                 </tr>
                 <tr className='border-b border-gray-100 bg-gray-50'>
                   <td className='py-1 pr-2' />
                   <td className='py-1 pr-2'>
-                    <select value={sessionYear} onChange={e => setSessionYear(e.target.value)} className={SELECT_CLS}>
-                      <option value=''>All years</option>
-                      {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-                    </select>
+                    <div className='flex flex-col gap-0.5'>
+                      <input type='date' value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={INPUT_CLS} />
+                      <input type='date' value={dateTo}   onChange={e => setDateTo(e.target.value)}   className={INPUT_CLS} />
+                    </div>
                   </td>
                   <td className='py-1 pr-2'>
                     <select value={dayFilter} onChange={e => setDayFilter(e.target.value)} className={SELECT_CLS}>
@@ -439,18 +403,23 @@ export default function HomePageClient() {
                     </select>
                   </td>
                   <td className='py-1 pr-2'>
-                    <select value={dateSeqFilter} onChange={e => setDateSeqFilter(e.target.value)} className={SELECT_CLS}>
+                    <TournamentSelect mode='all' selected={fTournaments} onChange={setFTournaments}
+                      onOptionsLoaded={opts => { setTournamentOptions(opts); setFTournaments(new Set(opts)) }} />
+                  </td>
+                  <td className='py-1 pr-2'>
+                    <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value)} className={SELECT_CLS}>
                       <option value=''>All</option>
-                      <option value='1'>1</option>
-                      <option value='2'>2</option>
-                      <option value='3'>3</option>
+                      <option value='MP'>MP</option>
+                      <option value='VP'>VP</option>
                     </select>
                   </td>
+                  <td className='py-1 pr-2'>
+                    <ClubSelect mode='all' selected={fSessClubs} onChange={setFSessClubs}
+                      onOptionsLoaded={opts => { setSessClubOptions(opts); setFSessClubs(new Set(opts)) }} />
+                  </td>
                   <td className='py-1'>
-                    {(dayFilter || dateSeqFilter) && (
-                      <button onClick={() => { setDayFilter(''); setDateSeqFilter('') }}
-                        className='text-xs text-blue-600 hover:underline'>Clear</button>
-                    )}
+                    <input type='text' value={sessNameFilter} onChange={e => setSessNameFilter(e.target.value)}
+                      placeholder='Search…' className={INPUT_CLS} />
                   </td>
                 </tr>
               </thead>
@@ -460,10 +429,20 @@ export default function HomePageClient() {
                     className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                     onClick={() => router.push(`/session/${s.se_seid}`)}
                   >
-                    <td className='py-1.5 font-mono text-xs text-gray-400 select-all'>{s.se_source_id}</td>
+                    <td className='py-1.5 font-mono text-xs text-gray-400'>
+                      <a href={`https://www.nzbridge.co.nz/results.html?run_id=${s.se_source_id}`}
+                         target='_blank' rel='noopener noreferrer'
+                         className='text-blue-600 hover:underline'
+                         onClick={e => e.stopPropagation()}>
+                        {s.se_source_id}
+                      </a>
+                    </td>
                     <td className='py-1.5'>{new Date(s.se_date).toISOString().slice(0, 10)}</td>
                     <td className='py-1.5'>{s.se_day_of_week}</td>
-                    <td className='py-1.5 capitalize'>{s.se_session_type}</td>
+                    <td className='py-1.5 text-gray-500'>{s.se_tournament || '—'}</td>
+                    <td className='py-1.5 text-gray-500'>{s.se_scoring}</td>
+                    <td className='py-1.5 text-gray-500 whitespace-nowrap'>{s.se_club || '—'}</td>
+                    <td className='py-1.5 text-gray-600'>{s.se_name || '—'}</td>
                   </tr>
                 ))}
               </tbody>

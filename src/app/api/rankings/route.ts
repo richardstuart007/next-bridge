@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
             ${cols.playerAvg}        AS avg_pct,
             ${cols.playerCount}      AS sessions,
             pl_grade                 AS grade,
-            pl_club                  AS club
+            pl_club                  AS club,
+            pl_all_results           AS tracked
           FROM tpl_players
           WHERE ${cols.playerCount} >= $1
           ORDER BY ${cols.playerAvg} DESC
@@ -43,8 +44,10 @@ export async function GET(request: NextRequest) {
             pa.${cols.partnerAvg}    AS avg_pct,
             p1.pl_plid               AS player1_id,
             p1.pl_name               AS player1_name,
+            p1.pl_all_results        AS player1_tracked,
             p2.pl_plid               AS player2_id,
-            p2.pl_name               AS player2_name
+            p2.pl_name               AS player2_name,
+            p2.pl_all_results        AS player2_tracked
           FROM tpa_partners pa
           JOIN tpl_players p1 ON p1.pl_plid = pa.pa_plid1
           JOIN tpl_players p2 ON p2.pl_plid = pa.pa_plid2

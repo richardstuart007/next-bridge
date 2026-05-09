@@ -206,7 +206,91 @@ export async function upsertPlayer(data: {
 
 const PARTNERS_TABLE = 'tpa_partners'
 
-/** Recompute and store session count, avg %, and name key for every partnership. Returns count upserted. */
+/** Incremental: process only sessions flagged se_partners_built = FALSE. */
+export async function updateIncrementalPartnerStats(): Promise<{ sessions: number; pairs: number }> {
+  const unbuilt = await table_query({
+    caller: 'updateIncrementalPartnerStats/sessions',
+    query: `SELECT se_seid FROM tse_sessions WHERE se_partners_built = FALSE`,
+    params: []
+  }) as { se_seid: number }[]
+
+  if (unbuilt.length === 0) return { sessions: 0, pairs: 0 }
+
+  const seids = unbuilt.map(r => r.se_seid)
+
+  const pairs = await table_query({
+    caller: 'updateIncrementalPartnerStats/pairs',
+    query: `
+      SELECT DISTINCT
+        LEAST(re_plid1, re_plid2)    AS plid1,
+        GREATEST(re_plid1, re_plid2) AS plid2
+      FROM tre_results
+      WHERE re_seid = ANY($1)
+    `,
+    params: [seids]
+  }) as { plid1: number; plid2: number }[]
+
+  for (const { plid1, plid2 } of pairs) {
+    const stats = await table_query({
+      caller: 'updateIncrementalPartnerStats/stats',
+      query: `
+        WITH pair_stats AS (
+          SELECT COUNT(*) AS sessions, ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct
+          FROM tre_results
+          WHERE (re_plid1 = $1 AND re_plid2 = $2)
+             OR (re_plid1 = $2 AND re_plid2 = $1)
+        )
+        SELECT
+          CASE WHEN p1.pl_name <= p2.pl_name THEN $1 ELSE $2 END AS named_plid1,
+          CASE WHEN p1.pl_name <= p2.pl_name THEN $2 ELSE $1 END AS named_plid2,
+          pair_stats.sessions,
+          pair_stats.avg_pct
+        FROM pair_stats
+        JOIN tpl_players p1 ON p1.pl_plid = $1
+        JOIN tpl_players p2 ON p2.pl_plid = $2
+      `,
+      params: [plid1, plid2]
+    }) as { named_plid1: number; named_plid2: number; sessions: number; avg_pct: number }[]
+
+    if (stats.length === 0) continue
+
+    await table_upsert({
+      caller: 'updateIncrementalPartnerStats',
+      table: PARTNERS_TABLE,
+      columnValuePairs: [
+        { column: 'pa_plid1',    value: stats[0].named_plid1 },
+        { column: 'pa_plid2',    value: stats[0].named_plid2 },
+        { column: 'pa_sessions', value: Number(stats[0].sessions) },
+        { column: 'pa_avg_pct',  value: stats[0].avg_pct }
+      ],
+      conflictColumns: ['pa_plid1', 'pa_plid2']
+    })
+  }
+
+  await table_query({
+    caller: 'updateIncrementalPartnerStats/link',
+    query: `
+      UPDATE tre_results re
+      SET re_paid = pa.pa_paid
+      FROM tpa_partners pa
+      WHERE pa.pa_plid1 = LEAST(re.re_plid1, re.re_plid2)
+        AND pa.pa_plid2 = GREATEST(re.re_plid1, re.re_plid2)
+        AND re.re_seid = ANY($1)
+        AND re.re_paid IS NULL
+    `,
+    params: [seids]
+  })
+
+  await table_query({
+    caller: 'updateIncrementalPartnerStats/flag',
+    query: `UPDATE tse_sessions SET se_partners_built = TRUE WHERE se_seid = ANY($1)`,
+    params: [seids]
+  })
+
+  return { sessions: seids.length, pairs: pairs.length }
+}
+
+/** Full rebuild: recompute and store session count, avg %, and name key for every partnership. Returns count upserted. */
 export async function updateAllPartnerStats(): Promise<number> {
   // Deduplicate pairs with re_plid1 < re_plid2, then assign plid1/plid2 by alphabetical name order
   const rows = await table_query({

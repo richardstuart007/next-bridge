@@ -4,23 +4,27 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getPlayerById, getPartnerStats } from '@/src/lib/actions/players'
+import { StringMultiSelect, TournamentSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 import PerformanceChart from './PerformanceChart'
+import PartnersChart from './PartnersChart'
 import MyPagination from 'nextjs-shared/MyPagination'
 
 interface ResultRow {
-  session_id:   number
-  date:         string
-  day_of_week:  string
-  scoring:      string
-  session_type: string
-  session_name: string
-  club:         string
-  tournament:   string
-  event_type:   string
-  percentage:   number
-  vp:           number | null
-  partner_id:   number
-  partner_name: string
+  session_id:      number
+  source_id:       number
+  date:            string
+  day_of_week:     string
+  scoring:         string
+  session_type:    string
+  session_name:    string
+  club:            string
+  tournament:      string
+  event_type:      string
+  percentage:      number
+  vp:              number | null
+  partner_id:      number
+  partner_name:    string
+  partner_tracked: boolean
 }
 
 interface Player {
@@ -36,13 +40,14 @@ interface Player {
   pl_a_points:         number
   pl_b_points:         number
   pl_c_points:         number
+  pl_all_results:      boolean
 }
 
 // ── Partner multi-select dropdown ─────────────────────────────────────────────
 function PartnerSelect({
   partners, selected, onChange
 }: {
-  partners: { id: number; name: string; count: number }[]
+  partners: { id: number; name: string; count: number; tracked: boolean }[]
   selected: Set<number>
   onChange: (s: Set<number>) => void
 }) {
@@ -59,10 +64,15 @@ function PartnerSelect({
   }, [open])
 
   const allSelected = selected.size === partners.length
+  const trackedIds  = partners.filter(p => p.tracked).map(p => p.id)
   const label = allSelected ? 'All' : `${selected.size} / ${partners.length}`
 
   function toggleAll() {
     onChange(new Set(partners.map(p => p.id)))
+  }
+
+  function selectTracked() {
+    onChange(new Set(trackedIds))
   }
 
   function toggle(id: number) {
@@ -88,72 +98,16 @@ function PartnerSelect({
             <input type='checkbox' checked={allSelected} onChange={toggleAll} />
             All
           </label>
+          {trackedIds.length > 0 && (
+            <button type='button' onClick={selectTracked}
+              className='w-full text-left px-3 py-1 hover:bg-green-50 text-xs text-green-700 font-medium border-b border-gray-100 whitespace-nowrap'>
+              ● Select tracked ({trackedIds.length})
+            </button>
+          )}
           {partners.map(p => (
-            <label key={p.id} className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap'>
+            <label key={p.id} className={`flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap ${p.tracked ? 'text-green-700' : ''}`}>
               <input type='checkbox' checked={!allSelected && selected.has(p.id)} onChange={() => toggle(p.id)} />
               {p.name} <span className='text-gray-400'>({p.count})</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── String multi-select dropdown ──────────────────────────────────────────────
-function StringMultiSelect({
-  options, selected, onChange
-}: {
-  options: string[]
-  selected: Set<string>
-  onChange: (s: Set<string>) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [open])
-
-  const allSelected = selected.size === options.length
-  const label = allSelected ? 'All' : `${selected.size} / ${options.length}`
-
-  function toggleAll() {
-    onChange(new Set(options))
-  }
-
-  function toggle(v: string) {
-    if (allSelected) {
-      onChange(new Set([v]))
-    } else {
-      const next = new Set(selected)
-      if (next.has(v)) next.delete(v)
-      else next.add(v)
-      onChange(next)
-    }
-  }
-
-  return (
-    <div ref={ref} className='relative'>
-      <button type='button' onClick={() => setOpen(v => !v)}
-        className='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate'>
-        {label}
-      </button>
-      {open && (
-        <div className='absolute left-0 top-full z-20 bg-white border border-gray-200 rounded shadow-lg min-w-max max-h-56 overflow-y-auto'>
-          <label className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs border-b border-gray-100 font-medium whitespace-nowrap'>
-            <input type='checkbox' checked={allSelected} onChange={toggleAll} />
-            All
-          </label>
-          {options.map(opt => (
-            <label key={opt} className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap'>
-              <input type='checkbox' checked={!allSelected && selected.has(opt)} onChange={() => toggle(opt)} />
-              {opt || '(blank)'}
             </label>
           ))}
         </div>
@@ -183,37 +137,34 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [sessionTypeFilter,  setSessionTypeFilter]  = useState('')
   const [sessionNameFilter,  setSessionNameFilter]  = useState('')
   const [selectedClubs,      setSelectedClubs]      = useState<Set<string>>(new Set())
+  const [clubOptions,        setClubOptions]        = useState<string[]>([])
   const [selectedTournaments,setSelectedTournaments]= useState<Set<string>>(new Set())
+  const [tournamentOptions,  setTournamentOptions]  = useState<string[]>([])
   const [selectedEventTypes, setSelectedEventTypes] = useState<Set<string>>(new Set())
+  const [eventTypeOptions,   setEventTypeOptions]   = useState<string[]>([])
   const [scoreMin,           setScoreMin]           = useState('')
   const [scoreMax,           setScoreMax]           = useState('')
 
-  const [activeTab,    setActiveTab]    = useState<'history' | 'graph'>('history')
+  const [activeTab,    setActiveTab]    = useState<'history' | 'graph' | 'partners'>('history')
   const [currentPage,  setCurrentPage]  = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
   const uniquePartners = useMemo(() => {
-    const seen = new Map<number, { name: string; count: number }>()
+    const seen = new Map<number, { name: string; count: number; tracked: boolean }>()
     results.forEach(r => {
       const entry = seen.get(r.partner_id)
       if (entry) entry.count++
-      else seen.set(r.partner_id, { name: r.partner_name, count: 1 })
+      else seen.set(r.partner_id, { name: r.partner_name, count: 1, tracked: Boolean(r.partner_tracked) })
     })
     return [...seen.entries()]
-      .map(([id, { name, count }]) => ({ id, name, count }))
+      .map(([id, { name, count, tracked }]) => ({ id, name, count, tracked }))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [results])
 
-  const uniqueClubs       = useMemo(() => [...new Set(results.map(r => r.club))].sort(),       [results])
-  const uniqueTournaments = useMemo(() => [...new Set(results.map(r => r.tournament))].sort(), [results])
-  const uniqueEventTypes  = useMemo(() => [...new Set(results.map(r => r.event_type))].sort(), [results])
 
-  // Initialise all multi-selects to all when results load
+  // Initialise multi-selects to all when results load
   useEffect(() => {
     setSelectedPartnerIds(new Set(results.map(r => r.partner_id)))
-    setSelectedClubs(new Set(results.map(r => r.club)))
-    setSelectedTournaments(new Set(results.map(r => r.tournament)))
-    setSelectedEventTypes(new Set(results.map(r => r.event_type)))
   }, [results])
 
   const sessionsSorted = useMemo(() => {
@@ -226,19 +177,25 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (scoringFilter)    rows = rows.filter(r => r.scoring === scoringFilter)
     if (sessionTypeFilter)rows = rows.filter(r => r.session_type === sessionTypeFilter)
     if (sessionNameFilter)     rows = rows.filter(r => r.session_name.toLowerCase().includes(sessionNameFilter.toLowerCase()))
-    if (selectedClubs.size < uniqueClubs.length)
+    if (selectedClubs.size < clubOptions.length)
                                rows = rows.filter(r => selectedClubs.has(r.club))
-    if (selectedTournaments.size < uniqueTournaments.length)
+    if (selectedTournaments.size < tournamentOptions.length)
                                rows = rows.filter(r => selectedTournaments.has(r.tournament))
-    if (selectedEventTypes.size < uniqueEventTypes.length)
+    if (selectedEventTypes.size < eventTypeOptions.length)
                                rows = rows.filter(r => selectedEventTypes.has(r.event_type))
     if (scoreMin)              rows = rows.filter(r => parseFloat(String(r.percentage)) >= parseFloat(scoreMin))
     if (scoreMax)         rows = rows.filter(r => parseFloat(String(r.percentage)) <= parseFloat(scoreMax))
     return rows
   }, [results, dateFrom, dateTo, dayFilter, selectedPartnerIds, uniquePartners.length,
       scoringFilter, sessionTypeFilter, sessionNameFilter,
-      selectedClubs, uniqueClubs.length, selectedTournaments, uniqueTournaments.length,
-      selectedEventTypes, uniqueEventTypes.length, scoreMin, scoreMax])
+      selectedClubs, clubOptions.length, selectedTournaments, tournamentOptions.length,
+      selectedEventTypes, eventTypeOptions.length, scoreMin, scoreMax])
+
+  const visiblePartners = useMemo(() => {
+    const seen = new Map<number, string>()
+    sessionsSorted.forEach(r => { if (!seen.has(r.partner_id)) seen.set(r.partner_id, r.partner_name) })
+    return [...seen.entries()].map(([id, name]) => ({ id, name }))
+  }, [sessionsSorted])
 
   useEffect(() => { setCurrentPage(1) },
     [dateFrom, dateTo, dayFilter, selectedPartnerIds, scoringFilter, sessionTypeFilter, sessionNameFilter,
@@ -274,17 +231,17 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const hasFilter = !!(dateFrom || dateTo || dayFilter || scoringFilter || sessionTypeFilter ||
     sessionNameFilter || scoreMin || scoreMax ||
     selectedPartnerIds.size < uniquePartners.length ||
-    selectedClubs.size < uniqueClubs.length ||
-    selectedTournaments.size < uniqueTournaments.length ||
-    selectedEventTypes.size < uniqueEventTypes.length)
+    selectedClubs.size < clubOptions.length ||
+    selectedTournaments.size < tournamentOptions.length ||
+    selectedEventTypes.size < eventTypeOptions.length)
 
   function clearFilters() {
     setDateFrom(''); setDateTo(''); setDayFilter('')
     setSelectedPartnerIds(new Set(results.map(r => r.partner_id)))
     setScoringFilter(''); setSessionTypeFilter(''); setSessionNameFilter('')
-    setSelectedClubs(new Set(results.map(r => r.club)))
-    setSelectedTournaments(new Set(results.map(r => r.tournament)))
-    setSelectedEventTypes(new Set(results.map(r => r.event_type)))
+    setSelectedClubs(new Set(clubOptions))
+    setSelectedTournaments(new Set(tournamentOptions))
+    setSelectedEventTypes(new Set(eventTypeOptions))
     setScoreMin(''); setScoreMax('')
   }
 
@@ -338,19 +295,22 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
             {player.pl_c_points > 0 && <span>C pts: {player.pl_c_points}</span>}
           </div>
         )}
-        <div className='mt-1 text-xs text-gray-400'>NZ Bridge #{player.pl_nz_bridge_number}</div>
+        <div className='mt-1 flex items-center gap-3'>
+          <span className='text-xs text-gray-400'>NZ Bridge #{player.pl_nz_bridge_number}</span>
+          {player.pl_all_results && (
+            <span className='rounded-full bg-green-100 border border-green-300 px-2 py-0.5 text-xs font-medium text-green-700'>Tracked</span>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
       <div className='flex gap-1 border-b border-gray-200'>
-        <button onClick={() => setActiveTab('history')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === 'history' ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}>
-          Session History
-        </button>
-        <button onClick={() => setActiveTab('graph')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === 'graph' ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}>
-          Graph
-        </button>
+        {(['history', 'graph', 'partners'] as const).map(tab => (
+          <button key={tab} onClick={() => setActiveTab(tab)}
+            className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === tab ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}>
+            {tab === 'history' ? 'Session History' : tab === 'graph' ? 'Partner-Me' : 'Partners-All'}
+          </button>
+        ))}
       </div>
 
       {/* Session history */}
@@ -372,6 +332,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
               <table className='w-full text-sm'>
                 <thead>
                   <tr className='border-b border-gray-200'>
+                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Source</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Date</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Day</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-36'>Partner</th>
@@ -385,6 +346,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                     <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>VP</th>
                   </tr>
                   <tr className='border-b border-gray-100 bg-gray-50 align-top'>
+                    {/* Source — no filter */}
+                    <td className='py-1' />
                     {/* Date: from on top, to below */}
                     <td className='py-1 pr-1'>
                       <div className='flex flex-col gap-0.5'>
@@ -433,15 +396,18 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                     </td>
                     {/* Club */}
                     <td className='py-1 pr-1'>
-                      <StringMultiSelect options={uniqueClubs} selected={selectedClubs} onChange={setSelectedClubs} />
+                      <ClubSelect mode='all' selected={selectedClubs} onChange={setSelectedClubs}
+                        onOptionsLoaded={opts => { setClubOptions(opts); setSelectedClubs(new Set(opts)) }} />
                     </td>
                     {/* Tournament */}
                     <td className='py-1 pr-1'>
-                      <StringMultiSelect options={uniqueTournaments} selected={selectedTournaments} onChange={setSelectedTournaments} />
+                      <TournamentSelect mode='all' selected={selectedTournaments} onChange={setSelectedTournaments}
+                        onOptionsLoaded={opts => { setTournamentOptions(opts); setSelectedTournaments(new Set(opts)) }} />
                     </td>
                     {/* Event type */}
                     <td className='py-1 pr-1'>
-                      <StringMultiSelect options={uniqueEventTypes} selected={selectedEventTypes} onChange={setSelectedEventTypes} />
+                      <EventTypeSelect mode='all' selected={selectedEventTypes} onChange={setSelectedEventTypes}
+                        onOptionsLoaded={opts => { setEventTypeOptions(opts); setSelectedEventTypes(new Set(opts)) }} />
                     </td>
                     {/* Score: min on top, max below */}
                     <td className='py-1 pr-1'>
@@ -464,6 +430,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                       className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                       onClick={() => window.location.href = `/session/${r.session_id}`}
                     >
+                      <td className='py-1.5 text-gray-400 text-xs font-mono'>{r.source_id}</td>
                       <td className='py-1.5'>{r.date.slice(0, 10)}</td>
                       <td className='py-1.5 text-gray-500'>{r.day_of_week}</td>
                       <td className='py-1.5'>
@@ -511,7 +478,40 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
         <div className='rounded border border-gray-200 p-4'>
           {results.length === 0
             ? <div className='text-sm text-gray-400 py-4 text-center'>No results recorded yet</div>
-            : <PerformanceChart results={sessionsSorted} />}
+            : <>
+                {(() => {
+                  const reduced = visiblePartners.length < uniquePartners.length
+                  return (
+                    <div className={`mb-3 rounded px-3 py-1.5 text-xs font-medium ${reduced ? 'bg-amber-100 border border-amber-300 text-amber-800' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+                      {reduced
+                        ? `Filtered session history · ${visiblePartners.length} of ${uniquePartners.length} partners shown`
+                        : `All partners · ${uniquePartners.length} partners`}
+                    </div>
+                  )
+                })()}
+                <PerformanceChart results={sessionsSorted} />
+              </>}
+        </div>
+      )}
+
+      {/* Partners chart */}
+      {activeTab === 'partners' && (
+        <div className='rounded border border-gray-200 p-4'>
+          {results.length === 0
+            ? <div className='text-sm text-gray-400 py-4 text-center'>No results recorded yet</div>
+            : <>
+                {(() => {
+                  const reduced = visiblePartners.length < uniquePartners.length
+                  return (
+                    <div className={`mb-3 rounded px-3 py-1.5 text-xs font-medium ${reduced ? 'bg-amber-100 border border-amber-300 text-amber-800' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+                      {reduced
+                        ? `Filtered session history · ${visiblePartners.length} of ${uniquePartners.length} partners shown`
+                        : `All partners · ${uniquePartners.length} partners`}
+                    </div>
+                  )
+                })()}
+                <PartnersChart partners={visiblePartners} self={{ id: playerId, name: player.pl_name }} />
+              </>}
         </div>
       )}
     </div>

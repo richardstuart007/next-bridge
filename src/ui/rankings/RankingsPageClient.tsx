@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { searchAllPlayers } from '@/src/lib/actions/players'
+import { ClubSelect, GradeSelect } from '@/src/ui/shared/LookupSelects'
 
 interface PlayerRow {
   id: number
@@ -11,6 +12,7 @@ interface PlayerRow {
   sessions: number
   grade: string
   club: string
+  tracked: boolean
 }
 
 interface PartnershipRow {
@@ -19,8 +21,10 @@ interface PartnershipRow {
   avg_pct: number
   player1_id: number
   player1_name: string
+  player1_tracked: boolean
   player2_id: number
   player2_name: string
+  player2_tracked: boolean
 }
 
 interface PlayerSearchRow {
@@ -32,6 +36,10 @@ interface PlayerSearchRow {
 
 function matchesSearch(text: string, search: string): boolean {
   return text.toLowerCase().includes(search.toLowerCase())
+}
+
+function isTracked(v: unknown): boolean {
+  return v === true || v === 't' || v === 'true' || v === 1
 }
 
 // Compact typeahead used inside table header cells — no label, no external container
@@ -118,12 +126,14 @@ export default function RankingsPageClient() {
   // Player column filters
   const [topN, setTopN] = useState(0)
   const [search, setSearch] = useState('')
-  const [gradeFilter, setGradeFilter] = useState('')
-  const [clubFilter, setClubFilter] = useState('')
+  const [gradeFilter, setGradeFilter] = useState<Set<string>>(new Set())
+  const [clubFilter,  setClubFilter]  = useState<Set<string>>(new Set())
+  const [trackedOnly, setTrackedOnly] = useState(false)
 
   // Partnership column filters
   const [partnerTopN, setPartnerTopN] = useState(0)
   const [partnerFilter, setPartnerFilter] = useState('')
+  const [partnerTrackedOnly, setPartnerTrackedOnly] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -146,25 +156,26 @@ export default function RankingsPageClient() {
     el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   }, [search, players])
 
-  const clubs = useMemo(() => [...new Set(players.map(p => p.club).filter(Boolean))].sort(), [players])
-  const grades = useMemo(() => [...new Set(players.map(p => p.grade).filter(Boolean))].sort(), [players])
-
   const filteredPlayers = useMemo(() => {
     let r = players.map((p, i) => ({ rank: i + 1, row: p }))
-    if (topN > 0) r = r.slice(0, topN)
-    if (clubFilter) r = r.filter(({ row }) => row.club === clubFilter)
-    if (gradeFilter) r = r.filter(({ row }) => row.grade === gradeFilter)
+    if (topN > 0)            r = r.slice(0, topN)
+    if (clubFilter.size > 0) r = r.filter(({ row }) => clubFilter.has(row.club))
+    if (gradeFilter.size > 0)r = r.filter(({ row }) => gradeFilter.has(row.grade))
+    if (trackedOnly)         r = r.filter(({ row }) => isTracked(row.tracked))
     return r
-  }, [players, topN, clubFilter, gradeFilter])
+  }, [players, topN, clubFilter, gradeFilter, trackedOnly])
 
   const filteredPartnerships = useMemo(() => {
     let r = partnerships.map((p, i) => ({ rank: i + 1, row: p }))
-    if (partnerTopN > 0) r = r.slice(0, partnerTopN)
-    if (partnerFilter) r = r.filter(({ row }) =>
+    if (partnerTopN > 0)       r = r.slice(0, partnerTopN)
+    if (partnerFilter)         r = r.filter(({ row }) =>
       matchesSearch(row.player1_name, partnerFilter) || matchesSearch(row.player2_name, partnerFilter)
     )
+    if (partnerTrackedOnly)    r = r.filter(({ row }) =>
+      isTracked(row.player1_tracked) || isTracked(row.player2_tracked)
+    )
     return r
-  }, [partnerships, partnerTopN, partnerFilter])
+  }, [partnerships, partnerTopN, partnerFilter, partnerTrackedOnly])
 
   const trimmed = search.trim()
 
@@ -238,16 +249,15 @@ export default function RankingsPageClient() {
                 <th className={`${thF} text-right`}><ScoringToggle /></th>
                 <th className={`${thF} text-right`}><SessionsSelect /></th>
                 <th className={thF}>
-                  <select value={gradeFilter} onChange={e => setGradeFilter(e.target.value)} className={sel}>
-                    <option value=''>All</option>
-                    {grades.map(g => <option key={g} value={g}>{g}</option>)}
-                  </select>
+                  <GradeSelect mode='any' selected={gradeFilter} onChange={setGradeFilter} placeholder='All' />
                 </th>
                 <th className={thF}>
-                  <select value={clubFilter} onChange={e => setClubFilter(e.target.value)} className={sel}>
-                    <option value=''>All</option>
-                    {clubs.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <ClubSelect mode='any' selected={clubFilter} onChange={setClubFilter} placeholder='All' />
+                </th>
+                <th className={`${thF} text-center`}>
+                  <label className='flex items-center justify-center cursor-pointer' title='Tracked only'>
+                    <input type='checkbox' checked={trackedOnly} onChange={e => setTrackedOnly(e.target.checked)} />
+                  </label>
                 </th>
               </tr>
               <tr>
@@ -257,6 +267,7 @@ export default function RankingsPageClient() {
                 <th className={`${thH} text-right`}>Sessions</th>
                 <th className={`${thH} text-left`}>Grade</th>
                 <th className={`${thH} text-left`}>Club</th>
+                <th className={`${thH} text-center`}>Tracked</th>
               </tr>
             </thead>
             <tbody className='divide-y divide-gray-100'>
@@ -274,11 +285,14 @@ export default function RankingsPageClient() {
                     <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
                     <td className='px-3 py-1.5 text-gray-500'>{p.grade}</td>
                     <td className='px-3 py-1.5 text-gray-500'>{p.club}</td>
+                    <td className='px-3 py-1.5 text-center'>
+                      {isTracked(p.tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
+                    </td>
                   </tr>
                 )
               })}
               {!loading && filteredPlayers.length === 0 && (
-                <tr><td colSpan={6} className='px-3 py-4 text-center text-gray-400'>No players found</td></tr>
+                <tr><td colSpan={7} className='px-3 py-4 text-center text-gray-400'>No players found</td></tr>
               )}
             </tbody>
           </table>
@@ -306,12 +320,18 @@ export default function RankingsPageClient() {
                 </th>
                 <th className={`${thF} text-right`}><ScoringToggle /></th>
                 <th className={`${thF} text-right`}><SessionsSelect /></th>
+                <th className={`${thF} text-center`}>
+                  <label className='flex items-center justify-center cursor-pointer' title='Tracked only'>
+                    <input type='checkbox' checked={partnerTrackedOnly} onChange={e => setPartnerTrackedOnly(e.target.checked)} />
+                  </label>
+                </th>
               </tr>
               <tr>
                 <th className={`${thH} text-right`}>#</th>
                 <th className={`${thH} text-left`}>Players</th>
                 <th className={`${thH} text-right`}>Avg%</th>
                 <th className={`${thH} text-right`}>Sessions</th>
+                <th className={`${thH} text-center`}>Tracked</th>
               </tr>
             </thead>
             <tbody className='divide-y divide-gray-100'>
@@ -320,15 +340,20 @@ export default function RankingsPageClient() {
                   <td className='px-3 py-1.5 text-right text-gray-400'>{rank}</td>
                   <td className='px-3 py-1.5'>
                     <Link href={`/player/${p.player1_id}`} className='text-blue-600 hover:underline'>{p.player1_name}</Link>
+                    {isTracked(p.player1_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                     <span className='mx-1.5 text-gray-400'>&amp;</span>
                     <Link href={`/player/${p.player2_id}`} className='text-blue-600 hover:underline'>{p.player2_name}</Link>
+                    {isTracked(p.player2_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                   </td>
                   <td className='px-3 py-1.5 text-right font-medium'>{parseFloat(String(p.avg_pct)).toFixed(1)}%</td>
                   <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
+                  <td className='px-3 py-1.5 text-center'>
+                    {(isTracked(p.player1_tracked) || isTracked(p.player2_tracked)) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
+                  </td>
                 </tr>
               ))}
               {!loading && filteredPartnerships.length === 0 && (
-                <tr><td colSpan={4} className='px-3 py-4 text-center text-gray-400'>
+                <tr><td colSpan={5} className='px-3 py-4 text-center text-gray-400'>
                   {partnerFilter ? `No partnerships found for "${partnerFilter}"` : 'No partnerships found'}
                 </td></tr>
               )}

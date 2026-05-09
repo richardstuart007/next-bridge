@@ -497,8 +497,7 @@ function extractRunIdFromHref(href: string): number {
 // -----------------------------------------------------------------------
 
 const CLUB_TRANSLATIONS: Record<string, string> = {
-  'Remuera Bowls & Bridge Inc': 'Auckland',
-  '2020 Waiheke Bridge Club':   'Waiheke',
+  '2020 Waiheke Bridge Club': 'Waiheke',
 }
 
 export function normaliseClub(raw: string): string {

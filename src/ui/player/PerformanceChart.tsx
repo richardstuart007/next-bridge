@@ -39,9 +39,14 @@ function rollingAvg(values: number[], window: number): number[] {
   })
 }
 
+function fmtDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' })
+}
+
 export default function PerformanceChart({ results }: Props) {
   const router = useRouter()
-  const [smoothing, setSmoothing] = useState(0)
+  const [smoothing, setSmoothing] = useState(30)
 
   const sorted = useMemo(() =>
     [...results].sort((a, b) => (a.date < b.date ? -1 : 1))
@@ -50,48 +55,48 @@ export default function PerformanceChart({ results }: Props) {
   const { partnerOrder, ...graphData }: GraphStructure & { partnerOrder: number[] } = useMemo(() => {
     if (sorted.length === 0) return { labels: [], datasets: [], partnerOrder: [] }
 
-    const labels = sorted.map((_, i) => String(i + 1))
+    // Shared date x-axis
+    const allDates = [...new Set(sorted.map(r => r.date.slice(0, 10)))].sort()
+    const dateIndex = new Map(allDates.map((d, i) => [d, i]))
+    const labels = allDates.map(fmtDate)
 
-    const partnerOrder: number[] = []
+    // Partner order by average percentage descending
     const partnerNames = new Map<number, string>()
+    const partnerAvgs = new Map<number, number[]>()
     sorted.forEach(r => {
-      if (!partnerNames.has(r.partner_id)) {
-        partnerOrder.push(r.partner_id)
-        partnerNames.set(r.partner_id, r.partner_name)
-      }
+      partnerNames.set(r.partner_id, r.partner_name)
+      const vals = partnerAvgs.get(r.partner_id) ?? []
+      vals.push(parseFloat(String(r.percentage)))
+      partnerAvgs.set(r.partner_id, vals)
     })
-
-    const dateCounts = new Map<string, number>()
-    const dateSeq: number[] = sorted.map(r => {
-      const n = (dateCounts.get(r.date) ?? 0) + 1
-      dateCounts.set(r.date, n)
-      return n
+    const partnerOrder = [...partnerNames.keys()].sort((a, b) => {
+      const avgA = partnerAvgs.get(a)!.reduce((s, v) => s + v, 0) / partnerAvgs.get(a)!.length
+      const avgB = partnerAvgs.get(b)!.reduce((s, v) => s + v, 0) / partnerAvgs.get(b)!.length
+      return avgB - avgA
     })
-    const dateTotal = new Map<string, number>()
-    sorted.forEach(r => dateTotal.set(r.date, dateCounts.get(r.date) ?? 1))
 
     const datasets: Datasets[] = partnerOrder.map((partnerId, idx) => {
-      // Collect this partner's own sessions in chronological order
-      const partnerSlots = sorted
-        .map((r, i) => r.partner_id === partnerId ? { i, v: parseFloat(String(r.percentage)) } : null)
-        .filter((x): x is { i: number; v: number } => x !== null)
-
-      const rawVals = partnerSlots.map(x => x.v)
+      const partnerRows = sorted.filter(r => r.partner_id === partnerId)
+      const rawVals = partnerRows.map(r => parseFloat(String(r.percentage)))
       const smoothedVals = smoothing > 0 ? rollingAvg(rawVals, smoothing) : rawVals
-      const smoothedMap = new Map(partnerSlots.map((x, k) => [x.i, smoothedVals[k]]))
 
-      const data: (number | null)[] = sorted.map((_, i) => smoothedMap.get(i) ?? null)
+      const data: (number | null)[] = Array(allDates.length).fill(null)
+      const keys: number[]          = Array(allDates.length).fill(0)
+      const tooltipData: string[]   = Array(allDates.length).fill('')
 
-      const tooltipData: string[] = sorted.map((r, i) => {
-        const seq = (dateTotal.get(r.date) ?? 1) > 1 ? ` #${dateSeq[i]}` : ''
-        return `${new Date(r.date).toISOString().slice(0, 10)} · ${r.day_of_week}${seq}`
+      partnerRows.forEach((r, i) => {
+        const slot = dateIndex.get(r.date.slice(0, 10))
+        if (slot === undefined) return
+        data[slot]        = smoothedVals[i]
+        keys[slot]        = r.session_id
+        tooltipData[slot] = `${r.date.slice(0, 10)} · ${r.day_of_week}`
       })
 
       const partnerAvg = rawVals.reduce((s, v) => s + v, 0) / rawVals.length
       return {
         label: `${partnerNames.get(partnerId) ?? `Partner ${partnerId}`} (${parseFloat(partnerAvg.toFixed(1))}%)`,
         data,
-        keys: sorted.map(r => r.session_id),
+        keys,
         keyType: 'seid',
         borderColor: PARTNER_COLORS[idx % PARTNER_COLORS.length],
         tension: 0.2,
@@ -121,10 +126,11 @@ export default function PerformanceChart({ results }: Props) {
             className='rounded border border-gray-300 px-2 py-0.5 text-xs'
           >
             <option value={0}>Off</option>
-            <option value={5}>5 sessions</option>
-            <option value={10}>10 sessions</option>
-            <option value={15}>15 sessions</option>
             <option value={20}>20 sessions</option>
+            <option value={30}>30 sessions</option>
+            <option value={50}>50 sessions</option>
+            <option value={75}>75 sessions</option>
+            <option value={100}>100 sessions</option>
           </select>
         </div>
       </div>
@@ -138,6 +144,7 @@ export default function PerformanceChart({ results }: Props) {
           <MyLineChart
             LineGraphData={graphData}
             GridDisplayY={true}
+            xMaxTicksLimit={24}
             onPointClick={key => router.push(`/session/${key}`)}
             onLegendClick={idx => { const id = partnerOrder[idx]; if (id) router.push(`/player/${id}`) }}
           />

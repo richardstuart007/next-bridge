@@ -92,6 +92,22 @@ export async function getAllEventTypes() {
   return table_fetch({ caller: 'getAllEventTypes', table: 'tet_event_types', orderBy: 'et_event_type ASC', skipCache: true })
 }
 
+export async function populateEventTypes(): Promise<{ inserted: number }> {
+  await table_query({
+    caller: 'populateEventTypes',
+    query: `INSERT INTO tet_event_types (et_event_type)
+            SELECT DISTINCT se_event_type FROM tse_sessions WHERE se_event_type <> ''
+            ON CONFLICT (et_event_type) DO NOTHING`,
+    params: []
+  })
+  const rows = await table_query({
+    caller: 'populateEventTypes/count',
+    query: `SELECT COUNT(*)::int AS n FROM tet_event_types`,
+    params: []
+  })
+  return { inserted: rows[0]?.n ?? 0 }
+}
+
 export async function getAllTournaments() {
   return table_fetch({ caller: 'getAllTournaments', table: 'ttt_tournament_types', orderBy: 'tt_tournament ASC', skipCache: true })
 }

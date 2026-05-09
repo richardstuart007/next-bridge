@@ -29,13 +29,12 @@ function ResultRow({ result }: { result: StepResult }) {
 }
 
 const STEPS = [
-  { key: 'sessions-nzb', label: 'Step 1 — Build Sessions (NZB)',  url: '/api/build/sessions-nzb', desc: 'ts9 run_ids → tse_sessions (skip existing)' },
-  { key: 'results-nzb',  label: 'Step 2 — Build Results (NZB)',   url: '/api/build/results-nzb',  desc: 'ts9 pairs → tre_results (incremental, both directions)' },
-  { key: 'cleanup',      label: 'Step 3 — Cleanup Bad Results',   url: '/api/build/cleanup',      desc: 'Delete tre_results rows with negative percentage' },
-  { key: 'partners',     label: 'Step 4 — Build Partnerships',    url: '/api/build/partners',     desc: 'Incremental: sessions where se_partners_built = false → update affected pairs only' },
+  { key: 'players',  label: 'Step 1 — Build Players',  url: '/api/build/players',     desc: 'ts7 → tpl_players, trk_ranks, tcl_clubs, tgr_grades' },
+  { key: 'sessions', label: 'Step 2 — Build Sessions', url: '/api/build/sessions-nz', desc: 'ts8 run_ids → tse_sessions' },
+  { key: 'results',  label: 'Step 3 — Build Results',  url: '/api/build/results-nz',  desc: 'ts8 pairs + tpl_players → tre_results' },
 ]
 
-export default function BuildTables() {
+export default function AkbcBuildTables() {
   const [results, setResults] = useState<Record<string, StepResult>>({})
   const [running, setRunning] = useState<string | null>(null)
 

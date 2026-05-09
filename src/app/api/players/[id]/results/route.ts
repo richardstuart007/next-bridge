@@ -22,6 +22,7 @@ export async function GET(
     let query = `
       SELECT
         se.se_seid          AS session_id,
+        se.se_source_id     AS source_id,
         se.se_date          AS date,
         se.se_day_of_week   AS day_of_week,
         se.se_scoring       AS scoring,
@@ -32,8 +33,9 @@ export async function GET(
         se.se_event_type    AS event_type,
         re.re_percentage    AS percentage,
         re.re_vp            AS vp,
-        re.re_plid2  AS partner_id,
-        p.pl_name           AS partner_name
+        re.re_plid2         AS partner_id,
+        p.pl_name           AS partner_name,
+        p.pl_all_results    AS partner_tracked
       FROM tre_results re
       JOIN tse_sessions se ON se.se_seid = re.re_seid
       LEFT JOIN tpl_players p ON p.pl_plid = re.re_plid2

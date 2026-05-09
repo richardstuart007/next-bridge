@@ -227,7 +227,7 @@ export async function updateIncrementalPartnerStats(): Promise<{ sessions: numbe
       FROM tre_results
       WHERE re_seid = ANY($1)
     `,
-    params: [seids]
+    params: [seids] as unknown as (string | number | boolean | null)[]
   }) as { plid1: number; plid2: number }[]
 
   for (const { plid1, plid2 } of pairs) {
@@ -278,13 +278,13 @@ export async function updateIncrementalPartnerStats(): Promise<{ sessions: numbe
         AND re.re_seid = ANY($1)
         AND re.re_paid IS NULL
     `,
-    params: [seids]
+    params: [seids] as unknown as (string | number | boolean | null)[]
   })
 
   await table_query({
     caller: 'updateIncrementalPartnerStats/flag',
     query: `UPDATE tse_sessions SET se_partners_built = TRUE WHERE se_seid = ANY($1)`,
-    params: [seids]
+    params: [seids] as unknown as (string | number | boolean | null)[]
   })
 
   return { sessions: seids.length, pairs: pairs.length }

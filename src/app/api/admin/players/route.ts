@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
   const grade = searchParams.get('grade')?.trim() ?? ''
 
   const conditions: string[] = []
-  const params: unknown[]    = []
+  const params: (string | number | boolean | null)[] = []
 
   if (name)  { params.push(`%${name}%`);  conditions.push(`pl_name  ILIKE $${params.length}`) }
   if (club)  { params.push(`%${club}%`);  conditions.push(`pl_club  ILIKE $${params.length}`) }

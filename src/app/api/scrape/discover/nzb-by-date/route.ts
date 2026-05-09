@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
           const existing = await table_query({
             caller: 'scrape/discover/nzb-by-date/check',
             query: `SELECT se_source_id FROM tse_sessions WHERE se_source_id = ANY($1)`,
-            params: [runIds]
+            params: [runIds] as unknown as (string | number | boolean | null)[]
           }) as { se_source_id: number }[]
 
           const existingSet  = new Set(existing.map(r => r.se_source_id))

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { getPlayerById, getPartnerStats } from '@/src/lib/actions/players'
+import { getPlayerById, getPartnerStats, getPlayerAllGroupStats } from '@/src/lib/actions/players'
 import { StringMultiSelect, TournamentSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 import PerformanceChart from './PerformanceChart'
 import PartnersChart from './PartnersChart'
@@ -15,7 +15,6 @@ interface ResultRow {
   date:            string
   day_of_week:     string
   scoring:         string
-  session_type:    string
   session_name:    string
   club:            string
   tournament:      string
@@ -35,8 +34,6 @@ interface Player {
   pl_rank:             string
   pl_grade:            string
   pl_rating:           number
-  pl_session_count:    number
-  pl_avg_percentage:   number
   pl_a_points:         number
   pl_b_points:         number
   pl_c_points:         number
@@ -124,7 +121,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
 
   const [player,       setPlayer]       = useState<Player | null>(null)
   const [results,      setResults]      = useState<ResultRow[]>([])
-  const [partnerStats, setPartnerStats] = useState<{ pa_sessions: number; pa_avg_pct: number } | null>(null)
+  const [partnerStats, setPartnerStats] = useState<{ a2_mp_sessions: number; a2_mp_avg_pct: number; a2_vp_sessions: number; a2_vp_avg_vp: number } | null>(null)
+  const [playerStats,  setPlayerStats]  = useState<{ a1_group: string; a1_mp_sessions: number; a1_mp_avg_pct: number; a1_vp_sessions: number; a1_vp_avg_vp: number }[]>([])
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState<string | null>(null)
 
@@ -133,8 +131,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [dateTo,             setDateTo]             = useState('')
   const [dayFilter,          setDayFilter]          = useState('')
   const [selectedPartnerIds, setSelectedPartnerIds] = useState<Set<number>>(new Set())
-  const [scoringFilter,      setScoringFilter]      = useState('')
-  const [sessionTypeFilter,  setSessionTypeFilter]  = useState('')
+  const [scoring,            setScoring]            = useState<'MP' | 'VP'>('MP')
+
   const [sessionNameFilter,  setSessionNameFilter]  = useState('')
   const [selectedClubs,      setSelectedClubs]      = useState<Set<string>>(new Set())
   const [clubOptions,        setClubOptions]        = useState<string[]>([])
@@ -142,9 +140,6 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [tournamentOptions,  setTournamentOptions]  = useState<string[]>([])
   const [selectedEventTypes, setSelectedEventTypes] = useState<Set<string>>(new Set())
   const [eventTypeOptions,   setEventTypeOptions]   = useState<string[]>([])
-  const [scoreMin,           setScoreMin]           = useState('')
-  const [scoreMax,           setScoreMax]           = useState('')
-
   const [activeTab,    setActiveTab]    = useState<'history' | 'graph' | 'partners'>('history')
   const [currentPage,  setCurrentPage]  = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
@@ -174,8 +169,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (dayFilter)        rows = rows.filter(r => r.day_of_week === dayFilter)
     if (selectedPartnerIds.size < uniquePartners.length)
                           rows = rows.filter(r => selectedPartnerIds.has(r.partner_id))
-    if (scoringFilter)    rows = rows.filter(r => r.scoring === scoringFilter)
-    if (sessionTypeFilter)rows = rows.filter(r => r.session_type === sessionTypeFilter)
+    rows = rows.filter(r => r.scoring === scoring)
+
     if (sessionNameFilter)     rows = rows.filter(r => r.session_name.toLowerCase().includes(sessionNameFilter.toLowerCase()))
     if (selectedClubs.size < clubOptions.length)
                                rows = rows.filter(r => selectedClubs.has(r.club))
@@ -183,13 +178,11 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                                rows = rows.filter(r => selectedTournaments.has(r.tournament))
     if (selectedEventTypes.size < eventTypeOptions.length)
                                rows = rows.filter(r => selectedEventTypes.has(r.event_type))
-    if (scoreMin)              rows = rows.filter(r => parseFloat(String(r.percentage)) >= parseFloat(scoreMin))
-    if (scoreMax)         rows = rows.filter(r => parseFloat(String(r.percentage)) <= parseFloat(scoreMax))
     return rows
   }, [results, dateFrom, dateTo, dayFilter, selectedPartnerIds, uniquePartners.length,
-      scoringFilter, sessionTypeFilter, sessionNameFilter,
+      scoring, sessionNameFilter,
       selectedClubs, clubOptions.length, selectedTournaments, tournamentOptions.length,
-      selectedEventTypes, eventTypeOptions.length, scoreMin, scoreMax])
+      selectedEventTypes, eventTypeOptions.length])
 
   const visiblePartners = useMemo(() => {
     const seen = new Map<number, string>()
@@ -198,8 +191,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   }, [sessionsSorted])
 
   useEffect(() => { setCurrentPage(1) },
-    [dateFrom, dateTo, dayFilter, selectedPartnerIds, scoringFilter, sessionTypeFilter, sessionNameFilter,
-     selectedClubs, selectedTournaments, selectedEventTypes, scoreMin, scoreMax])
+    [dateFrom, dateTo, dayFilter, selectedPartnerIds, scoring, sessionNameFilter,
+     selectedClubs, selectedTournaments, selectedEventTypes])
 
   useEffect(() => {
     if (isNaN(playerId)) { setError('Invalid player ID'); setLoading(false); return }
@@ -209,14 +202,16 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
         const url = filterPartnerId
           ? `/api/players/${playerId}/results?partner_id=${filterPartnerId}`
           : `/api/players/${playerId}/results`
-        const [playerData, resultsRes, statsRow] = await Promise.all([
+        const [playerData, resultsRes, statsRow, allStats] = await Promise.all([
           getPlayerById(playerId),
           fetch(url),
-          filterPartnerId ? getPartnerStats(playerId, filterPartnerId) : Promise.resolve(null)
+          filterPartnerId ? getPartnerStats(playerId, filterPartnerId) : Promise.resolve(null),
+          getPlayerAllGroupStats(playerId)
         ])
         if (!playerData) { setError(`Player ${playerId} not found`); return }
         setPlayer(playerData as Player)
-        if (statsRow) setPartnerStats(statsRow as { pa_sessions: number; pa_avg_pct: number })
+        if (statsRow) setPartnerStats(statsRow as { a2_mp_sessions: number; a2_mp_avg_pct: number; a2_vp_sessions: number; a2_vp_avg_vp: number })
+        if (allStats?.length) setPlayerStats(allStats)
         if (resultsRes.ok) setResults(await resultsRes.json())
       } catch (err) { setError(String(err)) }
       finally { setLoading(false) }
@@ -228,8 +223,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   if (error)   return <div className='rounded bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700'>{error}</div>
   if (!player) return null
 
-  const hasFilter = !!(dateFrom || dateTo || dayFilter || scoringFilter || sessionTypeFilter ||
-    sessionNameFilter || scoreMin || scoreMax ||
+  const hasFilter = !!(dateFrom || dateTo || dayFilter ||
+    sessionNameFilter ||
     selectedPartnerIds.size < uniquePartners.length ||
     selectedClubs.size < clubOptions.length ||
     selectedTournaments.size < tournamentOptions.length ||
@@ -238,11 +233,10 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   function clearFilters() {
     setDateFrom(''); setDateTo(''); setDayFilter('')
     setSelectedPartnerIds(new Set(results.map(r => r.partner_id)))
-    setScoringFilter(''); setSessionTypeFilter(''); setSessionNameFilter('')
+    setSessionNameFilter('')
     setSelectedClubs(new Set(clubOptions))
     setSelectedTournaments(new Set(tournamentOptions))
     setSelectedEventTypes(new Set(eventTypeOptions))
-    setScoreMin(''); setScoreMax('')
   }
 
   // ── Partnership mode ──────────────────────────────────────────────────────
@@ -256,16 +250,19 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
             {player.pl_name} <span className='text-gray-400 font-normal'>with</span> {partnerName}
           </h1>
           <div className='flex flex-wrap gap-4 text-sm text-gray-500 mt-1'>
-            <span>{partnerStats ? partnerStats.pa_sessions : results.length} session{(partnerStats ? partnerStats.pa_sessions : results.length) !== 1 ? 's' : ''} together</span>
-            {partnerStats && partnerStats.pa_avg_pct > 0 && (
-              <span>Avg: <strong>{parseFloat(String(partnerStats.pa_avg_pct)).toFixed(2)}%</strong></span>
+            <span>{partnerStats ? partnerStats.a2_mp_sessions + partnerStats.a2_vp_sessions : results.length} session{(partnerStats ? partnerStats.a2_mp_sessions + partnerStats.a2_vp_sessions : results.length) !== 1 ? 's' : ''} together</span>
+            {partnerStats && partnerStats.a2_mp_avg_pct > 0 && (
+              <span>MP Avg: <strong>{parseFloat(String(partnerStats.a2_mp_avg_pct)).toFixed(2)}%</strong></span>
+            )}
+            {partnerStats && partnerStats.a2_vp_avg_vp > 0 && (
+              <span>VP Avg: <strong>{parseFloat(String(partnerStats.a2_vp_avg_vp)).toFixed(2)}</strong></span>
             )}
           </div>
         </div>
         <div className='rounded border border-gray-200 p-4'>
           {results.length === 0
             ? <div className='text-sm text-gray-400 py-4 text-center'>No results recorded for this partnership</div>
-            : <PerformanceChart results={results} />}
+            : <PerformanceChart results={results} scoring={scoring} />}
         </div>
       </div>
     )
@@ -279,28 +276,69 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
         <div className='mb-1'>
           <Link href='/' className='text-xs text-blue-600 hover:underline'>← Home</Link>
         </div>
-        <h1 className='text-xl font-bold text-gray-900 mb-2'>{player.pl_name}</h1>
-        <div className='flex flex-wrap gap-4 text-sm text-gray-600'>
-          {player.pl_club && <span>Club: {player.pl_club}</span>}
-          {player.pl_rank && <span>Rank: {player.pl_rank}</span>}
-          {player.pl_grade && <span>Grade: {player.pl_grade}</span>}
-          {player.pl_rating > 0 && <span>Rating: {player.pl_rating}</span>}
-          {player.pl_session_count > 0 && <span>Sessions: {player.pl_session_count}</span>}
-          {player.pl_avg_percentage > 0 && <span>Avg: {parseFloat(String(player.pl_avg_percentage)).toFixed(2)}%</span>}
-        </div>
-        {(player.pl_a_points > 0 || player.pl_b_points > 0 || player.pl_c_points > 0) && (
-          <div className='flex gap-4 text-sm text-gray-600 mt-2'>
-            {player.pl_a_points > 0 && <span>A pts: {player.pl_a_points}</span>}
-            {player.pl_b_points > 0 && <span>B pts: {player.pl_b_points}</span>}
-            {player.pl_c_points > 0 && <span>C pts: {player.pl_c_points}</span>}
-          </div>
-        )}
-        <div className='mt-1 flex items-center gap-3'>
+        <div className='flex items-baseline gap-3 mb-2'>
+          <h1 className='text-xl font-bold text-gray-900'>{player.pl_name}</h1>
           <span className='text-xs text-gray-400'>NZ Bridge #{player.pl_nz_bridge_number}</span>
           {player.pl_all_results && (
             <span className='rounded-full bg-green-100 border border-green-300 px-2 py-0.5 text-xs font-medium text-green-700'>Tracked</span>
           )}
         </div>
+        <div className='flex flex-wrap gap-4 text-sm text-gray-600'>
+          {player.pl_club && <span>Club: {player.pl_club}</span>}
+          {player.pl_rank && <span>Rank: {player.pl_rank}</span>}
+          {player.pl_grade && <span>Grade: {player.pl_grade}</span>}
+          {player.pl_rating > 0 && <span>Rating: {player.pl_rating}</span>}
+          {player.pl_a_points > 0 && <span>A pts: {player.pl_a_points}</span>}
+          {player.pl_b_points > 0 && <span>B pts: {player.pl_b_points}</span>}
+          {player.pl_c_points > 0 && <span>C pts: {player.pl_c_points}</span>}
+        </div>
+        {playerStats.length > 0 && (() => {
+          const byGrp = Object.fromEntries(playerStats.map(r => [r.a1_group, r]))
+          const grps = (['A', 'B', 'C', 'all'] as const).filter(g => byGrp[g])
+          return (
+            <table className='mt-2 text-sm text-gray-600'>
+              <thead>
+                <tr>
+                  <th className='text-center font-semibold text-gray-500 pb-0 px-4 align-bottom' rowSpan={2}>Tournament<br/>Type</th>
+                  <th colSpan={2} className='text-center font-semibold text-gray-500 pb-0 px-6'>MP</th>
+                  <th className='w-6' />
+                  <th colSpan={2} className='text-center font-semibold text-gray-500 pb-0 px-6'>VP</th>
+                </tr>
+                <tr>
+                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Avg</th>
+                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Sessions</th>
+                  <th />
+                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Avg</th>
+                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Sessions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {grps.map(g => {
+                  const r = byGrp[g]
+                  const label = g === 'all' ? 'All' : g
+                  return (
+                    <tr key={g}>
+                      <td className='text-center text-gray-600 py-0.5 px-4'>{label}</td>
+                      <td className='text-right font-medium text-gray-700 py-0.5 px-4'>
+                        {r.a1_mp_sessions > 0 ? `${parseFloat(String(r.a1_mp_avg_pct)).toFixed(2)}%` : '—'}
+                      </td>
+                      <td className='text-right text-gray-500 py-0.5 px-4'>
+                        {r.a1_mp_sessions > 0 ? r.a1_mp_sessions : ''}
+                      </td>
+                      <td />
+                      <td className='text-right font-medium text-gray-700 py-0.5 px-4'>
+                        {r.a1_vp_sessions > 0 ? parseFloat(String(r.a1_vp_avg_vp)).toFixed(2) : '—'}
+                      </td>
+                      <td className='text-right text-gray-500 py-0.5 px-4'>
+                        {r.a1_vp_sessions > 0 ? r.a1_vp_sessions : ''}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )
+        })()}
       </div>
 
       {/* Tabs */}
@@ -317,10 +355,20 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
       {activeTab === 'history' && (
         <div className='rounded border border-gray-200 p-4'>
           <div className='flex items-center justify-between mb-3'>
-            <h2 className='text-base font-semibold text-gray-800'>
-              Session History
-              <span className='ml-2 text-xs font-normal text-gray-400'>{sessionsSorted.length} of {results.length}</span>
-            </h2>
+            <div className='flex items-center gap-3'>
+              <h2 className='text-base font-semibold text-gray-800'>
+                Session History
+                <span className='ml-2 text-xs font-normal text-gray-400'>{sessionsSorted.length} of {results.length}</span>
+              </h2>
+              <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
+                {(['MP', 'VP'] as const).map(s => (
+                  <button key={s} onClick={() => setScoring(s)}
+                    className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
             {hasFilter && (
               <button onClick={clearFilters} className='text-xs text-blue-600 hover:underline'>Clear filters</button>
             )}
@@ -336,14 +384,11 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Date</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Day</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-36'>Partner</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Scoring</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Type</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-36'>Session</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-28'>Club</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Tournament</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Event Type</th>
-                    <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Score</th>
-                    <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>VP</th>
+                    <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Result</th>
                   </tr>
                   <tr className='border-b border-gray-100 bg-gray-50 align-top'>
                     {/* Source — no filter */}
@@ -370,24 +415,6 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                     <td className='py-1 pr-1'>
                       <PartnerSelect partners={uniquePartners} selected={selectedPartnerIds} onChange={setSelectedPartnerIds} />
                     </td>
-                    {/* Scoring */}
-                    <td className='py-1 pr-1'>
-                      <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value)}
-                        className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
-                        <option value=''>All</option>
-                        <option value='MP'>MP</option>
-                        <option value='VP'>VP</option>
-                      </select>
-                    </td>
-                    {/* Type */}
-                    <td className='py-1 pr-1'>
-                      <select value={sessionTypeFilter} onChange={e => setSessionTypeFilter(e.target.value)}
-                        className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
-                        <option value=''>All</option>
-                        <option value='club'>Club</option>
-                        <option value='online'>Online</option>
-                      </select>
-                    </td>
                     {/* Session name */}
                     <td className='py-1 pr-1'>
                       <input type='text' value={sessionNameFilter} onChange={e => setSessionNameFilter(e.target.value)}
@@ -409,18 +436,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                       <EventTypeSelect mode='all' selected={selectedEventTypes} onChange={setSelectedEventTypes}
                         onOptionsLoaded={opts => { setEventTypeOptions(opts); setSelectedEventTypes(new Set(opts)) }} />
                     </td>
-                    {/* Score: min on top, max below */}
-                    <td className='py-1 pr-1'>
-                      <div className='flex flex-col gap-0.5'>
-                        <input type='number' value={scoreMin} onChange={e => setScoreMin(e.target.value)}
-                          placeholder='Min' min={0} max={100}
-                          className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' />
-                        <input type='number' value={scoreMax} onChange={e => setScoreMax(e.target.value)}
-                          placeholder='Max' min={0} max={100}
-                          className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' />
-                      </div>
-                    </td>
-                    {/* VP — no filter */}
+                    {/* Result — no filter */}
                     <td className='py-1' />
                   </tr>
                 </thead>
@@ -440,15 +456,14 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                           {r.partner_name}
                         </Link>
                       </td>
-                      <td className='py-1.5 text-gray-500 text-xs'>{r.scoring}</td>
-                      <td className='py-1.5 text-gray-500 text-xs'>{r.session_type}</td>
                       <td className='py-1.5 text-gray-500 text-xs'>{r.session_name}</td>
                       <td className='py-1.5 text-gray-500 text-xs'>{r.club}</td>
                       <td className='py-1.5 text-gray-500 text-xs'>{r.tournament}</td>
                       <td className='py-1.5 text-gray-500 text-xs'>{r.event_type}</td>
-                      <td className='py-1.5 text-right font-medium'>{parseFloat(String(r.percentage)).toFixed(2)}%</td>
-                      <td className='py-1.5 text-right text-gray-500'>
-                        {r.vp != null ? parseFloat(String(r.vp)).toFixed(2) : '—'}
+                      <td className='py-1.5 text-right font-medium'>
+                        {scoring === 'MP'
+                          ? `${parseFloat(String(r.percentage)).toFixed(2)}%`
+                          : parseFloat(String(r.vp ?? 0)).toFixed(2)}
                       </td>
                     </tr>
                   ))}
@@ -489,7 +504,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                     </div>
                   )
                 })()}
-                <PerformanceChart results={sessionsSorted} />
+                <PerformanceChart results={sessionsSorted} scoring={scoring} />
               </>}
         </div>
       )}

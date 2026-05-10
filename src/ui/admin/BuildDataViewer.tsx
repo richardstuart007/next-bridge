@@ -140,7 +140,6 @@ export default function BuildDataViewer() {
   const [sessResults,        setSessResults]        = useState<Row[]>([])
   const [sessNameFilter,     setSessNameFilter]     = useState('')
   const [sessScoringFilter,  setSessScoringFilter]  = useState('all')
-  const [sessTypeFilter,     setSessTypeFilter]     = useState('all')
   const [sessClubFilter,     setSessClubFilter]     = useState('')
   const [sessTournamentFilter, setSessTournamentFilter] = useState<string[]>([])
   const [sessEventTypeFilter, setSessEventTypeFilter] = useState<Set<string>>(new Set())
@@ -155,9 +154,12 @@ export default function BuildDataViewer() {
 
 
   useEffect(() => {
-    getAllTournaments()
-      .then(rows => setTournamentTypes((rows as { tt_tournament: string }[]).map(r => r.tt_tournament).sort()))
-      .catch(() => {})
+    (async () => {
+      try {
+        const rows = await getAllTournaments()
+        setTournamentTypes((rows as { tt_tournament: string }[]).map(r => r.tt_tournament).sort())
+      } catch { /* ignore */ }
+    })()
   }, [])
 
   async function loadPlayers() {
@@ -209,7 +211,6 @@ export default function BuildDataViewer() {
     if (sessClubFilter      && !String(r.se_club       ?? '').toLowerCase().includes(sessClubFilter.toLowerCase()))  return false
     if (sessSourceFilter    && !String(r.se_source_id  ?? '').includes(sessSourceFilter))                            return false
     if (sessScoringFilter   !== 'all' && r.se_scoring    !== sessScoringFilter)   return false
-    if (sessTypeFilter      !== 'all' && r.se_session_type !== sessTypeFilter)     return false
     if (sessEventTypeFilter.size > 0 && !sessEventTypeFilter.has(String(r.se_event_type ?? ''))) return false
     if (sessDayFilter       !== 'all' && r.se_day_of_week !== sessDayFilter)       return false
     if (sessTournamentFilter.length > 0 && !sessTournamentFilter.includes(String(r.se_tournament ?? ''))) return false
@@ -237,9 +238,6 @@ export default function BuildDataViewer() {
                      </FSelect>,
     se_scoring:      <FSelect value={sessScoringFilter} onChange={setSessScoringFilter}>
                        <option value='all'>all</option><option value='MP'>MP</option><option value='VP'>VP</option>
-                     </FSelect>,
-    se_session_type: <FSelect value={sessTypeFilter} onChange={setSessTypeFilter}>
-                       <option value='all'>all</option><option value='club'>club</option><option value='online'>online</option>
                      </FSelect>,
     se_name:         <FText placeholder='name…' value={sessNameFilter} onChange={setSessNameFilter} />,
     se_club:         <FText placeholder='club…' value={sessClubFilter} onChange={setSessClubFilter} />,

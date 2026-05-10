@@ -13,8 +13,8 @@ interface Player {
   pl_club: string
   pl_rating: number
   pl_a_points: number
-  pl_avg_percentage: number
-  pl_session_count: number
+  a1_avg_pct: number
+  a1_sessions: number
   pl_all_results: boolean
 }
 
@@ -74,9 +74,9 @@ export default function TrackedPlayers() {
     if (fClubs.size)   rows = rows.filter(p => fClubs.has(p.pl_club))
     const rMin = num(fRatingMin); if (rMin !== null) rows = rows.filter(p => parseFloat(String(p.pl_rating)) >= rMin)
     const aMin = num(fAMin);      if (aMin !== null) rows = rows.filter(p => parseFloat(String(p.pl_a_points)) >= aMin)
-    const avMin = num(fAvgMin);   if (avMin !== null) rows = rows.filter(p => parseFloat(String(p.pl_avg_percentage)) >= avMin)
-    const avMax = num(fAvgMax);   if (avMax !== null) rows = rows.filter(p => parseFloat(String(p.pl_avg_percentage)) <= avMax)
-    const sMin = num(fSessMin);   if (sMin !== null) rows = rows.filter(p => p.pl_session_count >= sMin)
+    const avMin = num(fAvgMin);   if (avMin !== null) rows = rows.filter(p => parseFloat(String(p.a1_avg_pct)) >= avMin)
+    const avMax = num(fAvgMax);   if (avMax !== null) rows = rows.filter(p => parseFloat(String(p.a1_avg_pct)) <= avMax)
+    const sMin = num(fSessMin);   if (sMin !== null) rows = rows.filter(p => p.a1_sessions >= sMin)
     return rows
   }, [allPlayers, fTracked, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin])
 
@@ -209,8 +209,8 @@ export default function TrackedPlayers() {
                       <td className='py-1.5 text-gray-500'>{p.pl_club || '—'}</td>
                       <td className='py-1.5 text-right font-mono'>{p.pl_rating > 0 ? parseFloat(String(p.pl_rating)).toFixed(2) : '—'}</td>
                       <td className='py-1.5 text-right font-mono'>{p.pl_a_points > 0 ? parseFloat(String(p.pl_a_points)).toFixed(2) : '—'}</td>
-                      <td className='py-1.5 text-right font-medium'>{p.pl_avg_percentage > 0 ? parseFloat(String(p.pl_avg_percentage)).toFixed(2) + '%' : '—'}</td>
-                      <td className='py-1.5 text-right text-gray-600'>{p.pl_session_count > 0 ? p.pl_session_count : '—'}</td>
+                      <td className='py-1.5 text-right font-medium'>{p.a1_avg_pct > 0 ? parseFloat(String(p.a1_avg_pct)).toFixed(2) + '%' : '—'}</td>
+                      <td className='py-1.5 text-right text-gray-600'>{p.a1_sessions > 0 ? p.a1_sessions : '—'}</td>
                       <td className='py-1.5 text-right'>
                         <button
                           onClick={() => togglePlayer(p)}

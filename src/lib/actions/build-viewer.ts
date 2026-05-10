@@ -34,17 +34,19 @@ export async function getResultsByPlid(plid: number) {
   })
 }
 
-/** All partnerships with player names, ordered by session count. */
+/** All partnerships with player names, ordered by session count (C-group). */
 export async function getAllPartners() {
   return table_query({
     caller: 'build-viewer/allPartners',
     query: `SELECT p1.pl_name AS player1, p2.pl_name AS player2,
-                   pa.pa_sessions AS sessions, pa.pa_avg_pct AS avg_pct,
-                   pa.pa_mp_sessions AS mp, pa.pa_imp_sessions AS vp
+                   a2.a2_mp_sessions + a2.a2_vp_sessions AS sessions,
+                   a2.a2_mp_avg_pct AS avg_pct,
+                   a2.a2_mp_sessions AS mp, a2.a2_vp_sessions AS vp
             FROM tpa_partners pa
+            JOIN ta2_partner_stats a2 ON a2.a2_plid1 = pa.pa_plid1 AND a2.a2_plid2 = pa.pa_plid2 AND a2.a2_group = 'C'
             JOIN tpl_players p1 ON p1.pl_plid = pa.pa_plid1
             JOIN tpl_players p2 ON p2.pl_plid = pa.pa_plid2
-            ORDER BY pa.pa_sessions DESC`,
+            ORDER BY a2.a2_mp_sessions + a2.a2_vp_sessions DESC`,
     params: []
   })
 }

@@ -7,7 +7,7 @@ export async function POST() {
     const result = await table_query({
       caller: 'build/sessions-nzb/insert',
       query: `INSERT INTO tse_sessions
-                (se_source_id, se_date, se_day_of_week, se_scoring, se_name, se_session_type,
+                (se_source_id, se_date, se_day_of_week, se_scoring, se_name,
                  se_club, se_tournament, se_event_type)
               SELECT DISTINCT ON (s9_run_id)
                 s9_run_id,
@@ -15,7 +15,6 @@ export async function POST() {
                 TO_CHAR(s9_date, 'FMDay'),
                 CASE WHEN s9_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
                 s9_event_name,
-                'club',
                 s9_club,
                 s9_tournament,
                 s9_event_type

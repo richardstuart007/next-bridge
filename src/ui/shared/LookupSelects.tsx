@@ -127,13 +127,14 @@ export function ClubSelect({ selected, onChange, mode = 'all', placeholder = 'Al
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
   useEffect(() => {
-    getAllClubs()
-      .then(rows => {
+    (async () => {
+      try {
+        const rows = await getAllClubs()
         const opts = (rows as { cl_club: string }[]).map(r => r.cl_club)
         setOptions(opts)
         cbRef.current?.(opts)
-      })
-      .catch(console.error)
+      } catch (err) { console.error(err) }
+    })()
   }, [])
   return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
 }
@@ -145,13 +146,14 @@ export function GradeSelect({ selected, onChange, mode = 'all', placeholder = 'A
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
   useEffect(() => {
-    getAllGrades()
-      .then(rows => {
+    (async () => {
+      try {
+        const rows = await getAllGrades()
         const opts = (rows as { gr_grade: string }[]).map(r => r.gr_grade)
         setOptions(opts)
         cbRef.current?.(opts)
-      })
-      .catch(console.error)
+      } catch (err) { console.error(err) }
+    })()
   }, [])
   return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
 }
@@ -163,13 +165,14 @@ export function RankSelect({ selected, onChange, mode = 'all', placeholder = 'Al
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
   useEffect(() => {
-    getAllRanks()
-      .then(rows => {
+    (async () => {
+      try {
+        const rows = await getAllRanks()
         const opts = (rows as { rk_rank: string }[]).map(r => r.rk_rank)
         setOptions(opts)
         cbRef.current?.(opts)
-      })
-      .catch(console.error)
+      } catch (err) { console.error(err) }
+    })()
   }, [])
   return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
 }
@@ -181,31 +184,59 @@ export function EventTypeSelect({ selected, onChange, mode = 'all', placeholder 
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
   useEffect(() => {
-    getAllEventTypes()
-      .then(rows => {
+    (async () => {
+      try {
+        const rows = await getAllEventTypes()
         const opts = (rows as { et_event_type: string }[]).map(r => r.et_event_type).sort()
         setOptions(opts)
         cbRef.current?.(opts)
-      })
-      .catch(console.error)
+      } catch (err) { console.error(err) }
+    })()
   }, [])
   return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
 }
 
 // ── TournamentSelect ──────────────────────────────────────────────────────────
 
-export function TournamentSelect({ selected, onChange, mode = 'all', placeholder = 'All', onOptionsLoaded }: LookupProps) {
+export function TournamentSelect({ selected, onChange, onOptionsLoaded }: LookupProps) {
   const [options, setOptions] = useState<string[]>([])
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
   useEffect(() => {
-    getAllTournaments()
-      .then(rows => {
+    (async () => {
+      try {
+        const rows = await getAllTournaments()
         const opts = (rows as { tt_tournament: string }[]).map(r => r.tt_tournament).sort()
         setOptions(opts)
         cbRef.current?.(opts)
-      })
-      .catch(console.error)
+      } catch (err) { console.error(err) }
+    })()
   }, [])
-  return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
+
+  const grpOpts = {
+    All: options,
+    A:   options.filter(t => t.slice(-1) === 'A'),
+    B:   options.filter(t => t.slice(-1) === 'B'),
+    C:   options.filter(t => t.slice(-1) !== 'A' && t.slice(-1) !== 'B'),
+  }
+
+  function activeGrp(): 'All' | 'A' | 'B' | 'C' | null {
+    for (const [g, opts] of Object.entries(grpOpts) as [keyof typeof grpOpts, string[]][]) {
+      if (opts.length > 0 && selected.size === opts.length && opts.every(o => selected.has(o))) return g
+    }
+    return null
+  }
+  const active = activeGrp()
+
+  return (
+    <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
+      {(['All', 'A', 'B', 'C'] as const).map(g => (
+        <button key={g} type='button'
+          onClick={() => onChange(new Set(grpOpts[g]))}
+          className={`flex-1 py-0.5 ${active === g ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+          {g}
+        </button>
+      ))}
+    </div>
+  )
 }

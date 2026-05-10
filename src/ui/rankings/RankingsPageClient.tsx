@@ -109,14 +109,14 @@ function HeaderTypeahead({ placeholder, onSelect, onClear }: {
   )
 }
 
-type Scoring = 'all' | 'mp' | 'imp'
+type Scoring = 'mp' | 'imp'
 type TabId = 'players' | 'partnerships'
 
 const TOP_OPTS = [10, 25, 50, 100]
 
 export default function RankingsPageClient() {
   const [min, setMin] = useState(5)
-  const [scoring, setScoring] = useState<Scoring>('all')
+  const [scoring, setScoring] = useState<Scoring>('mp')
   const [players, setPlayers] = useState<PlayerRow[]>([])
   const [partnerships, setPartnerships] = useState<PartnershipRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -136,17 +136,18 @@ export default function RankingsPageClient() {
   const [partnerTrackedOnly, setPartnerTrackedOnly] = useState(false)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetch(`/api/rankings?min=${min}&scoring=${scoring}`)
-      .then(r => r.json())
-      .then(data => {
+    (async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const r = await fetch(`/api/rankings?min=${min}&scoring=${scoring}`)
+        const data = await r.json()
         if (data.error) { setError(data.error); return }
         setPlayers(data.players ?? [])
         setPartnerships(data.partnerships ?? [])
-      })
-      .catch(err => setError(String(err)))
-      .finally(() => setLoading(false))
+      } catch (err) { setError(String(err)) }
+      finally { setLoading(false) }
+    })()
   }, [min, scoring])
 
   // Scroll to first highlighted player after render
@@ -187,10 +188,10 @@ export default function RankingsPageClient() {
   function ScoringToggle() {
     return (
       <div className='flex justify-center rounded border border-gray-300 overflow-hidden text-xs'>
-        {(['all', 'mp', 'imp'] as Scoring[]).map(s => (
+        {(['mp', 'imp'] as Scoring[]).map(s => (
           <button key={s} onClick={() => setScoring(s)}
             className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-            {s === 'all' ? 'All' : s.toUpperCase()}
+            {s.toUpperCase()}
           </button>
         ))}
       </div>

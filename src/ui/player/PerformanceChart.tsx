@@ -8,15 +8,18 @@ import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
 interface ResultRow {
   session_id: number
   date: string
-  session_type: string
   day_of_week: string
   percentage: number
+  vp: number | null
+  scoring: string
+  tournament: string
   partner_id: number
   partner_name: string
 }
 
 interface Props {
   results: ResultRow[]
+  scoring: 'MP' | 'VP'
 }
 
 const PARTNER_COLORS = [
@@ -44,7 +47,7 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' })
 }
 
-export default function PerformanceChart({ results }: Props) {
+export default function PerformanceChart({ results, scoring }: Props) {
   const router = useRouter()
   const [smoothing, setSmoothing] = useState(30)
 
@@ -52,21 +55,22 @@ export default function PerformanceChart({ results }: Props) {
     [...results].sort((a, b) => (a.date < b.date ? -1 : 1))
   , [results])
 
+  const valueOf = (r: ResultRow) =>
+    scoring === 'VP' ? parseFloat(String(r.vp ?? 0)) : parseFloat(String(r.percentage))
+
   const { partnerOrder, ...graphData }: GraphStructure & { partnerOrder: number[] } = useMemo(() => {
     if (sorted.length === 0) return { labels: [], datasets: [], partnerOrder: [] }
 
-    // Shared date x-axis
     const allDates = [...new Set(sorted.map(r => r.date.slice(0, 10)))].sort()
     const dateIndex = new Map(allDates.map((d, i) => [d, i]))
     const labels = allDates.map(fmtDate)
 
-    // Partner order by average percentage descending
     const partnerNames = new Map<number, string>()
-    const partnerAvgs = new Map<number, number[]>()
+    const partnerAvgs  = new Map<number, number[]>()
     sorted.forEach(r => {
       partnerNames.set(r.partner_id, r.partner_name)
       const vals = partnerAvgs.get(r.partner_id) ?? []
-      vals.push(parseFloat(String(r.percentage)))
+      vals.push(valueOf(r))
       partnerAvgs.set(r.partner_id, vals)
     })
     const partnerOrder = [...partnerNames.keys()].sort((a, b) => {
@@ -77,7 +81,7 @@ export default function PerformanceChart({ results }: Props) {
 
     const datasets: Datasets[] = partnerOrder.map((partnerId, idx) => {
       const partnerRows = sorted.filter(r => r.partner_id === partnerId)
-      const rawVals = partnerRows.map(r => parseFloat(String(r.percentage)))
+      const rawVals     = partnerRows.map(valueOf)
       const smoothedVals = smoothing > 0 ? rollingAvg(rawVals, smoothing) : rawVals
 
       const data: (number | null)[] = Array(allDates.length).fill(null)
@@ -92,9 +96,14 @@ export default function PerformanceChart({ results }: Props) {
         tooltipData[slot] = `${r.date.slice(0, 10)} · ${r.day_of_week}`
       })
 
-      const partnerAvg = rawVals.reduce((s, v) => s + v, 0) / rawVals.length
+      const avg = rawVals.reduce((s, v) => s + v, 0) / rawVals.length
+      const avgLabel = scoring === 'VP'
+        ? parseFloat(avg.toFixed(2))
+        : parseFloat(avg.toFixed(1))
+      const unit = scoring === 'VP' ? '' : '%'
+
       return {
-        label: `${partnerNames.get(partnerId) ?? `Partner ${partnerId}`} (${parseFloat(partnerAvg.toFixed(1))}%)`,
+        label: `${partnerNames.get(partnerId) ?? `Partner ${partnerId}`} (${avgLabel}${unit})`,
         data,
         keys,
         keyType: 'seid',
@@ -105,26 +114,25 @@ export default function PerformanceChart({ results }: Props) {
     })
 
     return { labels, datasets, partnerOrder }
-  }, [sorted, smoothing])
+  }, [sorted, smoothing, scoring])
 
   const overallAvg = sorted.length > 0
-    ? parseFloat((sorted.reduce((sum, r) => sum + parseFloat(String(r.percentage)), 0) / sorted.length).toFixed(1))
+    ? parseFloat((sorted.reduce((sum, r) => sum + valueOf(r), 0) / sorted.length).toFixed(scoring === 'VP' ? 2 : 1))
     : null
+
+  const unitLabel = scoring === 'VP' ? 'pts' : '%'
 
   return (
     <div className='space-y-3'>
-      <div className='flex items-baseline gap-4'>
+      <div className='flex items-center gap-4 flex-wrap'>
         <h2 className='text-base font-semibold text-gray-800'>Performance Over Time</h2>
         {overallAvg !== null && (
-          <span className='text-sm text-gray-500'>avg <span className='font-medium text-gray-700'>{overallAvg}%</span></span>
+          <span className='text-sm text-gray-500'>avg <span className='font-medium text-gray-700'>{overallAvg}{unitLabel}</span></span>
         )}
         <div className='flex items-center gap-1.5 ml-auto'>
           <label className='text-xs text-gray-500'>Smooth</label>
-          <select
-            value={smoothing}
-            onChange={e => setSmoothing(parseInt(e.target.value, 10))}
-            className='rounded border border-gray-300 px-2 py-0.5 text-xs'
-          >
+          <select value={smoothing} onChange={e => setSmoothing(parseInt(e.target.value, 10))}
+            className='rounded border border-gray-300 px-2 py-0.5 text-xs'>
             <option value={0}>Off</option>
             <option value={20}>20 sessions</option>
             <option value={30}>30 sessions</option>
@@ -137,7 +145,7 @@ export default function PerformanceChart({ results }: Props) {
 
       {sorted.length === 0 ? (
         <div className='flex items-center justify-center h-48 text-gray-400 text-sm'>
-          No results for this filter
+          No {scoring} results
         </div>
       ) : (
         <div className='h-[576px]'>

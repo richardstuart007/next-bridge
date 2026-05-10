@@ -42,8 +42,15 @@ export async function auditSessionsProcess(): Promise<AuditCheck[]> {
     query: `SELECT p.pl_plid, p.pl_name,
               COUNT(r.re_reid)::int AS result_rows
             FROM tpl_players p
-            JOIN tre_results r ON r.re_plid1 = p.pl_plid
-            WHERE p.pl_session_count = 0
+            JOIN tre_results r  ON r.re_plid1 = p.pl_plid
+            JOIN tse_sessions se ON se.se_seid = r.re_seid
+            WHERE CASE WHEN RIGHT(se.se_tournament,1)='A' THEN 'A'
+                       WHEN RIGHT(se.se_tournament,1)='B' THEN 'B'
+                       ELSE 'C' END = 'C'
+              AND NOT EXISTS (
+                SELECT 1 FROM ta1_player_stats a1
+                WHERE a1.a1_plid = p.pl_plid AND a1.a1_group = 'C'
+              )
             GROUP BY p.pl_plid, p.pl_name
             ORDER BY p.pl_name`,
     params: []
@@ -82,38 +89,47 @@ export async function auditStats(): Promise<AuditCheck[]> {
 }
 
 export async function auditAverages(): Promise<AuditCheck[]> {
-  const wrongCount = await table_query({
-    caller: 'audit/wrongCount',
-    query: `SELECT p.pl_plid, p.pl_name,
-              p.pl_session_count AS stored_count,
-              COUNT(DISTINCT r.re_seid)::int AS actual_count
+  const noPlayerStats = await table_query({
+    caller: 'audit/noPlayerStats',
+    query: `SELECT p.pl_plid, p.pl_name, COUNT(r.re_reid)::int AS results
             FROM tpl_players p
-            JOIN tre_results r ON r.re_plid1 = p.pl_plid
-            GROUP BY p.pl_plid, p.pl_name, p.pl_session_count
-            HAVING p.pl_session_count <> COUNT(DISTINCT r.re_seid)
+            JOIN tre_results r  ON r.re_plid1 = p.pl_plid
+            JOIN tse_sessions se ON se.se_seid = r.re_seid
+            WHERE CASE WHEN RIGHT(se.se_tournament,1)='A' THEN 'A'
+                       WHEN RIGHT(se.se_tournament,1)='B' THEN 'B'
+                       ELSE 'C' END = 'C'
+              AND NOT EXISTS (
+                SELECT 1 FROM ta1_player_stats a1
+                WHERE a1.a1_plid = p.pl_plid AND a1.a1_group = 'C'
+              )
+            GROUP BY p.pl_plid, p.pl_name
             ORDER BY p.pl_name`,
     params: []
   })
 
-  const zeroAvg = await table_query({
-    caller: 'audit/zeroAvg',
-    query: `SELECT pl_plid, pl_name, pl_session_count
-            FROM tpl_players
-            WHERE pl_session_count > 0 AND pl_avg_percentage = 0
-            ORDER BY pl_name`,
+  const noPartnerStats = await table_query({
+    caller: 'audit/noPartnerStats',
+    query: `SELECT COUNT(DISTINCT pa.pa_paid)::int AS n
+            FROM tpa_partners pa
+            WHERE EXISTS (
+              SELECT 1 FROM tre_results r
+              JOIN tse_sessions se ON se.se_seid = r.re_seid
+              WHERE (r.re_plid1 = pa.pa_plid1 AND r.re_plid2 = pa.pa_plid2)
+                 OR (r.re_plid1 = pa.pa_plid2 AND r.re_plid2 = pa.pa_plid1)
+                AND CASE WHEN RIGHT(se.se_tournament,1)='A' THEN 'A'
+                         WHEN RIGHT(se.se_tournament,1)='B' THEN 'B'
+                         ELSE 'C' END = 'C'
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM ta2_partner_stats a2
+              WHERE a2.a2_plid1 = pa.pa_plid1 AND a2.a2_plid2 = pa.pa_plid2 AND a2.a2_group = 'C'
+            )`,
     params: []
   })
-
-  const zeroPartners = await table_query({
-    caller: 'audit/zeroPartners',
-    query: `SELECT COUNT(*)::int AS n FROM tpa_partners WHERE pa_sessions = 0`,
-    params: []
-  })
-  const partnerCount = zeroPartners[0]?.n ?? 0
+  const noPartnerCount = noPartnerStats[0]?.n ?? 0
 
   return [
-    { label: 'Players with incorrect session count', count: wrongCount.length, rows: wrongCount },
-    { label: 'Players with sessions but avg% = 0', count: zeroAvg.length, rows: zeroAvg },
-    { label: 'Partnerships not recalculated (pa_sessions = 0)', count: partnerCount, rows: [] },
+    { label: 'Players with results but no C-group stats', count: noPlayerStats.length, rows: noPlayerStats },
+    { label: 'Partnerships with no C-group stats', count: noPartnerCount, rows: [] },
   ]
 }

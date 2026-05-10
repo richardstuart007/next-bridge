@@ -54,16 +54,15 @@ export async function fetchHtml(url: string, _caller = 'fetchHtml', _forceBrowse
   const inflight = _inFlightRequests.get(url)
   if (inflight !== undefined) return inflight
 
-  const promise = doFetch(url)
-    .then(html => {
+  const promise = (async () => {
+    try {
+      const html = await doFetch(url)
       _webCache.set(url, html)
-      _inFlightRequests.delete(url)
       return html
-    })
-    .catch(err => {
+    } finally {
       _inFlightRequests.delete(url)
-      throw err
-    })
+    }
+  })()
 
   _inFlightRequests.set(url, promise)
   return promise

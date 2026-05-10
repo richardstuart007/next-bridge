@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { table_update } from 'nextjs-shared/table_update'
-import { table_upsert } from 'nextjs-shared/table_upsert'
 import { write_Logging } from 'nextjs-shared/write_logging'
 
 /**
@@ -111,91 +109,23 @@ export async function POST(request: NextRequest) {
       params: [keep_plid]
     })
 
-    // 5. Recalculate averages for the kept player
-    const avgRows = await table_query({
+    // 5+6. Rebuild tpa_partners rows for the kept player (stats live in ta1/ta2 — re-run recalculate after merge)
+    await table_query({
       caller: 'players/merge',
       query: `
-        SELECT
-          COUNT(*)                                                                         AS total_count,
-          ROUND(AVG(re.re_percentage)::numeric, 2)                                        AS avg_all,
-          COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                              AS mp_count,
-          ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)     AS mp_avg,
-          COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                             AS imp_count,
-          ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)    AS imp_avg
+        INSERT INTO tpa_partners (pa_plid1, pa_plid2)
+        SELECT DISTINCT
+          CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid1 ELSE re.re_plid2 END,
+          CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid2 ELSE re.re_plid1 END
         FROM tre_results re
-        JOIN tse_sessions s ON s.se_seid = re.re_seid
-        WHERE re.re_plid1 = $1
+        JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1, re.re_plid2)
+        JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
+        WHERE re.re_plid1 < re.re_plid2
+          AND (re.re_plid1 = $1 OR re.re_plid2 = $1)
+        ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING
       `,
       params: [keep_plid]
     })
-
-    if (avgRows.length > 0) {
-      const r = avgRows[0]
-      await table_update({
-        caller: 'players/merge',
-        table: 'tpl_players',
-        columnValuePairs: [
-          { column: 'pl_session_count',      value: Number(r.total_count) },
-          { column: 'pl_avg_percentage',     value: r.avg_all  ?? 0 },
-          { column: 'pl_mp_session_count',   value: Number(r.mp_count) },
-          { column: 'pl_mp_avg_percentage',  value: r.mp_avg   ?? 0 },
-          { column: 'pl_imp_session_count',  value: Number(r.imp_count) },
-          { column: 'pl_imp_avg_percentage', value: r.imp_avg  ?? 0 }
-        ],
-        whereColumnValuePairs: [{ column: 'pl_plid', value: keep_plid }]
-      })
-    }
-
-    // 6. Recalculate partnerships for the kept player
-    const pairRows = await table_query({
-      caller: 'players/merge',
-      query: `
-        WITH pairs AS (
-          SELECT
-            re.re_plid1, re.re_plid2,
-            COUNT(*)                                                                       AS sessions,
-            ROUND(AVG(re.re_percentage)::numeric, 2)                                      AS avg_pct,
-            COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                            AS mp_sessions,
-            ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)   AS mp_avg,
-            COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                           AS imp_sessions,
-            ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)  AS imp_avg
-          FROM tre_results re
-          JOIN tse_sessions s ON s.se_seid = re.re_seid
-          WHERE re.re_plid1 < re.re_plid2
-            AND (re.re_plid1 = $1 OR re.re_plid2 = $1)
-          GROUP BY re.re_plid1, re.re_plid2
-        )
-        SELECT
-          CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid1         ELSE pairs.re_plid2 END AS plid1,
-          CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid2 ELSE pairs.re_plid1         END AS plid2,
-          pairs.sessions, pairs.avg_pct,
-          pairs.mp_sessions, pairs.mp_avg,
-          pairs.imp_sessions, pairs.imp_avg
-        FROM pairs
-        JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid1
-        JOIN tpl_players p2 ON p2.pl_plid = pairs.re_plid2
-      `,
-      params: [keep_plid]
-    })
-
-    for (const row of pairRows) {
-      await table_upsert({
-        caller: 'players/merge',
-        table: 'tpa_partners',
-        columnValuePairs: [
-          { column: 'pa_plid1',        value: row.plid1 },
-          { column: 'pa_plid2',        value: row.plid2 },
-          { column: 'pa_sessions',     value: Number(row.sessions) },
-          { column: 'pa_avg_pct',      value: row.avg_pct    ?? 0 },
-          { column: 'pa_mp_sessions',  value: Number(row.mp_sessions) },
-          { column: 'pa_mp_avg_pct',   value: row.mp_avg     ?? 0 },
-          { column: 'pa_imp_sessions', value: Number(row.imp_sessions) },
-          { column: 'pa_imp_avg_pct',  value: row.imp_avg    ?? 0 }
-        ],
-        conflictColumns: ['pa_plid1', 'pa_plid2']
-      })
-    }
-
     // Back-fill re_paid for ALL kept player result rows (including transferred rows
     // whose old re_paid was nulled in step 3a).
     // Uses both (plid1,plid2) orderings so it works regardless of whether tpa_partners
@@ -219,7 +149,7 @@ export async function POST(request: NextRequest) {
     await write_Logging({
       lg_functionname: 'POST',
       lg_caller: 'players/merge',
-      lg_msg: `Merged plid ${discard_plid} (${discardName}) into plid ${keep_plid} (${keepName}); recalculated averages + ${pairRows.length} partnerships`,
+      lg_msg: `Merged plid ${discard_plid} (${discardName}) into plid ${keep_plid} (${keepName}); rebuilt partnerships`,
       lg_severity: 'I'
     })
 
@@ -227,7 +157,7 @@ export async function POST(request: NextRequest) {
       merged: true,
       kept: { plid: keep_plid, name: keepName },
       discarded: { plid: discard_plid, name: discardName },
-      partnerships_recalculated: pairRows.length
+      partnerships_rebuilt: true
     })
   } catch (err) {
     await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/merge', lg_msg: String(err), lg_severity: 'E' })

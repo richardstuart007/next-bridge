@@ -16,8 +16,8 @@ interface PlayerRow {
   pl_club: string
   pl_rating: number
   pl_a_points: number
-  pl_session_count: number
-  pl_avg_percentage: number
+  a1_sessions: number
+  a1_avg_pct: number
   pl_all_results: boolean
 }
 
@@ -43,23 +43,7 @@ function normalizeRank(rank: string): string {
   return rank
 }
 
-// ── Number range filter pair (avg% only) ─────────────────────────────────────
-function NumRange({
-  min, max, onMin, onMax, step
-}: {
-  min: string; max: string
-  onMin: (v: string) => void; onMax: (v: string) => void
-  step?: string
-}) {
-  return (
-    <div className='flex flex-col gap-0.5'>
-      <input type='number' placeholder='Min' value={min} step={step}
-        onChange={e => onMin(e.target.value)} className={NUM_CLS} />
-      <input type='number' placeholder='Max' value={max} step={step}
-        onChange={e => onMax(e.target.value)} className={NUM_CLS} />
-    </div>
-  )
-}
+
 
 const SESSION_KEY = 'home_state'
 
@@ -71,7 +55,6 @@ function loadSaved() {
 export default function HomePageClient() {
   const router = useRouter()
   const restoredRef    = useRef(false)
-  const clubsReadyRef  = useRef(false)
 
   const [activeTab, setActiveTab] = useState<'players' | 'sessions'>('players')
 
@@ -92,8 +75,6 @@ export default function HomePageClient() {
   const [fClubs,     setFClubs]     = useState<Set<string>>(new Set())
   const [fRatingMin, setFRatingMin] = useState('')
   const [fAMin,      setFAMin]      = useState('')
-  const [fAvgMin,    setFAvgMin]    = useState('')
-  const [fAvgMax,    setFAvgMax]    = useState('')
   const [fSessMin,   setFSessMin]   = useState('')
   const [fTracked,   setFTracked]   = useState(false)
   const [fExcludeNz0, setFExcludeNz0] = useState(true)
@@ -120,14 +101,9 @@ export default function HomePageClient() {
       if (s.fNz)                setFNz(s.fNz)
       if (s.fRanks?.length)     setFRanks(new Set(s.fRanks))
       if (s.fGrades?.length)    setFGrades(new Set(s.fGrades))
-      if (Array.isArray(s.fClubs)) {
-        setFClubs(new Set(s.fClubs))
-        clubsReadyRef.current = true
-      }
+      if (Array.isArray(s.fClubs)) setFClubs(new Set(s.fClubs))
       if (s.fRatingMin)         setFRatingMin(s.fRatingMin)
       if (s.fAMin)              setFAMin(s.fAMin)
-      if (s.fAvgMin)            setFAvgMin(s.fAvgMin)
-      if (s.fAvgMax)            setFAvgMax(s.fAvgMax)
       if (s.fSessMin)                    setFSessMin(s.fSessMin)
       if (s.fTracked)                    setFTracked(s.fTracked)
       if (s.fExcludeNz0 !== undefined)   setFExcludeNz0(s.fExcludeNz0)
@@ -144,29 +120,33 @@ export default function HomePageClient() {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({
         activeTab, fName, fNz, fTracked, fExcludeNz0,
         fRanks: [...fRanks], fGrades: [...fGrades], fClubs: [...fClubs],
-        fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin,
+        fRatingMin, fAMin, fSessMin,
         playerPage, playerItemsPerPage,
       }))
     } catch {}
   }, [activeTab, fName, fNz, fTracked, fExcludeNz0, fRanks, fGrades, fClubs,
-      fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin,
+      fRatingMin, fAMin, fSessMin,
       playerPage, playerItemsPerPage])
 
   useEffect(() => {
-    fetch('/api/admin/players')
-      .then(r => r.json())
-      .then(rows => setAllPlayers(rows as PlayerRow[]))
-      .catch(console.error)
+    (async () => {
+      try {
+        const r = await fetch('/api/admin/players')
+        const rows = await r.json()
+        setAllPlayers(rows as PlayerRow[])
+      } catch (err) { console.error(err) }
+    })()
   }, [])
 
   useEffect(() => {
-    setLoadingSessions(true)
-    getSessionsByYear(null)
-      .then(rows => {
+    (async () => {
+      setLoadingSessions(true)
+      try {
+        const rows = await getSessionsByYear(null)
         setAllSessions(rows as SessionRow[])
-      })
-      .catch(console.error)
-      .finally(() => setLoadingSessions(false))
+      } catch (err) { console.error(err) }
+      finally { setLoadingSessions(false) }
+    })()
   }, [])
 
   const num = (v: string) => v === '' ? null : parseFloat(v)
@@ -186,26 +166,23 @@ export default function HomePageClient() {
     if (rMin !== null)   rows = rows.filter(p => parseFloat(String(p.pl_rating)) >= rMin)
     const aMin = num(fAMin)
     if (aMin !== null)   rows = rows.filter(p => parseFloat(String(p.pl_a_points)) >= aMin)
-    const avMin = num(fAvgMin), avMax = num(fAvgMax)
-    if (avMin !== null)  rows = rows.filter(p => parseFloat(String(p.pl_avg_percentage)) >= avMin)
-    if (avMax !== null)  rows = rows.filter(p => parseFloat(String(p.pl_avg_percentage)) <= avMax)
     const sMin = num(fSessMin)
-    if (sMin !== null)   rows = rows.filter(p => p.pl_session_count >= sMin)
+    if (sMin !== null)   rows = rows.filter(p => p.a1_sessions >= sMin)
     return rows
-  }, [allPlayers, fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin])
+  }, [allPlayers, fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fSessMin])
 
   const hasPlayerFilter = fTracked || fName || fNz || fRanks.size || fGrades.size || fClubs.size ||
-    fRatingMin || fAMin || fAvgMin || fAvgMax || fSessMin
+    fRatingMin || fAMin || fSessMin
 
   function clearPlayerFilters() {
     setFTracked(false); setFExcludeNz0(true)
     setFName(''); setFNz(''); setFRanks(new Set()); setFGrades(new Set()); setFClubs(new Set())
-    setFRatingMin(''); setFAMin(''); setFAvgMin(''); setFAvgMax(''); setFSessMin('')
+    setFRatingMin(''); setFAMin(''); setFSessMin('')
   }
 
   useEffect(() => {
     if (restoredRef.current) setPlayerPage(1)
-  }, [fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fAvgMin, fAvgMax, fSessMin])
+  }, [fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fSessMin])
 
   const sessions = useMemo(() => {
     let rows = allSessions
@@ -286,13 +263,7 @@ export default function HomePageClient() {
                         <GradeSelect mode='any' selected={fGrades} onChange={setFGrades} placeholder='All' />
                       </td>
                       <td className='py-1 pr-1'>
-                        <ClubSelect mode='any' selected={fClubs} onChange={setFClubs} placeholder='All'
-                          onOptionsLoaded={opts => {
-                            if (!clubsReadyRef.current) {
-                              setFClubs(new Set(opts.filter(c => c !== 'Archive')))
-                              clubsReadyRef.current = true
-                            }
-                          }} />
+                        <ClubSelect mode='any' selected={fClubs} onChange={setFClubs} placeholder='All' />
                       </td>
                       <td className='py-1 pr-1'>
                         <input type='number' placeholder='Min' value={fRatingMin} step='0.01'
@@ -302,9 +273,7 @@ export default function HomePageClient() {
                         <input type='number' placeholder='Min' value={fAMin} step='0.01'
                           onChange={e => setFAMin(e.target.value)} className={NUM_CLS} />
                       </td>
-                      <td className='py-1 pr-1'>
-                        <NumRange min={fAvgMin} max={fAvgMax} onMin={setFAvgMin} onMax={setFAvgMax} step='0.01' />
-                      </td>
+                      <td className='py-1 pr-1' />
                       <td className='py-1 pr-1'>
                         <input type='number' placeholder='Min' value={fSessMin}
                           onChange={e => setFSessMin(e.target.value)} className={NUM_CLS} />
@@ -329,8 +298,8 @@ export default function HomePageClient() {
                         <td className='py-1.5 text-gray-500'>{p.pl_club || '—'}</td>
                         <td className='py-1.5 text-right text-gray-700 font-mono text-xs'>{p.pl_rating > 0 ? parseFloat(String(p.pl_rating)).toFixed(2) : '—'}</td>
                         <td className='py-1.5 text-right text-gray-700 font-mono text-xs'>{p.pl_a_points > 0 ? parseFloat(String(p.pl_a_points)).toFixed(2) : '—'}</td>
-                        <td className='py-1.5 text-right font-medium'>{p.pl_avg_percentage > 0 ? parseFloat(String(p.pl_avg_percentage)).toFixed(2) + '%' : '—'}</td>
-                        <td className='py-1.5 text-right text-gray-600'>{p.pl_session_count > 0 ? p.pl_session_count : '—'}</td>
+                        <td className='py-1.5 text-right font-medium'>{p.a1_avg_pct > 0 ? parseFloat(String(p.a1_avg_pct)).toFixed(2) + '%' : '—'}</td>
+                        <td className='py-1.5 text-right text-gray-600'>{p.a1_sessions > 0 ? p.a1_sessions : '—'}</td>
                         <td className='py-1.5 text-center'>
                           {isTracked(p) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
                         </td>

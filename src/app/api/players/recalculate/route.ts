@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { table_update } from 'nextjs-shared/table_update'
-import { table_upsert } from 'nextjs-shared/table_upsert'
 import { write_Logging } from 'nextjs-shared/write_logging'
 
+const GRP_EXPR = `CASE WHEN RIGHT(se.se_tournament,1)='A' THEN 'A' WHEN RIGHT(se.se_tournament,1)='B' THEN 'B' ELSE 'C' END`
+
 export async function POST(request: NextRequest) {
-  const mode = request.nextUrl.searchParams.get('mode') ?? 'averages'
+  const { searchParams } = request.nextUrl
+  const mode = searchParams.get('mode') ?? ''
+  const grp  = searchParams.get('grp')  ?? ''
 
   const encoder = new TextEncoder()
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
@@ -17,134 +19,71 @@ export async function POST(request: NextRequest) {
 
   ;(async () => {
     try {
-      if (mode === 'averages') {
+      if (mode === 'player_truncate') {
+        await table_query({ caller: 'recalculate/player_truncate', query: `TRUNCATE ta1_player_stats`, params: [] })
+        await send({ done: true, updated: 0, failed: 0 })
+
+      } else if (mode === 'player_grp') {
+        const isAll = grp === 'all'
         const rows = await table_query({
-          caller: 'recalculate/averages',
+          caller: `recalculate/player_${grp}`,
           query: `
-            SELECT
-              re.re_plid1,
-              COUNT(*)                                                                          AS total_count,
-              ROUND(AVG(re.re_percentage)::numeric, 2)                                         AS avg_all,
-              COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                               AS mp_count,
-              ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)      AS mp_avg,
-              COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                              AS imp_count,
-              ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)     AS imp_avg
+            INSERT INTO ta1_player_stats (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_vp_sessions, a1_vp_avg_vp)
+            SELECT re.re_plid1,
+                   ${isAll ? "'all'" : '$1::varchar'},
+                   COUNT(*) FILTER (WHERE se.se_scoring = 'MP')::integer,
+                   COALESCE(ROUND(AVG(re.re_percentage) FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
+                   COUNT(*) FILTER (WHERE se.se_scoring = 'VP')::integer,
+                   COALESCE(ROUND(AVG(re.re_vp)         FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0)
             FROM tre_results re
-            JOIN tse_sessions s ON s.se_seid = re.re_seid
+            JOIN tse_sessions se ON se.se_seid = re.re_seid
+            ${isAll ? '' : `WHERE ${GRP_EXPR} = $1`}
             GROUP BY re.re_plid1
+            RETURNING 1
           `,
-          params: []
+          params: isAll ? [] : [grp]
         })
-        const total = rows.length
-        let processed = 0
-        let failed = 0
+        await send({ done: true, updated: rows.length, failed: 0 })
 
-        for (const row of rows) {
-          try {
-            await table_update({
-              caller: 'recalculate/averages',
-              table: 'tpl_players',
-              columnValuePairs: [
-                { column: 'pl_session_count',      value: Number(row.total_count) },
-                { column: 'pl_avg_percentage',     value: row.avg_all ?? 0 },
-                { column: 'pl_mp_session_count',   value: Number(row.mp_count) },
-                { column: 'pl_mp_avg_percentage',  value: row.mp_avg ?? 0 },
-                { column: 'pl_imp_session_count',  value: Number(row.imp_count) },
-                { column: 'pl_imp_avg_percentage', value: row.imp_avg ?? 0 }
-              ],
-              whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid1 }]
-            })
-          } catch (err) {
-            failed++
-            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `averages update failed for plid ${row.re_plid1}: ${String(err)}`, lg_severity: 'E' })
-          }
-          processed++
-          await send({ step: 'averages', processed, total, failed })
-        }
+      } else if (mode === 'partner_truncate') {
+        await table_query({ caller: 'recalculate/partner_truncate', query: `TRUNCATE ta2_partner_stats`, params: [] })
+        await send({ done: true, updated: 0, failed: 0 })
 
-        await send({ done: true, updated: rows.length, failed })
-
-      } else if (mode === 'partners') {
+      } else if (mode === 'partner_grp') {
+        const isAll = grp === 'all'
         const rows = await table_query({
-          caller: 'recalculate/partners',
+          caller: `recalculate/partner_${grp}`,
           query: `
             WITH pairs AS (
-              SELECT
-                re.re_plid1, re.re_plid2,
-                COUNT(*)                                                                        AS sessions,
-                ROUND(AVG(re.re_percentage)::numeric, 2)                                       AS avg_pct,
-                COUNT(*)        FILTER (WHERE s.se_scoring = 'MP')                             AS mp_sessions,
-                ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'MP')::numeric, 2)    AS mp_avg,
-                COUNT(*)        FILTER (WHERE s.se_scoring = 'VP')                            AS imp_sessions,
-                ROUND(AVG(re.re_percentage) FILTER (WHERE s.se_scoring = 'VP')::numeric, 2)   AS imp_avg
+              SELECT CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid1 ELSE re.re_plid2 END AS plid1,
+                     CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid2 ELSE re.re_plid1 END AS plid2,
+                     re.re_percentage, re.re_vp, se.se_scoring
               FROM tre_results re
-              JOIN tse_sessions s ON s.se_seid = re.re_seid
+              JOIN tse_sessions se ON se.se_seid = re.re_seid
+              JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1,    re.re_plid2)
+              JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
               WHERE re.re_plid1 < re.re_plid2
-              GROUP BY re.re_plid1, re.re_plid2
+                ${isAll ? '' : `AND ${GRP_EXPR} = $1`}
             )
-            SELECT
-              CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid1         ELSE pairs.re_plid2 END AS plid1,
-              CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid2 ELSE pairs.re_plid1         END AS plid2,
-              pairs.sessions, pairs.avg_pct,
-              pairs.mp_sessions, pairs.mp_avg,
-              pairs.imp_sessions, pairs.imp_avg
-            FROM pairs
-            JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid1
-            JOIN tpl_players p2 ON p2.pl_plid = pairs.re_plid2
+            INSERT INTO ta2_partner_stats (a2_plid1, a2_plid2, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_vp_sessions, a2_vp_avg_vp)
+            SELECT plid1, plid2,
+                   ${isAll ? "'all'" : '$1::varchar'},
+                   COUNT(*) FILTER (WHERE se_scoring = 'MP')::integer,
+                   COALESCE(ROUND(AVG(re_percentage) FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                   COUNT(*) FILTER (WHERE se_scoring = 'VP')::integer,
+                   COALESCE(ROUND(AVG(re_vp)         FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0)
+            FROM pairs GROUP BY plid1, plid2
+            RETURNING 1
           `,
-          params: []
+          params: isAll ? [] : [grp]
         })
-
-        const total = rows.length
-        let processed = 0
-        let failed = 0
-
-        for (const row of rows) {
-          try {
-            await table_upsert({
-              caller: 'recalculate/partners',
-              table: 'tpa_partners',
-              columnValuePairs: [
-                { column: 'pa_plid1',        value: row.plid1 },
-                { column: 'pa_plid2',        value: row.plid2 },
-                { column: 'pa_sessions',     value: Number(row.sessions) },
-                { column: 'pa_avg_pct',      value: row.avg_pct ?? 0 },
-                { column: 'pa_mp_sessions',  value: Number(row.mp_sessions) },
-                { column: 'pa_mp_avg_pct',   value: row.mp_avg ?? 0 },
-                { column: 'pa_imp_sessions', value: Number(row.imp_sessions) },
-                { column: 'pa_imp_avg_pct',  value: row.imp_avg ?? 0 }
-              ],
-              conflictColumns: ['pa_plid1', 'pa_plid2']
-            })
-          } catch (err) {
-            failed++
-            await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: `partner upsert failed (${row.plid1},${row.plid2}): ${String(err)}`, lg_severity: 'E' })
-          }
-          processed++
-          await send({ processed, total, failed })
-        }
-
-        // Back-fill re_paid on results rows missing it
-        await table_query({
-          caller: 'recalculate/partners',
-          query: `
-            UPDATE tre_results re
-            SET re_paid = pa.pa_paid
-            FROM tpa_partners pa
-            WHERE pa.pa_plid1 = LEAST(re.re_plid1, re.re_plid2)
-              AND pa.pa_plid2 = GREATEST(re.re_plid1, re.re_plid2)
-              AND re.re_paid IS NULL
-          `,
-          params: []
-        })
-
-        await send({ done: true, updated: rows.length, failed })
+        await send({ done: true, updated: rows.length, failed: 0 })
       }
     } catch (err) {
       await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: String(err), lg_severity: 'E' })
       await send({ error: String(err) })
     } finally {
-      await writer.close()
+      try { await writer.close() } catch { /* already closed */ }
     }
   })()
 

@@ -104,50 +104,14 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
   return { withNumber, withoutNumber: total - withNumber }
 }
 
-/** Recalculate and store session count and average percentage for all players. Returns count updated. */
-export async function updateAllPlayerAverages(): Promise<number> {
-  // Step 1: compute session counts
-  const countRows = await table_query({
-    caller: 'updateAllPlayerAverages',
-    query: `SELECT re_plid1, COUNT(*) AS session_count FROM tre_results GROUP BY re_plid1`,
-    params: []
+/** Fetch all group stats (A/B/C/all) for a player from ta1_player_stats. */
+export async function getPlayerAllGroupStats(plid: number) {
+  const rows = await table_fetch({
+    caller: 'getPlayerAllGroupStats',
+    table: 'ta1_player_stats',
+    whereColumnValuePairs: [{ column: 'a1_plid', value: plid }]
   })
-  for (const row of countRows) {
-    await table_update({
-      caller: 'updateAllPlayerAverages',
-      table: PLAYERS_TABLE,
-      columnValuePairs: [{ column: 'pl_session_count', value: Number(row.session_count) }],
-      whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid1 }]
-    })
-  }
-
-  // Step 2: compute averages
-  const avgRows = await table_query({
-    caller: 'updateAllPlayerAverages',
-    query: `SELECT re_plid1, ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct FROM tre_results GROUP BY re_plid1`,
-    params: []
-  })
-  for (const row of avgRows) {
-    await table_update({
-      caller: 'updateAllPlayerAverages',
-      table: PLAYERS_TABLE,
-      columnValuePairs: [{ column: 'pl_avg_percentage', value: row.avg_pct }],
-      whereColumnValuePairs: [{ column: 'pl_plid', value: row.re_plid1 }]
-    })
-  }
-
-  return avgRows.length
-}
-
-/** Fetch top N players by average percentage (requires updateAllPlayerAverages to have been run). */
-export async function getTopPlayersByAverage(limit = 100) {
-  return table_fetch({
-    caller: 'getTopPlayersByAverage',
-    table: PLAYERS_TABLE,
-    whereColumnValuePairs: [{ column: 'pl_avg_percentage', value: 0, operator: '>' }],
-    orderBy: 'pl_avg_percentage DESC',
-    limit
-  })
+  return rows as { a1_group: string; a1_mp_sessions: number; a1_mp_avg_pct: number; a1_vp_sessions: number; a1_vp_avg_vp: number }[]
 }
 
 /** Upsert full player data including NZ bridge number. */
@@ -218,54 +182,32 @@ export async function updateIncrementalPartnerStats(): Promise<{ sessions: numbe
 
   const seids = unbuilt.map(r => r.se_seid)
 
-  const pairs = await table_query({
-    caller: 'updateIncrementalPartnerStats/pairs',
+  // Insert tpa_partners rows for any new pairs in these sessions
+  await table_query({
+    caller: 'updateIncrementalPartnerStats/insert',
     query: `
+      INSERT INTO tpa_partners (pa_plid1, pa_plid2)
       SELECT DISTINCT
-        LEAST(re_plid1, re_plid2)    AS plid1,
-        GREATEST(re_plid1, re_plid2) AS plid2
-      FROM tre_results
-      WHERE re_seid = ANY($1)
+        CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid1 ELSE re.re_plid2 END,
+        CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid2 ELSE re.re_plid1 END
+      FROM tre_results re
+      JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1, re.re_plid2)
+      JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
+      WHERE re.re_seid = ANY($1)
+        AND re.re_plid1 <> re.re_plid2
+      ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING
     `,
     params: [seids] as unknown as (string | number | boolean | null)[]
-  }) as { plid1: number; plid2: number }[]
+  })
 
-  for (const { plid1, plid2 } of pairs) {
-    const stats = await table_query({
-      caller: 'updateIncrementalPartnerStats/stats',
-      query: `
-        WITH pair_stats AS (
-          SELECT COUNT(*) AS sessions, ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct
-          FROM tre_results
-          WHERE (re_plid1 = $1 AND re_plid2 = $2)
-             OR (re_plid1 = $2 AND re_plid2 = $1)
-        )
-        SELECT
-          CASE WHEN p1.pl_name <= p2.pl_name THEN $1 ELSE $2 END AS named_plid1,
-          CASE WHEN p1.pl_name <= p2.pl_name THEN $2 ELSE $1 END AS named_plid2,
-          pair_stats.sessions,
-          pair_stats.avg_pct
-        FROM pair_stats
-        JOIN tpl_players p1 ON p1.pl_plid = $1
-        JOIN tpl_players p2 ON p2.pl_plid = $2
-      `,
-      params: [plid1, plid2]
-    }) as { named_plid1: number; named_plid2: number; sessions: number; avg_pct: number }[]
-
-    if (stats.length === 0) continue
-
-    await table_upsert({
-      caller: 'updateIncrementalPartnerStats',
-      table: PARTNERS_TABLE,
-      columnValuePairs: [
-        { column: 'pa_plid1',    value: stats[0].named_plid1 },
-        { column: 'pa_plid2',    value: stats[0].named_plid2 },
-        { column: 'pa_sessions', value: Number(stats[0].sessions) },
-        { column: 'pa_avg_pct',  value: stats[0].avg_pct }
-      ],
-      conflictColumns: ['pa_plid1', 'pa_plid2']
-    })
-  }
+  const pairsResult = await table_query({
+    caller: 'updateIncrementalPartnerStats/count',
+    query: `
+      SELECT COUNT(DISTINCT (LEAST(re_plid1,re_plid2), GREATEST(re_plid1,re_plid2)))::int AS n
+      FROM tre_results WHERE re_seid = ANY($1) AND re_plid1 <> re_plid2
+    `,
+    params: [seids] as unknown as (string | number | boolean | null)[]
+  }) as { n: number }[]
 
   await table_query({
     caller: 'updateIncrementalPartnerStats/link',
@@ -287,65 +229,7 @@ export async function updateIncrementalPartnerStats(): Promise<{ sessions: numbe
     params: [seids] as unknown as (string | number | boolean | null)[]
   })
 
-  return { sessions: seids.length, pairs: pairs.length }
-}
-
-/** Full rebuild: recompute and store session count, avg %, and name key for every partnership. Returns count upserted. */
-export async function updateAllPartnerStats(): Promise<number> {
-  // Deduplicate pairs with re_plid1 < re_plid2, then assign plid1/plid2 by alphabetical name order
-  const rows = await table_query({
-    caller: 'updateAllPartnerStats',
-    query: `
-      WITH pairs AS (
-        SELECT
-          re_plid1, re_plid2,
-          COUNT(*)                               AS sessions,
-          ROUND(AVG(re_percentage)::numeric, 2) AS avg_pct
-        FROM tre_results
-        WHERE re_plid1 < re_plid2
-        GROUP BY re_plid1, re_plid2
-      )
-      SELECT
-        CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid1         ELSE pairs.re_plid2 END AS plid1,
-        CASE WHEN p1.pl_name <= p2.pl_name THEN pairs.re_plid2 ELSE pairs.re_plid1         END AS plid2,
-        pairs.sessions,
-        pairs.avg_pct
-      FROM pairs
-      JOIN tpl_players p1 ON p1.pl_plid = pairs.re_plid1
-      JOIN tpl_players p2 ON p2.pl_plid = pairs.re_plid2
-    `,
-    params: []
-  })
-
-  for (const row of rows) {
-    await table_upsert({
-      caller: 'updateAllPartnerStats',
-      table: PARTNERS_TABLE,
-      columnValuePairs: [
-        { column: 'pa_plid1',        value: row.plid1 },
-        { column: 'pa_plid2',        value: row.plid2 },
-        { column: 'pa_sessions',     value: Number(row.sessions) },
-        { column: 'pa_avg_pct',      value: row.avg_pct }
-      ],
-      conflictColumns: ['pa_plid1', 'pa_plid2']
-    })
-  }
-
-  // Retroactively fill re_paid on existing result rows that are missing it
-  await table_query({
-    caller: 'updateAllPartnerStats',
-    query: `
-      UPDATE tre_results re
-      SET re_paid = pa.pa_paid
-      FROM tpa_partners pa
-      WHERE pa.pa_plid1 = LEAST(re.re_plid1, re.re_plid2)
-        AND pa.pa_plid2 = GREATEST(re.re_plid1, re.re_plid2)
-        AND re.re_paid IS NULL
-    `,
-    params: []
-  })
-
-  return rows.length
+  return { sessions: seids.length, pairs: pairsResult[0]?.n ?? 0 }
 }
 
 /**
@@ -373,7 +257,7 @@ export async function getOrCreatePartnerRow(
   return rows[0]?.pa_paid ?? null
 }
 
-/** Fetch stored partnership stats for a pair (order of IDs does not matter). */
+/** Fetch C-group partnership stats for a pair from ta2_partner_stats (order of IDs does not matter). */
 export async function getPartnerStats(plid1: number, plid2: number) {
   const [p1, p2] = await Promise.all([getPlayerById(plid1), getPlayerById(plid2)])
   if (!p1 || !p2) return null
@@ -382,10 +266,11 @@ export async function getPartnerStats(plid1: number, plid2: number) {
   const hi = firstIsAlpha ? plid2 : plid1
   const rows = await table_fetch({
     caller: 'getPartnerStats',
-    table: PARTNERS_TABLE,
+    table: 'ta2_partner_stats',
     whereColumnValuePairs: [
-      { column: 'pa_plid1', value: lo },
-      { column: 'pa_plid2', value: hi }
+      { column: 'a2_plid1', value: lo },
+      { column: 'a2_plid2', value: hi },
+      { column: 'a2_group', value: 'C'  }
     ]
   })
   return rows[0] ?? null

@@ -1,10 +1,18 @@
 # Import production table CSVs into Neon production.
 # Uses the unpooled (direct) Neon host — more reliable for batch COPY than the pooler.
-# psql will prompt for password, or set $env:PGPASSWORD before running.
+# Reads credentials from .env.localprod.
 
-$neon_host = "ep-still-flower-amv17pyu.c-5.us-east-1.aws.neon.tech"
-$neon_user = "neondb_owner"
-$neon_db   = "neondb"
+$psql = "C:\Program Files\PostgreSQL\18\bin\psql.exe"
+
+# Load Neon credentials from .env.localprod
+$envFile = Join-Path $PSScriptRoot "..\\.env.localprod"
+foreach ($line in Get-Content $envFile) {
+    if ($line -match '^\s*PGPASSWORD\s*=\s*(.+)')  { $env:PGPASSWORD = $Matches[1].Trim() }
+    if ($line -match '^\s*PGHOST_UNPOOLED\s*=\s*(.+)') { $neon_host = $Matches[1].Trim() }
+    if ($line -match '^\s*PGUSER\s*=\s*(.+)')      { $neon_user = $Matches[1].Trim() }
+    if ($line -match '^\s*PGDATABASE\s*=\s*(.+)')  { $neon_db   = $Matches[1].Trim() }
+}
+
 $export_dir = "C:/bridge-export"
 
 $tables = @(
@@ -16,15 +24,17 @@ $tables = @(
     "tcl_clubs",
     "tgr_grades",
     "ttt_tournament_types",
-    "tet_event_types"
+    "tet_event_types",
+    "ta1_player_stats",
+    "ta2_partner_stats"
 )
 
 foreach ($t in $tables) {
     Write-Host "Truncating $t ..."
-    psql -h $neon_host -U $neon_user -d $neon_db -c "TRUNCATE $t RESTART IDENTITY CASCADE"
+    & $psql -h $neon_host -U $neon_user -d $neon_db -c "TRUNCATE $t RESTART IDENTITY CASCADE"
     if ($LASTEXITCODE -ne 0) { Write-Error "Truncate failed on $t"; exit 1 }
     Write-Host "Importing $t ..."
-    psql -h $neon_host -U $neon_user -d $neon_db -c "\COPY $t FROM '$export_dir/$t.csv' WITH CSV HEADER"
+    & $psql -h $neon_host -U $neon_user -d $neon_db -c "\COPY $t FROM '$export_dir/$t.csv' WITH CSV HEADER"
     if ($LASTEXITCODE -ne 0) { Write-Error "Import failed on $t"; exit 1 }
 }
 
@@ -39,11 +49,13 @@ $seqcmds = @(
     "SELECT setval('tcl_clubs_cl_clid_seq',              (SELECT COALESCE(MAX(cl_clid), 0) FROM tcl_clubs))",
     "SELECT setval('tgr_grades_gr_grid_seq',             (SELECT COALESCE(MAX(gr_grid), 0) FROM tgr_grades))",
     "SELECT setval('ttt_tournament_types_tt_ttid_seq',   (SELECT COALESCE(MAX(tt_ttid), 0) FROM ttt_tournament_types))",
-    "SELECT setval('tet_event_types_et_etid_seq',        (SELECT COALESCE(MAX(et_etid), 0) FROM tet_event_types))"
+    "SELECT setval('tet_event_types_et_etid_seq',        (SELECT COALESCE(MAX(et_etid), 0) FROM tet_event_types))",
+    "SELECT setval('ta1_player_stats_a1_a1id_seq',       (SELECT COALESCE(MAX(a1_a1id), 0) FROM ta1_player_stats))",
+    "SELECT setval('ta2_partner_stats_a2_a2id_seq',      (SELECT COALESCE(MAX(a2_a2id), 0) FROM ta2_partner_stats))"
 )
 
 foreach ($sql in $seqcmds) {
-    psql -h $neon_host -U $neon_user -d $neon_db -c $sql
+    & $psql -h $neon_host -U $neon_user -d $neon_db -c $sql
     if ($LASTEXITCODE -ne 0) { Write-Error "Sequence reset failed: $sql"; exit 1 }
 }
 

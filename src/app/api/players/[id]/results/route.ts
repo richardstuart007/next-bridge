@@ -13,7 +13,6 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid player ID' }, { status: 400 })
   }
 
-  const sessionType = request.nextUrl.searchParams.get('session_type')
   const dayOfWeek = request.nextUrl.searchParams.get('day_of_week')
   const partnerIdStr = request.nextUrl.searchParams.get('partner_id')
   const partnerId = partnerIdStr ? parseInt(partnerIdStr, 10) : null
@@ -26,7 +25,6 @@ export async function GET(
         se.se_date          AS date,
         se.se_day_of_week   AS day_of_week,
         se.se_scoring       AS scoring,
-        se.se_session_type  AS session_type,
         se.se_name          AS session_name,
         se.se_club          AS club,
         se.se_tournament    AS tournament,
@@ -44,10 +42,6 @@ export async function GET(
     const queryParams: (string | number)[] = [plId]
     let paramIndex = 2
 
-    if (sessionType) {
-      query += ` AND se.se_session_type = $${paramIndex++}`
-      queryParams.push(sessionType)
-    }
     if (dayOfWeek) {
       query += ` AND se.se_day_of_week = $${paramIndex++}`
       queryParams.push(dayOfWeek)

@@ -2,17 +2,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_Logging } from 'nextjs-shared/write_logging'
 
-type Scoring = 'mp' | 'imp'
+type Scoring = 'mp' | 'vp'
 
 const SCORING_COLS: Record<Scoring, { playerAvg: string; playerCount: string; partnerAvg: string; partnerCount: string }> = {
-  mp:  { playerAvg: 'a1.a1_mp_avg_pct',  playerCount: 'a1.a1_mp_sessions',  partnerAvg: 'a2.a2_mp_avg_pct',  partnerCount: 'a2.a2_mp_sessions'  },
-  imp: { playerAvg: 'a1.a1_vp_avg_vp',   playerCount: 'a1.a1_vp_sessions',  partnerAvg: 'a2.a2_vp_avg_vp',   partnerCount: 'a2.a2_vp_sessions'  }
+  mp: { playerAvg: 'a1.a1_mp_avg_pct', playerCount: 'a1.a1_mp_sessions', partnerAvg: 'a2.a2_mp_avg_pct', partnerCount: 'a2.a2_mp_sessions' },
+  vp: { playerAvg: 'a1.a1_vp_avg_vp',  playerCount: 'a1.a1_vp_sessions',  partnerAvg: 'a2.a2_vp_avg_vp',  partnerCount: 'a2.a2_vp_sessions'  }
 }
 
 export async function GET(request: NextRequest) {
   const min = parseInt(request.nextUrl.searchParams.get('min') ?? '5', 10)
   const scoringParam = request.nextUrl.searchParams.get('scoring') ?? 'mp'
-  const scoring: Scoring = scoringParam === 'imp' ? 'imp' : 'mp'
+  const scoring: Scoring = scoringParam === 'vp' ? 'vp' : 'mp'
+  const group = request.nextUrl.searchParams.get('group') ?? 'C'
   const cols = SCORING_COLS[scoring]
 
   try {
@@ -29,11 +30,11 @@ export async function GET(request: NextRequest) {
             p.pl_club                AS club,
             p.pl_all_results         AS tracked
           FROM tpl_players p
-          JOIN ta1_player_stats a1 ON a1.a1_plid = p.pl_plid AND a1.a1_group = 'C'
+          JOIN ta1_player_stats a1 ON a1.a1_plid = p.pl_plid AND a1.a1_group = $2
           WHERE ${cols.playerCount} >= $1
           ORDER BY ${cols.playerAvg} DESC
         `,
-        params: [min]
+        params: [min, group]
       }),
       table_query({
         caller: 'rankings partnerships',
@@ -49,13 +50,13 @@ export async function GET(request: NextRequest) {
             p2.pl_name               AS player2_name,
             p2.pl_all_results        AS player2_tracked
           FROM tpa_partners pa
-          JOIN ta2_partner_stats a2 ON a2.a2_plid1 = pa.pa_plid1 AND a2.a2_plid2 = pa.pa_plid2 AND a2.a2_group = 'C'
+          JOIN ta2_partner_stats a2 ON a2.a2_plid1 = pa.pa_plid1 AND a2.a2_plid2 = pa.pa_plid2 AND a2.a2_group = $2
           JOIN tpl_players p1 ON p1.pl_plid = pa.pa_plid1
           JOIN tpl_players p2 ON p2.pl_plid = pa.pa_plid2
           WHERE ${cols.partnerCount} >= $1
           ORDER BY ${cols.partnerAvg} DESC
         `,
-        params: [min]
+        params: [min, group]
       })
     ])
 

@@ -109,14 +109,16 @@ function HeaderTypeahead({ placeholder, onSelect, onClear }: {
   )
 }
 
-type Scoring = 'mp' | 'imp'
+type Scoring = 'mp' | 'vp'
+type Group  = 'A' | 'B' | 'C' | 'all'
 type TabId = 'players' | 'partnerships'
 
 const TOP_OPTS = [10, 25, 50, 100]
 
 export default function RankingsPageClient() {
-  const [min, setMin] = useState(5)
+  const [min, setMin] = useState(10)
   const [scoring, setScoring] = useState<Scoring>('mp')
+  const [group, setGroup] = useState<Group>('C')
   const [players, setPlayers] = useState<PlayerRow[]>([])
   const [partnerships, setPartnerships] = useState<PartnershipRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -140,7 +142,7 @@ export default function RankingsPageClient() {
       setLoading(true)
       setError(null)
       try {
-        const r = await fetch(`/api/rankings?min=${min}&scoring=${scoring}`)
+        const r = await fetch(`/api/rankings?min=${min}&scoring=${scoring}&group=${group}`)
         const data = await r.json()
         if (data.error) { setError(data.error); return }
         setPlayers(data.players ?? [])
@@ -148,7 +150,7 @@ export default function RankingsPageClient() {
       } catch (err) { setError(String(err)) }
       finally { setLoading(false) }
     })()
-  }, [min, scoring])
+  }, [min, scoring, group])
 
   // Scroll to first highlighted player after render
   useEffect(() => {
@@ -188,12 +190,28 @@ export default function RankingsPageClient() {
   function ScoringToggle() {
     return (
       <div className='flex justify-center rounded border border-gray-300 overflow-hidden text-xs'>
-        {(['mp', 'imp'] as Scoring[]).map(s => (
+        {(['mp', 'vp'] as Scoring[]).map(s => (
           <button key={s} onClick={() => setScoring(s)}
             className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
             {s.toUpperCase()}
           </button>
         ))}
+      </div>
+    )
+  }
+
+  function GroupToggle() {
+    return (
+      <div className='flex justify-center rounded border border-gray-300 overflow-hidden text-xs'>
+        {(['All', 'A', 'B', 'C'] as const).map(g => {
+          const val: Group = g === 'All' ? 'all' : g
+          return (
+            <button key={g} onClick={() => setGroup(val)}
+              className={`px-2 py-0.5 ${group === val ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+              {g}
+            </button>
+          )
+        })}
       </div>
     )
   }
@@ -248,6 +266,7 @@ export default function RankingsPageClient() {
                   />
                 </th>
                 <th className={`${thF} text-right`}><ScoringToggle /></th>
+                <th className={`${thF} text-right`}><GroupToggle /></th>
                 <th className={`${thF} text-right`}><SessionsSelect /></th>
                 <th className={thF}>
                   <GradeSelect mode='any' selected={gradeFilter} onChange={setGradeFilter} placeholder='All' />
@@ -264,7 +283,7 @@ export default function RankingsPageClient() {
               <tr>
                 <th className={`${thH} text-right`}>#</th>
                 <th className={`${thH} text-left`}>Name</th>
-                <th className={`${thH} text-right`}>Avg%</th>
+                <th className={`${thH} text-right`}>{scoring === 'mp' ? 'Avg %' : 'Avg VP'}</th>
                 <th className={`${thH} text-right`}>Sessions</th>
                 <th className={`${thH} text-left`}>Grade</th>
                 <th className={`${thH} text-left`}>Club</th>
@@ -282,7 +301,9 @@ export default function RankingsPageClient() {
                     <td className='px-3 py-1.5'>
                       <Link href={`/player/${p.id}`} className='text-blue-600 hover:underline'>{p.name}</Link>
                     </td>
-                    <td className='px-3 py-1.5 text-right font-medium'>{parseFloat(String(p.avg_pct)).toFixed(1)}%</td>
+                    <td className='px-3 py-1.5 text-right font-medium'>
+                      {scoring === 'mp' ? `${parseFloat(String(p.avg_pct)).toFixed(2)}%` : parseFloat(String(p.avg_pct)).toFixed(2)}
+                    </td>
                     <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
                     <td className='px-3 py-1.5 text-gray-500'>{p.grade}</td>
                     <td className='px-3 py-1.5 text-gray-500'>{p.club}</td>
@@ -320,6 +341,7 @@ export default function RankingsPageClient() {
                   />
                 </th>
                 <th className={`${thF} text-right`}><ScoringToggle /></th>
+                <th className={`${thF} text-right`}><GroupToggle /></th>
                 <th className={`${thF} text-right`}><SessionsSelect /></th>
                 <th className={`${thF} text-center`}>
                   <label className='flex items-center justify-center cursor-pointer' title='Tracked only'>
@@ -330,7 +352,7 @@ export default function RankingsPageClient() {
               <tr>
                 <th className={`${thH} text-right`}>#</th>
                 <th className={`${thH} text-left`}>Players</th>
-                <th className={`${thH} text-right`}>Avg%</th>
+                <th className={`${thH} text-right`}>{scoring === 'mp' ? 'Avg %' : 'Avg VP'}</th>
                 <th className={`${thH} text-right`}>Sessions</th>
                 <th className={`${thH} text-center`}>Tracked</th>
               </tr>
@@ -346,7 +368,9 @@ export default function RankingsPageClient() {
                     <Link href={`/player/${p.player2_id}`} className='text-blue-600 hover:underline'>{p.player2_name}</Link>
                     {isTracked(p.player2_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                   </td>
-                  <td className='px-3 py-1.5 text-right font-medium'>{parseFloat(String(p.avg_pct)).toFixed(1)}%</td>
+                  <td className='px-3 py-1.5 text-right font-medium'>
+                    {scoring === 'mp' ? `${parseFloat(String(p.avg_pct)).toFixed(2)}%` : parseFloat(String(p.avg_pct)).toFixed(2)}
+                  </td>
                   <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
                   <td className='px-3 py-1.5 text-center'>
                     {(isTracked(p.player1_tracked) || isTracked(p.player2_tracked)) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}

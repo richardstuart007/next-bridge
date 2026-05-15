@@ -357,8 +357,8 @@ export async function GET(request: NextRequest) {
               SELECT * FROM (
                 SELECT s.se_seid, t.s9_plid1, t.s9_plid2,
                   CASE WHEN t.s9_score_type = 'VP'
-                       THEN 35 + (t.s9_score_value / 20 * 30)
-                       ELSE t.s9_score_value END,
+                       THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
+                       ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
                   CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
                 FROM ts9_nzb_results t
                 JOIN tse_sessions s ON s.se_source_id = t.s9_run_id
@@ -366,8 +366,8 @@ export async function GET(request: NextRequest) {
                 UNION ALL
                 SELECT s.se_seid, t.s9_plid2, t.s9_plid1,
                   CASE WHEN t.s9_score_type = 'VP'
-                       THEN 35 + (t.s9_score_value / 20 * 30)
-                       ELSE t.s9_score_value END,
+                       THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
+                       ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
                   CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
                 FROM ts9_nzb_results t
                 JOIN tse_sessions s ON s.se_source_id = t.s9_run_id

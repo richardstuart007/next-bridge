@@ -189,7 +189,7 @@ export async function GET(request: NextRequest) {
     const from_date = rawFrom ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const to_date   = new Date().toISOString().slice(0, 10)
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `START from_date=${from_date} to_date=${to_date}`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `START from_date=${from_date} to_date=${to_date}`, lg_severity: 'I' })
 
     const allMissingIds = new Set<number>()
     let players_scraped = 0
@@ -205,7 +205,7 @@ export async function GET(request: NextRequest) {
       params: []
     }) as { pl_plid: number; pl_name: string; pl_nz_bridge_number: number }[]
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A: ${flagged.length} flagged players`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A: ${flagged.length} flagged players`, lg_severity: 'I' })
 
     for (const player of flagged) {
       players_scraped++
@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
       })
       if (!response.ok) {
-        await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A: ${player.pl_name} fetch failed (${response.status})`, lg_severity: 'T' })
+        await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A: ${player.pl_name} fetch failed (${response.status})`, lg_severity: 'W' })
         continue
       }
 
@@ -222,14 +222,13 @@ export async function GET(request: NextRequest) {
       run_ids_found += runIds.length
       const missing = await batchCheckMissing(runIds)
       missing.forEach(id => allMissingIds.add(id))
-      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A: ${player.pl_name} — ${runIds.length} found, ${missing.length} new`, lg_severity: 'T' })
     }
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A complete: ${players_scraped} players, ${run_ids_found} run_ids found, ${allMissingIds.size} new so far`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A complete: ${players_scraped} players, ${run_ids_found} run_ids found, ${allMissingIds.size} new so far`, lg_severity: 'I' })
 
     // Phase B — Auckland club by date range
     const dates = datesInRange(from_date, to_date)
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B: club ${AKBC_CLUB_ID} over ${dates.length} days (${from_date} → ${to_date})`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B: club ${AKBC_CLUB_ID} over ${dates.length} days (${from_date} → ${to_date})`, lg_severity: 'I' })
 
     let club_run_ids_found  = 0
     let club_run_ids_missing = 0
@@ -250,7 +249,7 @@ export async function GET(request: NextRequest) {
       missing.forEach(id => allMissingIds.add(id))
     }
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B complete: ${club_run_ids_found} run_ids found, ${club_run_ids_missing} new. Total new: ${allMissingIds.size}`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B complete: ${club_run_ids_found} run_ids found, ${club_run_ids_missing} new. Total new: ${allMissingIds.size}`, lg_severity: 'I' })
 
     const run_ids_new = allMissingIds.size
 
@@ -264,12 +263,11 @@ export async function GET(request: NextRequest) {
         query: `TRUNCATE ts9_nzb_results`,
         params: []
       })
-      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C: ts9 truncated, importing ${allMissingIds.size} run_ids`, lg_severity: 'T' })
+      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C: ts9 truncated, importing ${allMissingIds.size} run_ids`, lg_severity: 'I' })
 
       let run_id_count = 0
       for (const run_id of allMissingIds) {
         run_id_count++
-        await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C: run_id ${run_id} (${run_id_count}/${allMissingIds.size})`, lg_severity: 'T' })
         const url = `${NZB_BASE}/results.html?run_id=${run_id}`
         const response = await fetch(url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
@@ -322,9 +320,9 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C complete: ${pairs_inserted} pairs inserted, ${players_created} new players`, lg_severity: 'T' })
+      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C complete: ${pairs_inserted} pairs inserted, ${players_created} new players`, lg_severity: 'I' })
     } else {
-      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C skipped: no new run_ids`, lg_severity: 'T' })
+      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C skipped: no new run_ids`, lg_severity: 'I' })
     }
 
     // Phase D — build stats from ts9
@@ -349,7 +347,7 @@ export async function GET(request: NextRequest) {
               RETURNING se_seid`,
       params: []
     }) as { se_seid: number }[]
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D sessions: ${sessionsResult.length} inserted`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D sessions: ${sessionsResult.length} inserted`, lg_severity: 'I' })
 
     const resultsResult = await table_query({
       caller: 'cron/update-sessions/results-nzb',
@@ -376,10 +374,10 @@ export async function GET(request: NextRequest) {
               RETURNING re_reid`,
       params: []
     }) as { re_reid: number }[]
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D results: ${resultsResult.length} inserted`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D results: ${resultsResult.length} inserted`, lg_severity: 'I' })
 
     const { sessions: partner_sessions, pairs: partner_pairs } = await updateIncrementalPartnerStats()
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D partners: ${partner_sessions} sessions, ${partner_pairs} pairs`, lg_severity: 'T' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D partners: ${partner_sessions} sessions, ${partner_pairs} pairs`, lg_severity: 'I' })
 
     const summary = {
       from_date,

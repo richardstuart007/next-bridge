@@ -39,7 +39,8 @@
       "Bash(mkdir -p \"c:/Users/richa/github/next-bridge/src/app/api/admin/players/[id]/all-results\" && mkdir -p \"c:/Users/richa/github/next-bridge/src/app/api/scrape/raw/nzb-by-flagged\")",
       "Bash(git log *)",
       "Bash(head -1 \"C:/bridge-export/tse_sessions.csv\")",
-      "Read(//c/bridge-export/**)"
+      "Read(//c/bridge-export/**)",
+      "Bash(dir \"C:\\\\Users\\\\richa\\\\github\" /AD /B)"
     ],
     "additionalDirectories": [
       "c:\\Users\\richa\\github\\next-bridge\\src\\app\\api\\admin\\players\\[id]"

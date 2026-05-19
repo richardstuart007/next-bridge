@@ -6,6 +6,7 @@ import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { ClubSelect, GradeSelect, RankSelect, TournamentSelect } from '@/src/ui/shared/LookupSelects'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
+import FieldHelp from '@/src/ui/shared/FieldHelp'
 
 interface PlayerRow {
   pl_plid: number
@@ -206,7 +207,12 @@ export default function HomePageClient() {
       <div className='flex gap-1 border-b border-gray-200'>
         <button onClick={() => setActiveTab('players')}
           className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === 'players' ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}
-        >Players</button>
+        >
+          <span className='flex items-center gap-1'>
+            Players
+            <FieldHelp text='List of players who have had sessions at AKBC.' />
+          </span>
+        </button>
         <button onClick={() => setActiveTab('sessions')}
           className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === 'sessions' ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}
         >Sessions</button>
@@ -245,8 +251,12 @@ export default function HomePageClient() {
                     </tr>
                     <tr className='border-b border-gray-100 bg-gray-50 align-top'>
                       <td className='py-1 pr-1'>
-                        <input type='text' value={fName} onChange={e => setFName(e.target.value)}
-                          placeholder='Filter…' className={INPUT_CLS} />
+                        <div className='relative'>
+                          <input type='text' value={fName} onChange={e => setFName(e.target.value)}
+                            placeholder='Filter…' className={`${INPUT_CLS} pr-5`} />
+                          <FieldHelp text='Type any part of a player name. Case-insensitive.'
+                            className='absolute right-1 top-1/2 -translate-y-1/2' />
+                        </div>
                       </td>
                       <td className='py-1 pr-1'>
                         <input type='text' value={fNz} onChange={e => setFNz(e.target.value)}

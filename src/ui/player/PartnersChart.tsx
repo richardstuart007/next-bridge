@@ -13,7 +13,7 @@ interface PartnerRef {
 
 interface ResultRow {
   session_id:        number
-  source_id:         number
+  run_id:         number
   date:              string
   day_of_week:       string
   scoring:           string
@@ -184,7 +184,7 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
         dataRows.push([
           entry.name,
           entry.nz_number ?? '',
-          r.source_id,
+          r.run_id,
           r.date.slice(0, 10),
           r.day_of_week,
           r.partner_name ?? '',

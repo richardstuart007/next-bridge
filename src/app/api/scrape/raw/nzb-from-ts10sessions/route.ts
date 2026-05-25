@@ -107,7 +107,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
 async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; created: boolean }> {
   const name = rawName.replace(/\s+/g, ' ').trim()
   const existing = await table_query({
-    caller: 'scrape/nzb-from-ts10/lookup',
+    caller: 'scrape/nzb-from-ts10sessions/lookup',
     query: `SELECT pl_plid FROM tpl_players WHERE LOWER(pl_name) = LOWER($1)`,
     params: [name]
   }) as { pl_plid: number }[]
@@ -115,7 +115,7 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
   if (existing.length > 0) return { plid: existing[0].pl_plid, created: false }
 
   const inserted = await table_query({
-    caller: 'scrape/nzb-from-ts10/create',
+    caller: 'scrape/nzb-from-ts10sessions/create',
     query: `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number)
             VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
     params: [name]
@@ -124,7 +124,7 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
   if (inserted.length > 0) return { plid: inserted[0].pl_plid, created: true }
 
   const reselect = await table_query({
-    caller: 'scrape/nzb-from-ts10/reselect',
+    caller: 'scrape/nzb-from-ts10sessions/reselect',
     query: `SELECT pl_plid FROM tpl_players WHERE pl_name = $1`,
     params: [name]
   }) as { pl_plid: number }[]
@@ -145,8 +145,8 @@ export async function POST() {
 
       try {
         const ts10Rows = await table_query({
-          caller: 'scrape/nzb-from-ts10/read',
-          query: `SELECT s10_run_id, s10_is_summary FROM ts10_nzb_missing_sessions ORDER BY s10_date DESC, s10_run_id`,
+          caller: 'scrape/nzb-from-ts10sessions/read',
+          query: `SELECT s10_run_id, s10_is_summary FROM ts10_sessions ORDER BY s10_date ASC, s10_run_id`,
           params: []
         }) as { s10_run_id: number; s10_is_summary: boolean }[]
 
@@ -159,8 +159,8 @@ export async function POST() {
         const finalSet = new Set(ts10Rows.filter(r => r.s10_is_summary).map(r => r.s10_run_id))
 
         await table_query({
-          caller: 'scrape/nzb-from-ts10/truncate',
-          query: `TRUNCATE ts9_nzb_results`,
+          caller: 'scrape/nzb-from-ts10sessions/truncate',
+          query: `TRUNCATE ts09_results`,
           params: []
         })
 
@@ -207,8 +207,8 @@ export async function POST() {
               const plid2 = Math.max(a.plid, b.plid)
 
               await table_query({
-                caller: 'scrape/nzb-from-ts10/insert',
-                query: `INSERT INTO ts9_nzb_results
+                caller: 'scrape/nzb-from-ts10sessions/insert',
+                query: `INSERT INTO ts09_results
                           (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
                            s9_event_name, s9_place, s9_score_value, s9_score_type,
                            s9_event_type, s9_tournament, s9_is_summary)
@@ -226,14 +226,14 @@ export async function POST() {
         }
 
         await write_Logging({
-          lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts10',
-          lg_msg: `${run_ids.length} run_ids from ts10: ${pairs_inserted} pairs, ${players_created} new players`,
+          lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts10sessions',
+          lg_msg: `${run_ids.length} run_ids from ts10_sessions: ${pairs_inserted} pairs, ${players_created} new players`,
           lg_severity: 'I'
         })
 
         send({ done: true, run_ids_total: run_ids.length, pairs_inserted, players_created, skipped_rows })
       } catch (err) {
-        await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts10', lg_msg: String(err), lg_severity: 'E' })
+        await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts10sessions', lg_msg: String(err), lg_severity: 'E' })
         send({ error: String(err) })
       } finally {
         controller.close()

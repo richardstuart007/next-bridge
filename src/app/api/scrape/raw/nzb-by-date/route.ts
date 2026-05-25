@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
       try {
         await table_query({
           caller: 'scrape/nzb-by-date/truncate',
-          query: `TRUNCATE ts9_nzb_results`,
+          query: `TRUNCATE ts09_results`,
           params: []
         })
 
@@ -213,11 +213,11 @@ export async function POST(request: NextRequest) {
           // Batch check which run_ids are already in prod
           const existing = await table_query({
             caller: 'scrape/nzb-by-date/check',
-            query: `SELECT se_source_id FROM tse_sessions WHERE se_source_id = ANY($1)`,
+            query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
             params: [runIds] as unknown as (string | number | boolean | null)[]
-          }) as { se_source_id: number }[]
+          }) as { se_run_id: number }[]
 
-          const existingSet = new Set(existing.map(r => r.se_source_id))
+          const existingSet = new Set(existing.map(r => r.se_run_id))
           const missingIds  = runIds.filter(id => !existingSet.has(id))
 
           run_ids_skipped += runIds.length - missingIds.length
@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
 
                 await table_query({
                   caller: 'scrape/nzb-by-date/insert',
-                  query: `INSERT INTO ts9_nzb_results
+                  query: `INSERT INTO ts09_results
                             (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
                              s9_event_name, s9_place, s9_score_value, s9_score_type,
                              s9_event_type, s9_tournament)

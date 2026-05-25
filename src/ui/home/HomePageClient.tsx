@@ -27,7 +27,7 @@ interface SessionRow {
   se_seid: number
   se_date: string
   se_day_of_week: string
-  se_source_id: number
+  se_run_id: number
   se_scoring: string
   se_name: string
   se_tournament: string
@@ -434,11 +434,11 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     onClick={() => router.push(`/session/${s.se_seid}`)}
                   >
                     <td className='py-1.5 font-mono text-xs text-gray-400'>
-                      <a href={`https://www.nzbridge.co.nz/results.html?run_id=${s.se_source_id}`}
+                      <a href={`https://www.nzbridge.co.nz/results.html?run_id=${s.se_run_id}`}
                          target='_blank' rel='noopener noreferrer'
                          className='text-blue-600 hover:underline'
                          onClick={e => e.stopPropagation()}>
-                        {s.se_source_id}
+                        {s.se_run_id}
                       </a>
                     </td>
                     <td className='py-1.5'>{new Date(s.se_date).toISOString().slice(0, 10)}</td>

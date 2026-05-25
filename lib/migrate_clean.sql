@@ -49,7 +49,7 @@ CREATE TABLE tse_sessions (
   se_date         DATE         NOT NULL,
   se_day_of_week  VARCHAR(10)  NOT NULL,
   se_scoring      VARCHAR(20)  NOT NULL,
-  se_source_id    INTEGER      NOT NULL UNIQUE,
+  se_run_id    INTEGER      NOT NULL UNIQUE,
   se_session_type VARCHAR(20)  NOT NULL DEFAULT 'club',
   se_name         VARCHAR(200) NOT NULL DEFAULT '',
   se_club         VARCHAR(100) NOT NULL DEFAULT '',
@@ -145,11 +145,11 @@ SELECT
 FROM "#tpl_players";
 
 INSERT INTO tse_sessions (
-  se_seid, se_date, se_day_of_week, se_scoring, se_source_id, se_session_type,
+  se_seid, se_date, se_day_of_week, se_scoring, se_run_id, se_session_type,
   se_name, se_club, se_tournament, se_event_type
 )
 SELECT
-  se_seid, se_date, se_day_of_week, se_scoring, se_source_id, se_session_type,
+  se_seid, se_date, se_day_of_week, se_scoring, se_run_id, se_session_type,
   COALESCE(se_name, ''), COALESCE(se_club, ''), COALESCE(se_tournament, ''), COALESCE(se_event_type, '')
 FROM "#tse_sessions";
 

@@ -199,7 +199,7 @@ export default function BuildDataViewer() {
   const filteredSessions = sessions.filter(r => {
     if (sessNameFilter      && !String(r.se_name       ?? '').toLowerCase().includes(sessNameFilter.toLowerCase()))  return false
     if (sessClubFilter      && !String(r.se_club       ?? '').toLowerCase().includes(sessClubFilter.toLowerCase()))  return false
-    if (sessSourceFilter    && !String(r.se_source_id  ?? '').includes(sessSourceFilter))                            return false
+    if (sessSourceFilter    && !String(r.se_run_id  ?? '').includes(sessSourceFilter))                            return false
     if (sessScoringFilter   !== 'all' && r.se_scoring    !== sessScoringFilter)   return false
     if (sessEventTypeFilter.size > 0 && !sessEventTypeFilter.has(String(r.se_event_type ?? ''))) return false
     if (sessDayFilter       !== 'all' && r.se_day_of_week !== sessDayFilter)       return false
@@ -221,7 +221,7 @@ export default function BuildDataViewer() {
   }
 
   const sessFilters: Record<string, React.ReactNode> = {
-    se_source_id:    <FText placeholder='id…'   value={sessSourceFilter}   onChange={setSessSourceFilter} />,
+    se_run_id:    <FText placeholder='id…'   value={sessSourceFilter}   onChange={setSessSourceFilter} />,
     se_day_of_week:  <FSelect value={sessDayFilter} onChange={setSessDayFilter}>
                        <option value='all'>all</option>
                        {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
@@ -236,7 +236,7 @@ export default function BuildDataViewer() {
   }
 
   const sessCellRenderers: Record<string, (val: unknown) => React.ReactNode> = {
-    se_source_id: val => (
+    se_run_id: val => (
       <a href={`https://www.nzbridge.co.nz/results.html?run_id=${val}`}
          target='_blank' rel='noopener noreferrer'
          className='text-blue-600 hover:underline'

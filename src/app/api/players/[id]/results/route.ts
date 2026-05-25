@@ -21,7 +21,7 @@ export async function GET(
     let query = `
       SELECT
         se.se_seid          AS session_id,
-        se.se_source_id     AS source_id,
+        se.se_run_id        AS run_id,
         se.se_date          AS date,
         se.se_day_of_week   AS day_of_week,
         se.se_scoring       AS scoring,

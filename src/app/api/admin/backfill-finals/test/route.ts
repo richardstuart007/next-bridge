@@ -14,19 +14,19 @@ export async function POST() {
     // Step 1 — current DB state before reset
     const before = await table_query({
       caller: 'backfill-finals/test/before',
-      query: `SELECT se_source_id, se_name, se_is_summary
-              FROM tse_sessions WHERE se_source_id = ANY($1)
-              ORDER BY se_source_id`,
+      query: `SELECT se_run_id, se_name, se_is_summary
+              FROM tse_sessions WHERE se_run_id = ANY($1)
+              ORDER BY se_run_id`,
       params: [TEST_RUN_IDS] as unknown as (string | number | boolean | null)[]
-    }) as { se_source_id: number; se_name: string; se_is_summary: boolean | null }[]
+    }) as { se_run_id: number; se_name: string; se_is_summary: boolean | null }[]
 
     log.push(`DB state before reset:`)
-    for (const r of before) log.push(`  run_id=${r.se_source_id} se_is_summary=${r.se_is_summary} name="${r.se_name}"`)
+    for (const r of before) log.push(`  run_id=${r.se_run_id} se_is_summary=${r.se_is_summary} name="${r.se_name}"`)
 
     // Step 2 — reset those sessions to NULL
     await table_query({
       caller: 'backfill-finals/test/reset',
-      query: `UPDATE tse_sessions SET se_is_summary = NULL WHERE se_source_id = ANY($1)`,
+      query: `UPDATE tse_sessions SET se_is_summary = NULL WHERE se_run_id = ANY($1)`,
       params: [TEST_RUN_IDS] as unknown as (string | number | boolean | null)[]
     })
     log.push(`Reset ${TEST_RUN_IDS.length} sessions to NULL`)
@@ -58,7 +58,7 @@ export async function POST() {
 
       await table_query({
         caller: 'backfill-finals/test/mark',
-        query: `UPDATE tse_sessions SET se_is_summary = $1 WHERE se_source_id = $2 AND se_is_summary IS NULL`,
+        query: `UPDATE tse_sessions SET se_is_summary = $1 WHERE se_run_id = $2 AND se_is_summary IS NULL`,
         params: [is_final, run_id]
       })
       log.push(`  Updated se_is_summary = ${is_final}`)
@@ -67,14 +67,14 @@ export async function POST() {
     // Step 4 — DB state after update
     const after = await table_query({
       caller: 'backfill-finals/test/after',
-      query: `SELECT se_source_id, se_name, se_is_summary
-              FROM tse_sessions WHERE se_source_id = ANY($1)
-              ORDER BY se_source_id`,
+      query: `SELECT se_run_id, se_name, se_is_summary
+              FROM tse_sessions WHERE se_run_id = ANY($1)
+              ORDER BY se_run_id`,
       params: [TEST_RUN_IDS] as unknown as (string | number | boolean | null)[]
-    }) as { se_source_id: number; se_name: string; se_is_summary: boolean | null }[]
+    }) as { se_run_id: number; se_name: string; se_is_summary: boolean | null }[]
 
     log.push(`DB state after update:`)
-    for (const r of after) log.push(`  run_id=${r.se_source_id} se_is_summary=${r.se_is_summary} name="${r.se_name}"`)
+    for (const r of after) log.push(`  run_id=${r.se_run_id} se_is_summary=${r.se_is_summary} name="${r.se_name}"`)
 
     return NextResponse.json({ log, after })
   } catch (err) {

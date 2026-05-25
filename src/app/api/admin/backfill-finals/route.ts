@@ -24,19 +24,19 @@ export async function POST(request: Request) {
 
         const sessions = await table_query({
           caller: 'admin/backfill-finals/sessions',
-          query: `SELECT se_source_id
+          query: `SELECT se_run_id
                   FROM tse_sessions
-                  WHERE se_source_id IS NOT NULL
+                  WHERE se_run_id IS NOT NULL
                     AND se_is_summary IS NULL
-                  ORDER BY se_source_id DESC
+                  ORDER BY se_run_id DESC
                   LIMIT $1`,
           params: [limit]
-        }) as { se_source_id: number }[]
+        }) as { se_run_id: number }[]
 
         send({ total: sessions.length })
 
-        for (const { se_source_id } of sessions) {
-          const url = `${NZB_BASE}/results.html?run_id=${se_source_id}`
+        for (const { se_run_id } of sessions) {
+          const url = `${NZB_BASE}/results.html?run_id=${se_run_id}`
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
           })
@@ -46,20 +46,20 @@ export async function POST(request: Request) {
             await table_query({
               caller: 'admin/backfill-finals/mark-failed',
               query: `UPDATE tse_sessions SET se_is_summary = FALSE
-                      WHERE se_source_id = $1 AND se_is_summary IS NULL`,
-              params: [se_source_id]
+                      WHERE se_run_id = $1 AND se_is_summary IS NULL`,
+              params: [se_run_id]
             })
             continue
           }
 
           const { finalRunIds } = extractRunIds(await response.text())
-          const is_final = finalRunIds.includes(se_source_id)
+          const is_final = finalRunIds.includes(se_run_id)
 
           await table_query({
             caller: 'admin/backfill-finals/mark',
             query: `UPDATE tse_sessions SET se_is_summary = $1
-                    WHERE se_source_id = $2 AND se_is_summary IS NULL`,
-            params: [is_final, se_source_id]
+                    WHERE se_run_id = $2 AND se_is_summary IS NULL`,
+            params: [is_final, se_run_id]
           })
 
           processed++
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
 
         const remaining = await table_query({
           caller: 'admin/backfill-finals/remaining',
-          query: `SELECT COUNT(*)::int AS n FROM tse_sessions WHERE se_source_id IS NOT NULL AND se_is_summary IS NULL`,
+          query: `SELECT COUNT(*)::int AS n FROM tse_sessions WHERE se_run_id IS NOT NULL AND se_is_summary IS NULL`,
           params: []
         }) as { n: number }[]
 

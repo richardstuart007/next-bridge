@@ -84,7 +84,7 @@ export default function RawScrape() {
     if (!chkResult || chkResult.missing.length === 0) return
     setChkImpBusy(true); setChkImpError(null); setChkImpProg(null); setChkImpResult(null)
     try {
-      const res = await fetch('/api/scrape/raw/nzb-from-ts10', { method: 'POST' })
+      const res = await fetch('/api/scrape/raw/nzb-from-ts10sessions', { method: 'POST' })
       if (!res.ok) { const d = await res.json(); setChkImpError(d.error ?? 'Failed'); return }
 
       const reader = res.body!.getReader()

@@ -11,7 +11,7 @@ export interface AuditCheck {
 export async function auditSessionsFetch(): Promise<AuditCheck[]> {
   const noResults = await table_query({
     caller: 'audit/noResults',
-    query: `SELECT s.se_seid, s.se_date::text, s.se_source_id, s.se_scoring
+    query: `SELECT s.se_seid, s.se_date::text, s.se_run_id, s.se_scoring
             FROM tse_sessions s
             WHERE NOT EXISTS (SELECT 1 FROM tre_results r WHERE r.re_seid = s.se_seid)
             ORDER BY s.se_date DESC`,
@@ -26,12 +26,12 @@ export async function auditSessionsFetch(): Promise<AuditCheck[]> {
 export async function auditSessionsProcess(): Promise<AuditCheck[]> {
   const mismatch = await table_query({
     caller: 'audit/mismatch',
-    query: `SELECT s.se_seid, s.se_date::text, s.se_source_id,
+    query: `SELECT s.se_seid, s.se_date::text, s.se_run_id,
               COUNT(DISTINCT re.re_reid)::int AS results
             FROM tse_sessions s
             LEFT JOIN tre_results re ON re.re_seid = s.se_seid
             WHERE EXISTS (SELECT 1 FROM tre_results r WHERE r.re_seid = s.se_seid)
-            GROUP BY s.se_seid, s.se_date, s.se_source_id
+            GROUP BY s.se_seid, s.se_date, s.se_run_id
             HAVING COUNT(DISTINCT re.re_reid) = 0
             ORDER BY s.se_date DESC`,
     params: []

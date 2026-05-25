@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
       try {
         await table_query({
           caller: 'scrape/nzb-by-runid/truncate',
-          query: `TRUNCATE ts9_nzb_results`,
+          query: `TRUNCATE ts09_results`,
           params: []
         })
 
@@ -207,7 +207,7 @@ export async function POST(request: NextRequest) {
 
               await table_query({
                 caller: 'scrape/nzb-by-runid/insert',
-                query: `INSERT INTO ts9_nzb_results
+                query: `INSERT INTO ts09_results
                           (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
                            s9_event_name, s9_place, s9_score_value, s9_score_type,
                            s9_event_type, s9_tournament, s9_is_summary)

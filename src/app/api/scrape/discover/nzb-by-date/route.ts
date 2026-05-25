@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       try {
         await table_query({
           caller: 'scrape/discover/nzb-by-date/truncate',
-          query: `TRUNCATE ts10_nzb_missing_sessions`,
+          query: `TRUNCATE ts10_sessions`,
           params: []
         })
 
@@ -67,11 +67,11 @@ export async function POST(request: NextRequest) {
 
           const existing = await table_query({
             caller: 'scrape/discover/nzb-by-date/check',
-            query: `SELECT se_source_id FROM tse_sessions WHERE se_source_id = ANY($1)`,
+            query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
             params: [runIds] as unknown as (string | number | boolean | null)[]
-          }) as { se_source_id: number }[]
+          }) as { se_run_id: number }[]
 
-          const existingSet  = new Set(existing.map(r => r.se_source_id))
+          const existingSet  = new Set(existing.map(r => r.se_run_id))
           const dayMissing   = runIds.filter(id => !existingSet.has(id))
 
           total_in_prod += runIds.length - dayMissing.length
@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
             missing.push({ date: day, run_id })
             await table_query({
               caller: 'scrape/discover/nzb-by-date/insert',
-              query: `INSERT INTO ts10_nzb_missing_sessions (s10_run_id, s10_date, s10_club_id, s10_is_summary)
+              query: `INSERT INTO ts10_sessions (s10_run_id, s10_date, s10_club_id, s10_is_summary)
                       VALUES ($1, $2, $3, $4) ON CONFLICT (s10_run_id) DO NOTHING`,
               params: [run_id, day, club_id, is_final]
             })

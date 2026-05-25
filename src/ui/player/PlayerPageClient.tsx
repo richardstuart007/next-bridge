@@ -12,7 +12,7 @@ import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
 
 interface ResultRow {
   session_id:      number
-  source_id:       number
+  run_id:       number
   date:            string
   day_of_week:     string
   scoring:         string
@@ -317,7 +317,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     const dataRows = rows.map(r => [
       player!.pl_name,
       player!.pl_nz_bridge_number,
-      r.source_id,
+      r.run_id,
       r.date.slice(0, 10),
       r.day_of_week,
       r.partner_name,
@@ -609,7 +609,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                       className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                       onClick={() => window.location.href = `/session/${r.session_id}`}
                     >
-                      <td className='py-1.5 text-gray-400 text-xs font-mono'>{r.source_id}</td>
+                      <td className='py-1.5 text-gray-400 text-xs font-mono'>{r.run_id}</td>
                       <td className='py-1.5'>{r.date.slice(0, 10)}</td>
                       <td className='py-1.5 text-gray-500'>{r.day_of_week}</td>
                       <td className='py-1.5'>

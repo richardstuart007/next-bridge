@@ -35,42 +35,42 @@ export async function getSessionById(seId: number) {
   return rows[0] ?? null
 }
 
-export async function sessionExistsBySourceId(seSourceId: number): Promise<boolean> {
+export async function sessionExistsByRunId(seRunId: number): Promise<boolean> {
   const count = await table_count({
-    caller: 'sessionExistsBySourceId',
+    caller: 'sessionExistsByRunId',
     table: SESSIONS_TABLE,
-    whereColumnValuePairs: [{ column: 'se_source_id', value: seSourceId }]
+    whereColumnValuePairs: [{ column: 'se_run_id', value: seRunId }]
   })
   return count > 0
 }
 
-export async function getSkippedSourceIds(sourceIds: number[]): Promise<Set<number>> {
-  if (sourceIds.length === 0) return new Set()
-  const ph = sourceIds.map((_, i) => `$${i + 1}`).join(', ')
+export async function getSkippedRunIds(runIds: number[]): Promise<Set<number>> {
+  if (runIds.length === 0) return new Set()
+  const ph = runIds.map((_, i) => `$${i + 1}`).join(', ')
   const rows = await table_query({
-    caller: 'getSkippedSourceIds',
-    query: `SELECT se_source_id FROM tse_sessions WHERE se_source_id IN (${ph}) AND se_scoring = 'VP'`,
-    params: sourceIds
+    caller: 'getSkippedRunIds',
+    query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id IN (${ph}) AND se_scoring = 'VP'`,
+    params: runIds
   })
-  return new Set(rows.map((r: any) => r.se_source_id))
+  return new Set(rows.map((r: any) => r.se_run_id))
 }
 
-export async function getImportedSourceIds(sourceIds: number[]): Promise<Set<number>> {
-  if (sourceIds.length === 0) return new Set()
+export async function getImportedRunIds(runIds: number[]): Promise<Set<number>> {
+  if (runIds.length === 0) return new Set()
   const rows = await table_fetch({
-    caller: 'getImportedSourceIds',
+    caller: 'getImportedRunIds',
     table: SESSIONS_TABLE,
-    whereColumnValuePairs: [{ column: 'se_source_id', value: sourceIds, operator: 'IN' }],
-    columns: ['se_source_id']
+    whereColumnValuePairs: [{ column: 'se_run_id', value: runIds, operator: 'IN' }],
+    columns: ['se_run_id']
   })
-  return new Set(rows.map((r: any) => r.se_source_id))
+  return new Set(rows.map((r: any) => r.se_run_id))
 }
 
-export async function getSessionBySourceId(seSourceId: number) {
+export async function getSessionByRunId(seRunId: number) {
   const rows = await table_fetch({
-    caller: 'getSessionBySourceId',
+    caller: 'getSessionByRunId',
     table: SESSIONS_TABLE,
-    whereColumnValuePairs: [{ column: 'se_source_id', value: seSourceId }]
+    whereColumnValuePairs: [{ column: 'se_run_id', value: seRunId }]
   })
   return rows[0] ?? null
 }
@@ -104,7 +104,7 @@ export async function sessionCount(): Promise<number> {
 
 export interface SessionCatalogueEntry {
   se_seid: number
-  se_source_id: number
+  se_run_id: number
   se_date: string
   se_day_of_week: string
   se_scoring: string
@@ -114,7 +114,7 @@ export interface SessionCatalogueEntry {
 export async function getSessionCatalogueForYear(year: number): Promise<SessionCatalogueEntry[]> {
   return table_query({
     caller: 'getSessionCatalogueForYear',
-    query: `SELECT se_seid, se_source_id, se_date::text, se_day_of_week, se_scoring, se_name
+    query: `SELECT se_seid, se_run_id, se_date::text, se_day_of_week, se_scoring, se_name
             FROM tse_sessions
             WHERE EXTRACT(YEAR FROM se_date) = $1
             ORDER BY se_date DESC`,

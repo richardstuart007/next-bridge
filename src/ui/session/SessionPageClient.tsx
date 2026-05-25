@@ -13,7 +13,7 @@ interface SessionRow {
   se_day_of_week: string
 
   se_scoring: string
-  se_source_id: number
+  se_run_id: number
 }
 
 interface ResultRow {
@@ -92,7 +92,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
         </div>
         <h1 className='text-xl font-bold text-gray-900'>
           {dateStr}
-          <span className='ml-3 text-sm font-normal text-gray-400'>#{session.se_source_id}</span>
+          <span className='ml-3 text-sm font-normal text-gray-400'>#{session.se_run_id}</span>
         </h1>
         <div className='flex flex-wrap gap-4 text-sm text-gray-600 mt-1'>
           <span>{session.se_day_of_week}</span>

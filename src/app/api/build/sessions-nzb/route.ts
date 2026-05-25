@@ -7,7 +7,7 @@ export async function POST() {
     const result = await table_query({
       caller: 'build/sessions-nzb/insert',
       query: `INSERT INTO tse_sessions
-                (se_source_id, se_date, se_day_of_week, se_scoring, se_name,
+                (se_run_id, se_date, se_day_of_week, se_scoring, se_name,
                  se_club, se_tournament, se_event_type, se_is_summary)
               SELECT * FROM (
                 SELECT DISTINCT ON (s9_run_id)
@@ -20,19 +20,19 @@ export async function POST() {
                   s9_tournament,
                   s9_event_type,
                   s9_is_summary
-                FROM ts9_nzb_results
+                FROM ts09_results
                 WHERE s9_date IS NOT NULL
                 ORDER BY s9_run_id, s9_s9id
               ) sub
               ORDER BY s9_date, s9_run_id
-              ON CONFLICT (se_source_id) DO NOTHING
+              ON CONFLICT (se_run_id) DO NOTHING
               RETURNING se_seid`,
       params: []
     }) as { se_seid: number }[]
 
     const total = await table_query({
       caller: 'build/sessions-nzb/count',
-      query: `SELECT COUNT(DISTINCT s9_run_id)::int AS n FROM ts9_nzb_results WHERE s9_date IS NOT NULL`,
+      query: `SELECT COUNT(DISTINCT s9_run_id)::int AS n FROM ts09_results WHERE s9_date IS NOT NULL`,
       params: []
     }) as { n: number }[]
 

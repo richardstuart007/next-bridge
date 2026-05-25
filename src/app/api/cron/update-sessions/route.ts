@@ -152,10 +152,10 @@ async function batchCheckMissing(runIds: number[]): Promise<number[]> {
   if (runIds.length === 0) return []
   const existing = await table_query({
     caller: 'cron/update-sessions/check',
-    query: `SELECT se_source_id FROM tse_sessions WHERE se_source_id = ANY($1)`,
+    query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
     params: [runIds] as unknown as (string | number | boolean | null)[]
-  }) as { se_source_id: number }[]
-  const existingSet = new Set(existing.map(r => r.se_source_id))
+  }) as { se_run_id: number }[]
+  const existingSet = new Set(existing.map(r => r.se_run_id))
   return runIds.filter(id => !existingSet.has(id))
 }
 
@@ -254,7 +254,7 @@ export async function GET(request: NextRequest) {
     if (allMissingIds.size > 0) {
       await table_query({
         caller: 'cron/update-sessions/truncate',
-        query: `TRUNCATE ts9_nzb_results`,
+        query: `TRUNCATE ts09_results`,
         params: []
       })
       await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C: ts9 truncated, importing ${allMissingIds.size} run_ids`, lg_severity: 'I' })
@@ -301,7 +301,7 @@ export async function GET(request: NextRequest) {
 
             await table_query({
               caller: 'cron/update-sessions/insert-ts9',
-              query: `INSERT INTO ts9_nzb_results
+              query: `INSERT INTO ts09_results
                         (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
                          s9_event_name, s9_place, s9_score_value, s9_score_type,
                          s9_event_type, s9_tournament, s9_is_summary)
@@ -323,7 +323,7 @@ export async function GET(request: NextRequest) {
     const sessionsResult = await table_query({
       caller: 'cron/update-sessions/sessions-nzb',
       query: `INSERT INTO tse_sessions
-                (se_source_id, se_date, se_day_of_week, se_scoring, se_name,
+                (se_run_id, se_date, se_day_of_week, se_scoring, se_name,
                  se_club, se_tournament, se_event_type, se_is_summary)
               SELECT * FROM (
                 SELECT DISTINCT ON (s9_run_id)
@@ -336,12 +336,12 @@ export async function GET(request: NextRequest) {
                   s9_tournament,
                   s9_event_type,
                   s9_is_summary
-                FROM ts9_nzb_results
+                FROM ts09_results
                 WHERE s9_date IS NOT NULL
                 ORDER BY s9_run_id, s9_s9id
               ) sub
               ORDER BY s9_date, s9_run_id
-              ON CONFLICT (se_source_id) DO NOTHING
+              ON CONFLICT (se_run_id) DO NOTHING
               RETURNING se_seid`,
       params: []
     }) as { se_seid: number }[]
@@ -356,8 +356,8 @@ export async function GET(request: NextRequest) {
                        THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
                        ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
                   CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
-                FROM ts9_nzb_results t
-                JOIN tse_sessions s ON s.se_source_id = t.s9_run_id
+                FROM ts09_results t
+                JOIN tse_sessions s ON s.se_run_id = t.s9_run_id
                 WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
                 UNION ALL
                 SELECT s.se_seid, t.s9_plid2, t.s9_plid1,
@@ -365,8 +365,8 @@ export async function GET(request: NextRequest) {
                        THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
                        ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
                   CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
-                FROM ts9_nzb_results t
-                JOIN tse_sessions s ON s.se_source_id = t.s9_run_id
+                FROM ts09_results t
+                JOIN tse_sessions s ON s.se_run_id = t.s9_run_id
                 WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
               ) combined
               RETURNING re_reid`,

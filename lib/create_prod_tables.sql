@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS tse_sessions (
   se_date         DATE         NOT NULL,
   se_day_of_week  VARCHAR(10)  NOT NULL,
   se_scoring      VARCHAR(20)  NOT NULL,
-  se_source_id    INTEGER      NOT NULL UNIQUE,
+  se_run_id    INTEGER      NOT NULL UNIQUE,
   se_name         VARCHAR(200) NOT NULL DEFAULT '',
   se_club         VARCHAR(100) NOT NULL DEFAULT '',
   se_tournament        VARCHAR(10)  NOT NULL DEFAULT '',

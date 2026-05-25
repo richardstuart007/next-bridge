@@ -102,7 +102,6 @@ export async function POST(request: NextRequest) {
     })
 
     // 4b. Remove any self-partnership rows created by the merge
-    //     (happens if both spellings appeared as a pair in AKBC — re_plid1 = re_plid2 = keep_plid)
     await table_query({
       caller: 'players/merge',
       query: `DELETE FROM tre_results WHERE re_plid1 = $1 AND re_plid2 = $1`,

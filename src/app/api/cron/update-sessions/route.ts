@@ -6,7 +6,7 @@ import { updateIncrementalPartnerStats } from '@/src/lib/actions/players'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
-const AKBC_CLUB_ID = 106
+const BRIDGE_CLUB_ID = 106
 
 const MONTH: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -221,13 +221,13 @@ export async function GET(request: NextRequest) {
 
     // Phase B — Auckland club by date range
     const dates = datesInRange(from_date, to_date)
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B: club ${AKBC_CLUB_ID} over ${dates.length} days (${from_date} → ${to_date})`, lg_severity: 'I' })
+    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B: club ${BRIDGE_CLUB_ID} over ${dates.length} days (${from_date} → ${to_date})`, lg_severity: 'I' })
 
     let club_run_ids_found  = 0
     let club_run_ids_missing = 0
     for (const day of dates) {
       const url =
-        `${NZB_BASE}/results.html?mp_filter_club=${AKBC_CLUB_ID}` +
+        `${NZB_BASE}/results.html?mp_filter_club=${BRIDGE_CLUB_ID}` +
         `&date_start=${day}&date_end=${day}&mp_results=Search`
       const response = await fetch(url, {
         headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }

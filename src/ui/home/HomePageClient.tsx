@@ -228,7 +228,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
         >
           <span className='flex items-center gap-1'>
             Players
-            <FieldHelp text='List of players who have had sessions at AKBC.' />
+            <FieldHelp text='List of players who have had sessions imported.' />
           </span>
         </button>
         <button onClick={() => setActiveTab('sessions')}

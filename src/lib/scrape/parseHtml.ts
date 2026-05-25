@@ -24,99 +24,9 @@ function capitaliseWord(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1)
 }
 
-// -----------------------------------------------------------------------
-// AKBC results page parsing
-// -----------------------------------------------------------------------
-
-export interface ParsedPair {
-  player1Name: string
-  player2Name: string
-  percentage: number
-  player1NzNumber?: number
-  player2NzNumber?: number
-  pairHref?: string
-}
-
-export interface ParsedSession {
-  date: string           // ISO format YYYY-MM-DD
-  dayOfWeek: string
-  pairs: ParsedPair[]
-  skipped: boolean
-  skipReason?: string
-}
-
 const MONTH_MAP: Record<string, string> = {
   jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
   jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12'
-}
-
-/**
- * Parse the AKBC resultsbm.asp page HTML using cheerio.
- * All resultsbm.asp pages are MP (matchpoints) — team events use teamresults.asp.
- *
- * Row structure:  <TR CLASS=ResultsTableBody>
- *                   <TD>1</TD>        — place
- *                   <TD>590.0</TD>    — raw score
- *                   <TD>64.27%</TD>   — percentage
- *                   <TD><A ...>NAME1 - NAME2 (12)</A></TD>
- *                 </TR>
- */
-export function parseResultsPage(html: string): ParsedSession {
-  const $ = cheerio.load(html)
-
-  // Extract date from heading — supports (DD-Mon-YY) or (DD-Mon-YYYY)
-  const headingText = $('.ResultsTableHead').first().text().trim()
-  const dateMatch = headingText.match(/\((\d{1,2})-(\w{3})-(\d{2,4})\)/)
-  if (!dateMatch) {
-    return { date: '', dayOfWeek: '', pairs: [], skipped: true, skipReason: `No date in heading: "${headingText}"` }
-  }
-
-  const [, day, monthStr, yearStr] = dateMatch
-  const month = MONTH_MAP[monthStr.toLowerCase()] ?? '01'
-  const fullYear = yearStr.length === 4 ? yearStr : (parseInt(yearStr, 10) < 50 ? `20${yearStr}` : `19${yearStr}`)
-  const date = `${fullYear}-${month}-${day.padStart(2, '0')}`
-
-  const pairs: ParsedPair[] = []
-  const rowClasses = ['ResultsTableBody', 'ResultsTableBodyAlternateLine']
-
-  $('tr').each((_i, row) => {
-    const cls = $(row).attr('class') ?? ''
-    if (!rowClasses.includes(cls)) return
-
-    const cells = $(row).find('td')
-    if (cells.length < 4) return
-
-    // Column 2: percentage
-    const pctText = $(cells[2]).text().trim().replace('%', '')
-    const rawPct = parseFloat(pctText)
-    if (isNaN(rawPct) || rawPct < 0 || rawPct > 100) return
-    const percentage = rawPct
-
-    // Column 3: pair name inside <a> tag — "NAME1 - NAME2 (NUM)"
-    const anchor = $(cells[3]).find('a')
-    const pairText = anchor.text().trim()
-    if (!pairText) return
-
-    const href = anchor.attr('href') ?? ''
-    const cleanPair = pairText.replace(/\s*\(\d+\)\s*$/, '')
-    const dashIdx = cleanPair.indexOf(' - ')
-    if (dashIdx === -1) return
-
-    const name1 = toTitleCase(cleanPair.slice(0, dashIdx).trim())
-    const name2 = toTitleCase(cleanPair.slice(dashIdx + 3).trim())
-    const nzNumbers = extractNzNumbersFromHref(href)
-
-    pairs.push({
-      player1Name: name1,
-      player2Name: name2,
-      percentage,
-      player1NzNumber: nzNumbers[0],
-      player2NzNumber: nzNumbers[1],
-      pairHref: href || undefined
-    })
-  })
-
-  return { date, dayOfWeek: '', pairs, skipped: false }
 }
 
 // -----------------------------------------------------------------------
@@ -460,27 +370,6 @@ export function parsePlayerResultsHistory(html: string): ParsedPlayerResult[] {
   return results
 }
 
-/**
- * Extract up to two NZ bridge numbers from an href query string.
- * NZ bridge numbers are 1–5 digit integers.
- * Returns [nz1, nz2] — either may be undefined if not found.
- */
-function extractNzNumbersFromHref(href: string): [number | undefined, number | undefined] {
-  if (!href) return [undefined, undefined]
-  try {
-    const qs = href.includes('?') ? href.slice(href.indexOf('?') + 1) : href
-    const nums = new URLSearchParams(qs)
-    const candidates: number[] = []
-    for (const val of nums.values()) {
-      const n = parseInt(val, 10)
-      if (!isNaN(n) && n > 0 && n <= 99999) candidates.push(n)
-    }
-    return [candidates[0], candidates[1]]
-  } catch {
-    return [undefined, undefined]
-  }
-}
-
 function extractRunIdFromHref(href: string): number {
   if (!href) return 0
   try {
@@ -555,69 +444,3 @@ export function parseNzSessionPage(html: string): ParsedSessionPair[] {
   return pairs
 }
 
-// -----------------------------------------------------------------------
-// AKBC showteam.asp page — team match pair header
-// -----------------------------------------------------------------------
-
-export interface ParsedTeamMatchPairs {
-  homePair1: string[]  // 2 player names at home table (first pair)
-  homePair2: string[]  // 2 player names at home table (second pair)
-  awayPair1: string[]  // 2 player names at away table (first pair)
-  awayPair2: string[]  // 2 player names at away table (second pair)
-}
-
-/**
- * Parse the header section of an AKBC showteam.asp page.
- * The header contains "Home Table" / "Away Table" column headers, then 2 rows
- * each with a pair of player names (ALL CAPS, separated by <br>) per table.
- * Stops parsing at the "Board No" row to avoid the board-by-board data.
- */
-export function parseTeamMatchHeader(html: string): ParsedTeamMatchPairs | null {
-  const $ = cheerio.load(html)
-
-  // Find the row containing both "Home Table" and "Away Table" headings
-  let headerRowEl: ReturnType<typeof $> | null = null
-  $('tr').each((_i, tr) => {
-    if (headerRowEl) return
-    const text = $(tr).text()
-    if (/home\s+table/i.test(text) && /away\s+table/i.test(text)) headerRowEl = $(tr)
-  })
-  if (!headerRowEl) return null
-
-  // Extract player names from a cell — names separated by <br> tags
-  const getCellNames = (cell: ReturnType<typeof $>): string[] =>
-    (cell.html() ?? '')
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .split('\n')
-      .map(n => toTitleCase(n.trim()))
-      .filter(n => /[a-zA-Z]{2,}/.test(n))
-
-  // Collect all name-containing cells from the pair section rows.
-  // The header row uses colspan so its cell indices don't match the pair rows —
-  // instead we scan every cell and collect those that contain 2+ names.
-  // Layout: row1=[homePair1, awayPair1], row2=[homePair2, awayPair2] (left→right).
-  const allPairs: string[][] = []
-  let inPairSection = false
-
-  $('tr').each((_i, tr) => {
-    if (headerRowEl && $(tr).is(headerRowEl)) { inPairSection = true; return }
-    if (!inPairSection) return
-    if (/board\s*(no|#|\d)/i.test($(tr).text())) { inPairSection = false; return }
-
-    $(tr).find('td, th').each((_j, cell) => {
-      const names = getCellNames($(cell))
-      if (names.length >= 2) allPairs.push(names.slice(0, 2))
-    })
-  })
-
-  if (allPairs.length < 4) return null
-
-  return {
-    homePair1: allPairs[0],
-    awayPair1: allPairs[1],
-    homePair2: allPairs[2],
-    awayPair2: allPairs[3],
-  }
-}

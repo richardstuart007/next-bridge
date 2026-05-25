@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { getAllClubs, getAllGrades, getAllRanks, getAllTournaments, getAllEventTypes } from '@/src/lib/actions/lookup'
+import { getAllClubs, getAllGrades, getAllRanks, getAllEventTypes } from '@/src/lib/actions/lookup'
 
 // ── Shared dropdown panel ─────────────────────────────────────────────────────
 
@@ -194,49 +194,4 @@ export function EventTypeSelect({ selected, onChange, mode = 'all', placeholder 
     })()
   }, [])
   return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
-}
-
-// ── TournamentSelect ──────────────────────────────────────────────────────────
-
-export function TournamentSelect({ selected, onChange, onOptionsLoaded }: LookupProps) {
-  const [options, setOptions] = useState<string[]>([])
-  const cbRef = useRef(onOptionsLoaded)
-  cbRef.current = onOptionsLoaded
-  useEffect(() => {
-    (async () => {
-      try {
-        const rows = await getAllTournaments()
-        const opts = (rows as { tt_tournament: string }[]).map(r => r.tt_tournament).sort()
-        setOptions(opts)
-        cbRef.current?.(opts)
-      } catch (err) { console.error(err) }
-    })()
-  }, [])
-
-  const grpOpts = {
-    All: options,
-    A:   options.filter(t => t.slice(-1) === 'A'),
-    B:   options.filter(t => t.slice(-1) === 'B'),
-    C:   options.filter(t => t.slice(-1) !== 'A' && t.slice(-1) !== 'B'),
-  }
-
-  function activeGrp(): 'All' | 'A' | 'B' | 'C' | null {
-    for (const [g, opts] of Object.entries(grpOpts) as [keyof typeof grpOpts, string[]][]) {
-      if (opts.length > 0 && selected.size === opts.length && opts.every(o => selected.has(o))) return g
-    }
-    return null
-  }
-  const active = activeGrp()
-
-  return (
-    <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
-      {(['All', 'A', 'B', 'C'] as const).map(g => (
-        <button key={g} type='button'
-          onClick={() => onChange(new Set(grpOpts[g]))}
-          className={`flex-1 py-0.5 ${active === g ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-          {g}
-        </button>
-      ))}
-    </div>
-  )
 }

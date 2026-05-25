@@ -134,12 +134,13 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
 }
 
 export async function POST(request: NextRequest) {
-  let body: { run_ids?: number[] }
+  let body: { run_ids?: number[]; final_run_ids?: number[] }
   try { body = await request.json() } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
   }
 
-  const { run_ids } = body
+  const { run_ids, final_run_ids = [] } = body
+  const finalSet = new Set(final_run_ids)
   if (!run_ids || run_ids.length === 0) {
     return new Response(JSON.stringify({ error: 'run_ids array is required' }), { status: 400 })
   }
@@ -209,11 +210,11 @@ export async function POST(request: NextRequest) {
                 query: `INSERT INTO ts9_nzb_results
                           (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
                            s9_event_name, s9_place, s9_score_value, s9_score_type,
-                           s9_event_type, s9_tournament)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                           s9_event_type, s9_tournament, s9_is_summary)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                         ON CONFLICT (s9_run_id, s9_plid1, s9_plid2) DO NOTHING`,
                 params: [run_id, plid1, plid2, date, club, event_name, place,
-                         score_value, score_type, event_type, tournament]
+                         score_value, score_type, event_type, tournament, finalSet.has(run_id)]
               })
 
               pairs_inserted++

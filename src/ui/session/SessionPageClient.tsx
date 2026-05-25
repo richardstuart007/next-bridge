@@ -1,9 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { getSessionById } from '@/src/lib/actions/sessions'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
+import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
 
 interface SessionRow {
   se_seid: number
@@ -25,12 +27,13 @@ interface ResultRow {
 }
 
 export default function SessionPageClient({ sessionId }: { sessionId: number }) {
+  const router = useRouter()
   const [session, setSession] = useState<SessionRow | null>(null)
   const [results, setResults] = useState<ResultRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [itemsPerPage, setItemsPerPage] = useState(ROWS_PER_PAGE)
 
   useEffect(() => {
     if (isNaN(sessionId)) {
@@ -85,7 +88,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
       {/* Session header */}
       <div className='rounded border border-gray-200 p-4'>
         <div className='flex items-center gap-2 mb-1'>
-          <Link href='/' className='text-xs text-blue-600 hover:underline'>← Home</Link>
+          <button onClick={() => router.back()} className='text-xs text-blue-600 hover:underline'>← Back</button>
         </div>
         <h1 className='text-xl font-bold text-gray-900'>
           {dateStr}

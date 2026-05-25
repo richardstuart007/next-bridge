@@ -107,7 +107,3 @@ export async function populateEventTypes(): Promise<{ inserted: number }> {
   })
   return { inserted: rows[0]?.n ?? 0 }
 }
-
-export async function getAllTournaments() {
-  return table_fetch({ caller: 'getAllTournaments', table: 'ttt_tournament_types', orderBy: 'tt_tournament ASC', skipCache: true })
-}

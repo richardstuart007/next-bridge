@@ -146,9 +146,9 @@ export async function POST() {
       try {
         const ts10Rows = await table_query({
           caller: 'scrape/nzb-from-ts10/read',
-          query: `SELECT s10_run_id FROM ts10_nzb_missing_sessions ORDER BY s10_date DESC, s10_run_id`,
+          query: `SELECT s10_run_id, s10_is_summary FROM ts10_nzb_missing_sessions ORDER BY s10_date DESC, s10_run_id`,
           params: []
-        }) as { s10_run_id: number }[]
+        }) as { s10_run_id: number; s10_is_summary: boolean }[]
 
         if (ts10Rows.length === 0) {
           send({ done: true, run_ids_total: 0, pairs_inserted: 0, players_created: 0, skipped_rows: 0 })
@@ -156,6 +156,7 @@ export async function POST() {
         }
 
         const run_ids = ts10Rows.map(r => r.s10_run_id)
+        const finalSet = new Set(ts10Rows.filter(r => r.s10_is_summary).map(r => r.s10_run_id))
 
         await table_query({
           caller: 'scrape/nzb-from-ts10/truncate',
@@ -210,11 +211,11 @@ export async function POST() {
                 query: `INSERT INTO ts9_nzb_results
                           (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
                            s9_event_name, s9_place, s9_score_value, s9_score_type,
-                           s9_event_type, s9_tournament)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                           s9_event_type, s9_tournament, s9_is_summary)
+                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                         ON CONFLICT (s9_run_id, s9_plid1, s9_plid2) DO NOTHING`,
                 params: [run_id, plid1, plid2, date, club, event_name, place,
-                         score_value, score_type, event_type, tournament]
+                         score_value, score_type, event_type, tournament, finalSet.has(run_id)]
               })
 
               pairs_inserted++

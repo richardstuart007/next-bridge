@@ -49,11 +49,11 @@ function fmtDate(iso: string): string {
 
 export default function PerformanceChart({ results, scoring }: Props) {
   const router = useRouter()
-  const [smoothing, setSmoothing] = useState(30)
+  const [smoothing, setSmoothing] = useState(10)
 
   const sorted = useMemo(() =>
-    [...results].sort((a, b) => (a.date < b.date ? -1 : 1))
-  , [results])
+    [...results].filter(r => r.scoring === scoring).sort((a, b) => (a.date < b.date ? -1 : 1))
+  , [results, scoring])
 
   const valueOf = (r: ResultRow) =>
     scoring === 'VP' ? parseFloat(String(r.vp ?? 0)) : parseFloat(String(r.percentage))
@@ -61,9 +61,9 @@ export default function PerformanceChart({ results, scoring }: Props) {
   const { partnerOrder, ...graphData }: GraphStructure & { partnerOrder: number[] } = useMemo(() => {
     if (sorted.length === 0) return { labels: [], datasets: [], partnerOrder: [] }
 
-    const allDates = [...new Set(sorted.map(r => r.date.slice(0, 10)))].sort()
-    const dateIndex = new Map(allDates.map((d, i) => [d, i]))
-    const labels = allDates.map(fmtDate)
+    // One slot per session (not per unique date) so same-day sessions each get their own point
+    const sessionIndex = new Map(sorted.map((r, i) => [r.session_id, i]))
+    const labels = sorted.map(r => fmtDate(r.date))
 
     const partnerNames = new Map<number, string>()
     const partnerAvgs  = new Map<number, number[]>()
@@ -84,12 +84,12 @@ export default function PerformanceChart({ results, scoring }: Props) {
       const rawVals     = partnerRows.map(valueOf)
       const smoothedVals = smoothing > 0 ? rollingAvg(rawVals, smoothing) : rawVals
 
-      const data: (number | null)[] = Array(allDates.length).fill(null)
-      const keys: number[]          = Array(allDates.length).fill(0)
-      const tooltipData: string[]   = Array(allDates.length).fill('')
+      const data: (number | null)[] = Array(sorted.length).fill(null)
+      const keys: number[]          = Array(sorted.length).fill(0)
+      const tooltipData: string[]   = Array(sorted.length).fill('')
 
       partnerRows.forEach((r, i) => {
-        const slot = dateIndex.get(r.date.slice(0, 10))
+        const slot = sessionIndex.get(r.session_id)
         if (slot === undefined) return
         data[slot]        = smoothedVals[i]
         keys[slot]        = r.session_id
@@ -134,11 +134,10 @@ export default function PerformanceChart({ results, scoring }: Props) {
           <select value={smoothing} onChange={e => setSmoothing(parseInt(e.target.value, 10))}
             className='rounded border border-gray-300 px-2 py-0.5 text-xs'>
             <option value={0}>Off</option>
+            <option value={5}>5 sessions</option>
+            <option value={10}>10 sessions</option>
             <option value={20}>20 sessions</option>
-            <option value={30}>30 sessions</option>
             <option value={50}>50 sessions</option>
-            <option value={75}>75 sessions</option>
-            <option value={100}>100 sessions</option>
           </select>
         </div>
       </div>

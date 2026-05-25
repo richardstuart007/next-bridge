@@ -8,15 +8,25 @@ import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
 interface PartnerRef {
   id: number
   name: string
+  nz_number?: number | null
 }
 
 interface ResultRow {
-  session_id: number
-  date: string
-  percentage: number
-  vp: number | null
-  scoring: string
-  tournament: string
+  session_id:        number
+  source_id:         number
+  date:              string
+  day_of_week:       string
+  scoring:           string
+  session_name:      string
+  club:              string
+  tournament:        string
+  event_type:        string
+  is_summary:        boolean | null
+  percentage:        number
+  vp:                number | null
+  partner_id:        number
+  partner_name:      string | null
+  partner_nz_number: number | null
 }
 
 const SELF_COLOR = 'rgba(0, 0, 0, 1)'
@@ -56,9 +66,14 @@ function fmtDate(iso: string): string {
   return d.toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' })
 }
 
+function escCsv(v: string | number | null | undefined) {
+  const s = String(v ?? '')
+  return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
+}
+
 export default function PartnersChart({ partners, self }: { partners: PartnerRef[]; self?: PartnerRef }) {
   const router = useRouter()
-  const [smoothing,      setSmoothing]      = useState(30)
+  const [smoothing,      setSmoothing]      = useState(10)
   const [scoring,        setScoring]        = useState<Scoring>('MP')
   const [grp,            setGrp]            = useState<Grp>('all')
   const [partnerResults, setPartnerResults] = useState<Map<number, ResultRow[]>>(new Map())
@@ -94,15 +109,22 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
     const all = self ? [self, ...partners] : partners
     if (all.length === 0 || partnerResults.size === 0) return { labels: [], datasets: [] }
 
-    const allDates = new Set<string>()
+    // One slot per session (not per unique date) so same-day sessions each get their own point
+    const seenIds = new Set<number>()
+    const allSessions: { session_id: number; date: string }[] = []
     all.forEach(p => {
       ;(partnerResults.get(p.id) ?? [])
         .filter(r => r.scoring === scoring && (grp === 'all' || grpOf(r.tournament) === grp))
-        .forEach(r => allDates.add(r.date.slice(0, 10)))
+        .forEach(r => {
+          if (!seenIds.has(r.session_id)) {
+            seenIds.add(r.session_id)
+            allSessions.push({ session_id: r.session_id, date: r.date.slice(0, 10) })
+          }
+        })
     })
-    const sortedDates = [...allDates].sort()
-    const dateIndex = new Map(sortedDates.map((d, i) => [d, i]))
-    const labels = sortedDates.map(fmtDate)
+    allSessions.sort((a, b) => (a.date < b.date ? -1 : 1))
+    const sessionIndex = new Map(allSessions.map((s, i) => [s.session_id, i]))
+    const labels = allSessions.map(s => fmtDate(s.date))
 
     const built = all.map(entry => {
       const isSelf = self && entry.id === self.id
@@ -115,12 +137,12 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
       const smoothedVals = smoothing > 0 ? rollingAvg(rawVals, smoothing) : rawVals
       const avg = rawVals.length > 0 ? rawVals.reduce((s, v) => s + v, 0) / rawVals.length : 0
 
-      const data: (number | null)[] = Array(sortedDates.length).fill(null)
-      const keys: number[]          = Array(sortedDates.length).fill(0)
-      const tooltipData: string[]   = Array(sortedDates.length).fill('')
+      const data: (number | null)[] = Array(allSessions.length).fill(null)
+      const keys: number[]          = Array(allSessions.length).fill(0)
+      const tooltipData: string[]   = Array(allSessions.length).fill('')
 
       rows.forEach((r, i) => {
-        const slot = dateIndex.get(r.date.slice(0, 10))
+        const slot = sessionIndex.get(r.session_id)
         if (slot === undefined) return
         data[slot]        = smoothedVals[i]
         keys[slot]        = r.session_id
@@ -149,6 +171,41 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
 
     return { labels, datasets }
   }, [partners, self, partnerResults, smoothing, scoring, grp])
+
+  function exportCSV() {
+    const all = self ? [self, ...partners] : partners
+    const header = ['Player','Player NZB#','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP']
+    const dataRows: string[] = []
+    all.forEach(entry => {
+      const rows = (partnerResults.get(entry.id) ?? [])
+        .slice()
+        .sort((a, b) => (a.date < b.date ? -1 : 1))
+      rows.forEach(r => {
+        dataRows.push([
+          entry.name,
+          entry.nz_number ?? '',
+          r.source_id,
+          r.date.slice(0, 10),
+          r.day_of_week,
+          r.partner_name ?? '',
+          r.partner_nz_number ?? '',
+          r.session_name,
+          r.club,
+          r.tournament,
+          r.event_type,
+          r.scoring,
+          r.is_summary === true ? 'Summary' : r.is_summary === null ? '?' : '',
+          r.scoring === 'MP' ? parseFloat(String(r.percentage)).toFixed(2) : '',
+          r.scoring === 'VP' ? parseFloat(String(r.vp ?? 0)).toFixed(2) : '',
+        ].map(escCsv).join(','))
+      })
+    })
+    const csv = [header.join(','), ...dataRows].join('\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+    const a = document.createElement('a')
+    a.href = url; a.download = 'partners_all.csv'
+    a.click(); URL.revokeObjectURL(url)
+  }
 
   return (
     <div className='space-y-3'>
@@ -180,13 +237,16 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
             <select value={smoothing} onChange={e => setSmoothing(parseInt(e.target.value, 10))}
               className='rounded border border-gray-300 px-2 py-0.5 text-xs'>
               <option value={0}>Off</option>
+              <option value={5}>5 sessions</option>
+              <option value={10}>10 sessions</option>
               <option value={20}>20 sessions</option>
-              <option value={30}>30 sessions</option>
               <option value={50}>50 sessions</option>
-              <option value={75}>75 sessions</option>
-              <option value={100}>100 sessions</option>
             </select>
           </div>
+          <button onClick={exportCSV} disabled={loading || partnerResults.size === 0}
+            className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50'>
+            Export CSV
+          </button>
         </div>
       </div>
 

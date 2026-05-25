@@ -8,7 +8,7 @@ export async function POST() {
       caller: 'build/sessions-nzb/insert',
       query: `INSERT INTO tse_sessions
                 (se_source_id, se_date, se_day_of_week, se_scoring, se_name,
-                 se_club, se_tournament, se_event_type)
+                 se_club, se_tournament, se_event_type, se_is_summary)
               SELECT DISTINCT ON (s9_run_id)
                 s9_run_id,
                 s9_date,
@@ -17,7 +17,8 @@ export async function POST() {
                 s9_event_name,
                 s9_club,
                 s9_tournament,
-                s9_event_type
+                s9_event_type,
+                s9_is_summary
               FROM ts9_nzb_results
               WHERE s9_date IS NOT NULL
               ORDER BY s9_run_id, s9_s9id

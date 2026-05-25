@@ -23,7 +23,6 @@ $tables = @(
     "trk_ranks",
     "tcl_clubs",
     "tgr_grades",
-    "ttt_tournament_types",
     "tet_event_types",
     "ta1_player_stats",
     "ta2_partner_stats"

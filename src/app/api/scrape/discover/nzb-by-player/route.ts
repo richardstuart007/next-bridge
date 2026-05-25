@@ -1,19 +1,8 @@
 import { NextRequest } from 'next/server'
-import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
+import { extractRunIds } from '@/src/lib/scrapeUtils'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
-
-function extractRunIds(html: string): number[] {
-  const $ = cheerio.load(html)
-  const runIds = new Set<number>()
-  $('a[href*="run_id="]').each((_, el) => {
-    const href = $(el).attr('href') ?? ''
-    const m = href.match(/run_id=(\d+)/)
-    if (m) runIds.add(parseInt(m[1], 10))
-  })
-  return [...runIds]
-}
 
 export async function POST(request: NextRequest) {
   let body: { nz_bridge_number?: number }
@@ -35,10 +24,11 @@ export async function POST(request: NextRequest) {
       return new Response(JSON.stringify({ error: `NZB fetch failed: ${response.status}` }), { status: 502 })
     }
 
-    const runIds = extractRunIds(await response.text())
+    const { runIds, finalRunIds } = extractRunIds(await response.text())
+    const finalSet = new Set(finalRunIds)
 
     if (runIds.length === 0) {
-      return new Response(JSON.stringify({ total_found: 0, total_in_prod: 0, total_missing: 0, missing: [] }))
+      return new Response(JSON.stringify({ total_found: 0, total_in_prod: 0, total_missing: 0, missing: [], final_run_ids: [] }))
     }
 
     const existing = await table_query({
@@ -54,7 +44,9 @@ export async function POST(request: NextRequest) {
       total_found:   runIds.length,
       total_in_prod: runIds.length - missing.length,
       total_missing: missing.length,
-      missing
+      missing,
+      final_run_ids: finalRunIds,
+      missing_final: missing.filter(id => finalSet.has(id)),
     }), { headers: { 'Content-Type': 'application/json' } })
 
   } catch (err) {

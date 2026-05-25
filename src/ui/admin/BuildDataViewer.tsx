@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { getAllPlayers } from '@/src/lib/actions/players'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { getResultsBySeid, getResultsByPlid, getAllPartners } from '@/src/lib/actions/build-viewer'
-import { getAllTournaments } from '@/src/lib/actions/lookup'
 import { EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 
 type Row = Record<string, unknown>
@@ -145,22 +144,13 @@ export default function BuildDataViewer() {
   const [sessEventTypeFilter, setSessEventTypeFilter] = useState<Set<string>>(new Set())
   const [sessDayFilter,      setSessDayFilter]      = useState('all')
   const [sessSourceFilter,   setSessSourceFilter]   = useState('')
-  const [tournamentTypes,    setTournamentTypes]    = useState<string[]>([])
+  const tournamentTypes = ['A', 'B', 'C']
 
   // tpa_partners
   const [partners,        setPartners]        = useState<Row[]>([])
   const [partnersLoading, setPartnersLoading] = useState(false)
   const [paNameFilter,    setPaNameFilter]    = useState('')
 
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const rows = await getAllTournaments()
-        setTournamentTypes((rows as { tt_tournament: string }[]).map(r => r.tt_tournament).sort())
-      } catch { /* ignore */ }
-    })()
-  }, [])
 
   async function loadPlayers() {
     setPlayersLoading(true); setError(null); setSelectedPlayer(null); setPlayerResults([])
@@ -213,7 +203,7 @@ export default function BuildDataViewer() {
     if (sessScoringFilter   !== 'all' && r.se_scoring    !== sessScoringFilter)   return false
     if (sessEventTypeFilter.size > 0 && !sessEventTypeFilter.has(String(r.se_event_type ?? ''))) return false
     if (sessDayFilter       !== 'all' && r.se_day_of_week !== sessDayFilter)       return false
-    if (sessTournamentFilter.length > 0 && !sessTournamentFilter.includes(String(r.se_tournament ?? ''))) return false
+    if (sessTournamentFilter.length > 0 && !sessTournamentFilter.includes(String(r.se_tournament ?? '')[1] ?? '')) return false
     return true
   })
 

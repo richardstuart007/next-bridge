@@ -3,6 +3,7 @@ import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_Logging } from 'nextjs-shared/write_logging'
 import { updateIncrementalPartnerStats } from '@/src/lib/actions/players'
+import { extractRunIds } from '@/src/lib/scrapeUtils'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
 const AKBC_CLUB_ID = 106
@@ -33,16 +34,6 @@ function normaliseScore(value: number, type: 'PCT' | 'VP'): number {
   return value
 }
 
-function extractRunIds(html: string): number[] {
-  const $ = cheerio.load(html)
-  const runIds = new Set<number>()
-  $('a[href*="run_id="]').each((_, el) => {
-    const href = $(el).attr('href') ?? ''
-    const m = href.match(/run_id=(\d+)/)
-    if (m) runIds.add(parseInt(m[1], 10))
-  })
-  return [...runIds]
-}
 
 function datesInRange(from: string, to: string): string[] {
   const dates: string[] = []
@@ -192,6 +183,7 @@ export async function GET(request: NextRequest) {
     await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `START from_date=${from_date} to_date=${to_date}`, lg_severity: 'I' })
 
     const allMissingIds = new Set<number>()
+    const allFinalIds   = new Set<number>()
     let players_scraped = 0
     let run_ids_found   = 0
 
@@ -218,8 +210,9 @@ export async function GET(request: NextRequest) {
         continue
       }
 
-      const runIds = extractRunIds(await response.text())
+      const { runIds, finalRunIds } = extractRunIds(await response.text())
       run_ids_found += runIds.length
+      finalRunIds.forEach(id => allFinalIds.add(id))
       const missing = await batchCheckMissing(runIds)
       missing.forEach(id => allMissingIds.add(id))
     }
@@ -241,9 +234,10 @@ export async function GET(request: NextRequest) {
       })
       if (!response.ok) continue
 
-      const runIds = extractRunIds(await response.text())
+      const { runIds, finalRunIds } = extractRunIds(await response.text())
       run_ids_found += runIds.length
       club_run_ids_found += runIds.length
+      finalRunIds.forEach(id => allFinalIds.add(id))
       const missing = await batchCheckMissing(runIds)
       club_run_ids_missing += missing.length
       missing.forEach(id => allMissingIds.add(id))
@@ -310,11 +304,11 @@ export async function GET(request: NextRequest) {
               query: `INSERT INTO ts9_nzb_results
                         (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
                          s9_event_name, s9_place, s9_score_value, s9_score_type,
-                         s9_event_type, s9_tournament)
-                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+                         s9_event_type, s9_tournament, s9_is_summary)
+                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
                       ON CONFLICT (s9_run_id, s9_plid1, s9_plid2) DO NOTHING`,
               params: [run_id, plid1, plid2, date, club, event_name, place,
-                       score_value, score_type, event_type, tournament]
+                       score_value, score_type, event_type, tournament, allFinalIds.has(run_id)]
             })
             pairs_inserted++
           }
@@ -330,7 +324,7 @@ export async function GET(request: NextRequest) {
       caller: 'cron/update-sessions/sessions-nzb',
       query: `INSERT INTO tse_sessions
                 (se_source_id, se_date, se_day_of_week, se_scoring, se_name,
-                 se_club, se_tournament, se_event_type)
+                 se_club, se_tournament, se_event_type, se_is_summary)
               SELECT DISTINCT ON (s9_run_id)
                 s9_run_id,
                 s9_date,
@@ -339,7 +333,8 @@ export async function GET(request: NextRequest) {
                 s9_event_name,
                 s9_club,
                 s9_tournament,
-                s9_event_type
+                s9_event_type,
+                s9_is_summary
               FROM ts9_nzb_results
               WHERE s9_date IS NOT NULL
               ORDER BY s9_run_id, s9_s9id

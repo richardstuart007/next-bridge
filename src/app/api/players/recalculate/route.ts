@@ -28,16 +28,19 @@ export async function POST(request: NextRequest) {
         const rows = await table_query({
           caller: `recalculate/player_${grp}`,
           query: `
-            INSERT INTO ta1_player_stats (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_vp_sessions, a1_vp_avg_vp)
+            INSERT INTO ta1_player_stats (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev, a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev)
             SELECT re.re_plid1,
                    ${isAll ? "'all'" : '$1::varchar'},
                    COUNT(*) FILTER (WHERE se.se_scoring = 'MP')::integer,
-                   COALESCE(ROUND(AVG(re.re_percentage) FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
+                   COALESCE(ROUND(AVG(re.re_percentage)        FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
+                   ROUND(STDDEV_SAMP(re.re_percentage)         FILTER (WHERE se.se_scoring = 'MP')::numeric, 2),
                    COUNT(*) FILTER (WHERE se.se_scoring = 'VP')::integer,
-                   COALESCE(ROUND(AVG(re.re_vp)         FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0)
+                   COALESCE(ROUND(AVG(re.re_vp)               FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0),
+                   ROUND(STDDEV_SAMP(re.re_vp)                FILTER (WHERE se.se_scoring = 'VP')::numeric, 2)
             FROM tre_results re
             JOIN tse_sessions se ON se.se_seid = re.re_seid
-            ${isAll ? '' : `WHERE ${GRP_EXPR} = $1`}
+            WHERE se.se_is_summary IS NOT TRUE
+            ${isAll ? '' : `AND ${GRP_EXPR} = $1`}
             GROUP BY re.re_plid1
             RETURNING 1
           `,
@@ -63,15 +66,18 @@ export async function POST(request: NextRequest) {
               JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1,    re.re_plid2)
               JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
               WHERE re.re_plid1 < re.re_plid2
+                AND se.se_is_summary IS NOT TRUE
                 ${isAll ? '' : `AND ${GRP_EXPR} = $1`}
             )
-            INSERT INTO ta2_partner_stats (a2_plid1, a2_plid2, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_vp_sessions, a2_vp_avg_vp)
+            INSERT INTO ta2_partner_stats (a2_plid1, a2_plid2, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_mp_stddev, a2_vp_sessions, a2_vp_avg_vp, a2_vp_stddev)
             SELECT plid1, plid2,
                    ${isAll ? "'all'" : '$1::varchar'},
                    COUNT(*) FILTER (WHERE se_scoring = 'MP')::integer,
-                   COALESCE(ROUND(AVG(re_percentage) FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                   COALESCE(ROUND(AVG(re_percentage)    FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                   ROUND(STDDEV_SAMP(re_percentage)     FILTER (WHERE se_scoring = 'MP')::numeric, 2),
                    COUNT(*) FILTER (WHERE se_scoring = 'VP')::integer,
-                   COALESCE(ROUND(AVG(re_vp)         FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0)
+                   COALESCE(ROUND(AVG(re_vp)            FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0),
+                   ROUND(STDDEV_SAMP(re_vp)             FILTER (WHERE se_scoring = 'VP')::numeric, 2)
             FROM pairs GROUP BY plid1, plid2
             RETURNING 1
           `,

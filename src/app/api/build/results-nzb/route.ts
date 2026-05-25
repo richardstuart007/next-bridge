@@ -10,7 +10,7 @@ export async function POST() {
               SELECT * FROM (
                 SELECT s.se_seid, t.s9_plid1, t.s9_plid2,
                   CASE WHEN t.s9_score_type = 'VP'
-                       THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
+                       THEN 0
                        ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
                   CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
                 FROM ts9_nzb_results t
@@ -19,7 +19,7 @@ export async function POST() {
                 UNION ALL
                 SELECT s.se_seid, t.s9_plid2, t.s9_plid1,
                   CASE WHEN t.s9_score_type = 'VP'
-                       THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
+                       THEN 0
                        ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
                   CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
                 FROM ts9_nzb_results t

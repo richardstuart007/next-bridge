@@ -29,15 +29,18 @@ export async function GET(
         se.se_club          AS club,
         se.se_tournament    AS tournament,
         se.se_event_type    AS event_type,
+        se.se_is_summary    AS is_summary,
         re.re_percentage    AS percentage,
         re.re_vp            AS vp,
         re.re_plid2         AS partner_id,
-        p.pl_name           AS partner_name,
-        p.pl_all_results    AS partner_tracked
+        p.pl_name                AS partner_name,
+        p.pl_nz_bridge_number    AS partner_nz_number,
+        p.pl_all_results         AS partner_tracked
       FROM tre_results re
       JOIN tse_sessions se ON se.se_seid = re.re_seid
       LEFT JOIN tpl_players p ON p.pl_plid = re.re_plid2
       WHERE re.re_plid1 = $1
+        AND se.se_is_summary IS NOT TRUE
     `
     const queryParams: (string | number)[] = [plId]
     let paramIndex = 2

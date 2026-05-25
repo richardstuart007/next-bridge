@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
-import { ClubSelect, GradeSelect, RankSelect, TournamentSelect } from '@/src/ui/shared/LookupSelects'
+import { ClubSelect, GradeSelect, RankSelect, StringMultiSelect } from '@/src/ui/shared/LookupSelects'
+import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
 import FieldHelp from '@/src/ui/shared/FieldHelp'
@@ -31,9 +32,11 @@ interface SessionRow {
   se_name: string
   se_tournament: string
   se_club: string
+  se_is_summary: boolean
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+const TOURNAMENT_TYPES = ['A', 'B', 'C']
 const SELECT_CLS = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
 const INPUT_CLS  = 'w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal'
 const NUM_CLS    = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
@@ -60,13 +63,13 @@ export default function HomePageClient() {
   const [activeTab, setActiveTab] = useState<'players' | 'sessions'>('players')
 
   // ── Option counts for filter comparisons (populated via onOptionsLoaded callbacks) ──
-  const [tournamentOptions, setTournamentOptions] = useState<string[]>([])
+  const [fTournamentTypes, setFTournamentTypes] = useState<Set<string>>(new Set(TOURNAMENT_TYPES))
   const [sessClubOptions,   setSessClubOptions]   = useState<string[]>([])
 
   // ── Players ──
   const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([])
   const [playerPage, setPlayerPage] = useState(1)
-  const [playerItemsPerPage, setPlayerItemsPerPage] = useState(15)
+  const [playerItemsPerPage, setPlayerItemsPerPage] = useState(ROWS_PER_PAGE)
 
   // Player filters
   const [fName,      setFName]      = useState('')
@@ -84,13 +87,13 @@ export default function HomePageClient() {
   const [allSessions,         setAllSessions]         = useState<SessionRow[]>([])
   const [dateFrom,            setDateFrom]            = useState('')
   const [dateTo,              setDateTo]              = useState('')
-  const [dayFilter,           setDayFilter]           = useState('')
+  const [fDays,               setFDays]               = useState<Set<string>>(new Set(DAYS))
   const [scoringFilter,       setScoringFilter]       = useState('')
   const [sessNameFilter,      setSessNameFilter]      = useState('')
-  const [fTournaments,        setFTournaments]        = useState<Set<string>>(new Set())
-  const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new Set())
+const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new Set())
+  const [summaryFilter,         setSummaryFilter]         = useState<'all' | 'summary' | 'session'>('all')
   const [sessionPage,         setSessionPage]         = useState(1)
-  const [sessionItemsPerPage, setSessionItemsPerPage] = useState(10)
+  const [sessionItemsPerPage, setSessionItemsPerPage] = useState(ROWS_PER_PAGE)
   const [loadingSessions,     setLoadingSessions]     = useState(false)
 
   // ── Restore from sessionStorage on mount ──
@@ -110,6 +113,15 @@ export default function HomePageClient() {
       if (s.fExcludeNz0 !== undefined)   setFExcludeNz0(s.fExcludeNz0)
       if (s.playerPage)                  setPlayerPage(s.playerPage)
       if (s.playerItemsPerPage)          setPlayerItemsPerPage(s.playerItemsPerPage)
+      // Session tab filters
+      if (s.dateFrom)                    setDateFrom(s.dateFrom)
+      if (s.dateTo)                      setDateTo(s.dateTo)
+      if (s.fDays?.length)               setFDays(new Set(s.fDays))
+      if (s.scoringFilter !== undefined) setScoringFilter(s.scoringFilter)
+      if (s.sessNameFilter !== undefined) setSessNameFilter(s.sessNameFilter)
+      if (s.summaryFilter)                 setSummaryFilter(s.summaryFilter as 'all' | 'summary' | 'session')
+      if (s.sessionPage)                 setSessionPage(s.sessionPage)
+      if (s.sessionItemsPerPage)         setSessionItemsPerPage(s.sessionItemsPerPage)
     }
     restoredRef.current = true
   }, [])
@@ -123,11 +135,15 @@ export default function HomePageClient() {
         fRanks: [...fRanks], fGrades: [...fGrades], fClubs: [...fClubs],
         fRatingMin, fAMin, fSessMin,
         playerPage, playerItemsPerPage,
+        dateFrom, dateTo, fDays: [...fDays], scoringFilter, sessNameFilter, summaryFilter,
+        sessionPage, sessionItemsPerPage,
       }))
     } catch {}
   }, [activeTab, fName, fNz, fTracked, fExcludeNz0, fRanks, fGrades, fClubs,
       fRatingMin, fAMin, fSessMin,
-      playerPage, playerItemsPerPage])
+      playerPage, playerItemsPerPage,
+      dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, summaryFilter,
+      sessionPage, sessionItemsPerPage])
 
   useEffect(() => {
     (async () => {
@@ -187,17 +203,19 @@ export default function HomePageClient() {
 
   const sessions = useMemo(() => {
     let rows = allSessions
-    if (dateFrom)      rows = rows.filter(s => s.se_date.slice(0, 10) >= dateFrom)
-    if (dateTo)        rows = rows.filter(s => s.se_date.slice(0, 10) <= dateTo)
-    if (dayFilter)     rows = rows.filter(s => s.se_day_of_week === dayFilter)
+    if (dateFrom)                  rows = rows.filter(s => s.se_date.slice(0, 10) >= dateFrom)
+    if (dateTo)                    rows = rows.filter(s => s.se_date.slice(0, 10) <= dateTo)
+    if (fDays.size < DAYS.length)  rows = rows.filter(s => fDays.has(s.se_day_of_week ?? ''))
     if (scoringFilter) rows = rows.filter(s => s.se_scoring === scoringFilter)
     if (sessNameFilter) rows = rows.filter(s => s.se_name.toLowerCase().includes(sessNameFilter.toLowerCase()))
-    if (fTournaments.size < tournamentOptions.length) rows = rows.filter(s => fTournaments.has(s.se_tournament ?? ''))
+    if (fTournamentTypes.size < TOURNAMENT_TYPES.length) rows = rows.filter(s => fTournamentTypes.has((s.se_tournament ?? '')[1] ?? ''))
     if (fSessClubs.size < sessClubOptions.length) rows = rows.filter(s => fSessClubs.has(s.se_club ?? ''))
+    if (summaryFilter === 'summary') rows = rows.filter(s => s.se_is_summary === true)
+    if (summaryFilter === 'session') rows = rows.filter(s => s.se_is_summary !== true)
     return rows
-  }, [allSessions, dateFrom, dateTo, dayFilter, scoringFilter, sessNameFilter, fTournaments, tournamentOptions.length, fSessClubs, sessClubOptions.length])
+  }, [allSessions, dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, fTournamentTypes, fSessClubs, sessClubOptions.length, summaryFilter])
 
-  useEffect(() => { setSessionPage(1) }, [dateFrom, dateTo, dayFilter, scoringFilter, sessNameFilter, fTournaments, fSessClubs])
+  useEffect(() => { setSessionPage(1) }, [dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, fTournamentTypes, fSessClubs, summaryFilter])
 
   return (
     <div className='space-y-4'>
@@ -235,8 +253,9 @@ export default function HomePageClient() {
           ) : (
             <>
               <div className='overflow-x-auto'>
+              <div className='max-h-[520px] overflow-y-auto'>
                 <table className='w-full text-sm'>
-                  <thead>
+                  <thead className='sticky top-0 z-10 bg-white'>
                     <tr className='border-b border-gray-200'>
                       <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-20'>Name</th>
                       <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>NZ#</th>
@@ -318,6 +337,7 @@ export default function HomePageClient() {
                   </tbody>
                 </table>
               </div>
+              </div>
               {filteredPlayers.length > playerItemsPerPage && (
                 <div className='mt-3 flex items-center gap-3'>
                   <select
@@ -356,14 +376,16 @@ export default function HomePageClient() {
           {allSessions.length === 0 && !loadingSessions ? (
             <p className='text-sm text-gray-400'>No sessions found. <Link href='/admin' className='text-blue-600 hover:underline'>Import one now.</Link></p>
           ) : (
+            <div className='max-h-[520px] overflow-y-auto'>
             <table className='w-full text-sm'>
-              <thead>
+              <thead className='sticky top-0 z-10 bg-white'>
                 <tr className='border-b border-gray-200'>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>ID</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-36'>Date</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-28'>Day</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Type</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Scoring</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Summary</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium whitespace-nowrap'>Club</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Tournament Name</th>
                 </tr>
@@ -371,25 +393,28 @@ export default function HomePageClient() {
                   <td className='py-1 pr-2' />
                   <td className='py-1 pr-2'>
                     <div className='flex flex-col gap-0.5'>
-                      <input type='date' value={dateFrom} onChange={e => setDateFrom(e.target.value)} className={INPUT_CLS} />
-                      <input type='date' value={dateTo}   onChange={e => setDateTo(e.target.value)}   className={INPUT_CLS} />
+                      <input type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)} className={INPUT_CLS} />
+                      <input type='date' value={dateTo}   min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}   className={INPUT_CLS} />
                     </div>
                   </td>
                   <td className='py-1 pr-2'>
-                    <select value={dayFilter} onChange={e => setDayFilter(e.target.value)} className={SELECT_CLS}>
-                      <option value=''>All</option>
-                      {DAYS.map(d => <option key={d}>{d}</option>)}
-                    </select>
+                    <StringMultiSelect options={DAYS} selected={fDays} onChange={setFDays} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <TournamentSelect mode='all' selected={fTournaments} onChange={setFTournaments}
-                      onOptionsLoaded={opts => { setTournamentOptions(opts); setFTournaments(new Set(opts)) }} />
+                    <StringMultiSelect options={TOURNAMENT_TYPES} selected={fTournamentTypes} onChange={setFTournamentTypes} />
                   </td>
                   <td className='py-1 pr-2'>
                     <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value)} className={SELECT_CLS}>
                       <option value=''>All</option>
                       <option value='MP'>MP</option>
                       <option value='VP'>VP</option>
+                    </select>
+                  </td>
+                  <td className='py-1 pr-2'>
+                    <select value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')} className={SELECT_CLS}>
+                      <option value='all'>All</option>
+                      <option value='summary'>Summary</option>
+                      <option value='session'>Session</option>
                     </select>
                   </td>
                   <td className='py-1 pr-2'>
@@ -420,12 +445,20 @@ export default function HomePageClient() {
                     <td className='py-1.5'>{s.se_day_of_week}</td>
                     <td className='py-1.5 text-gray-500'>{s.se_tournament || '—'}</td>
                     <td className='py-1.5 text-gray-500'>{s.se_scoring}</td>
+                    <td className='py-1.5'>
+                      {s.se_is_summary === true
+                        ? <span className='rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700'>Summary</span>
+                        : s.se_is_summary === null || s.se_is_summary === undefined
+                          ? <span className='text-gray-300 text-xs'>?</span>
+                          : <span className='text-gray-400 text-xs'>—</span>}
+                    </td>
                     <td className='py-1.5 text-gray-500 whitespace-nowrap'>{s.se_club || '—'}</td>
                     <td className='py-1.5 text-gray-600'>{s.se_name || '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           )}
           {sessions.length > sessionItemsPerPage && (
             <div className='mt-3 flex items-center gap-3'>

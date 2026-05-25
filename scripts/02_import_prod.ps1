@@ -23,7 +23,6 @@ $tables = @(
     "trk_ranks",
     "tcl_clubs",
     "tgr_grades",
-    "ttt_tournament_types",
     "tet_event_types",
     "ta1_player_stats",
     "ta2_partner_stats"
@@ -48,7 +47,6 @@ $seqcmds = @(
     "SELECT setval('trk_ranks_rk_rkid_seq',              (SELECT COALESCE(MAX(rk_rkid), 0) FROM trk_ranks))",
     "SELECT setval('tcl_clubs_cl_clid_seq',              (SELECT COALESCE(MAX(cl_clid), 0) FROM tcl_clubs))",
     "SELECT setval('tgr_grades_gr_grid_seq',             (SELECT COALESCE(MAX(gr_grid), 0) FROM tgr_grades))",
-    "SELECT setval('ttt_tournament_types_tt_ttid_seq',   (SELECT COALESCE(MAX(tt_ttid), 0) FROM ttt_tournament_types))",
     "SELECT setval('tet_event_types_et_etid_seq',        (SELECT COALESCE(MAX(et_etid), 0) FROM tet_event_types))",
     "SELECT setval('ta1_player_stats_a1_a1id_seq',       (SELECT COALESCE(MAX(a1_a1id), 0) FROM ta1_player_stats))",
     "SELECT setval('ta2_partner_stats_a2_a2id_seq',      (SELECT COALESCE(MAX(a2_a2id), 0) FROM ta2_partner_stats))"

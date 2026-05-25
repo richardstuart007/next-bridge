@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
-import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
+import { extractRunIds } from '@/src/lib/scrapeUtils'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
 
@@ -15,16 +15,6 @@ function datesInRange(from: string, to: string): string[] {
   return dates.reverse()
 }
 
-function extractRunIds(html: string): number[] {
-  const $ = cheerio.load(html)
-  const runIds = new Set<number>()
-  $('a[href*="run_id="]').each((_, el) => {
-    const href = $(el).attr('href') ?? ''
-    const m = href.match(/run_id=(\d+)/)
-    if (m) runIds.add(parseInt(m[1], 10))
-  })
-  return [...runIds]
-}
 
 export async function POST(request: NextRequest) {
   let body: { date_from?: string; date_end?: string; club_id?: number }
@@ -69,8 +59,9 @@ export async function POST(request: NextRequest) {
           })
           if (!response.ok) continue
 
-          const runIds = extractRunIds(await response.text())
+          const { runIds, finalRunIds } = extractRunIds(await response.text())
           if (runIds.length === 0) continue
+          const finalSet = new Set(finalRunIds)
 
           total_found += runIds.length
 
@@ -87,12 +78,13 @@ export async function POST(request: NextRequest) {
           total_missing += dayMissing.length
 
           for (const run_id of dayMissing) {
+            const is_final = finalSet.has(run_id)
             missing.push({ date: day, run_id })
             await table_query({
               caller: 'scrape/discover/nzb-by-date/insert',
-              query: `INSERT INTO ts10_nzb_missing_sessions (s10_run_id, s10_date, s10_club_id)
-                      VALUES ($1, $2, $3) ON CONFLICT (s10_run_id) DO NOTHING`,
-              params: [run_id, day, club_id]
+              query: `INSERT INTO ts10_nzb_missing_sessions (s10_run_id, s10_date, s10_club_id, s10_is_summary)
+                      VALUES ($1, $2, $3, $4) ON CONFLICT (s10_run_id) DO NOTHING`,
+              params: [run_id, day, club_id, is_final]
             })
           }
 

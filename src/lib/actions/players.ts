@@ -106,12 +106,35 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
 
 /** Fetch all group stats (A/B/C/all) for a player from ta1_player_stats. */
 export async function getPlayerAllGroupStats(plid: number) {
-  const rows = await table_fetch({
+  const rows = await table_query({
     caller: 'getPlayerAllGroupStats',
-    table: 'ta1_player_stats',
-    whereColumnValuePairs: [{ column: 'a1_plid', value: plid }]
+    query: `
+      WITH all_ranked AS (
+        SELECT a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
+               a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev,
+               PERCENT_RANK() OVER (PARTITION BY a1_group ORDER BY a1_mp_stddev NULLS LAST) AS mp_pct_rank,
+               PERCENT_RANK() OVER (PARTITION BY a1_group ORDER BY a1_vp_stddev NULLS LAST) AS vp_pct_rank
+        FROM ta1_player_stats
+      )
+      SELECT a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev, mp_pct_rank,
+             a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev, vp_pct_rank
+      FROM all_ranked
+      WHERE a1_plid = $1
+      ORDER BY a1_group
+    `,
+    params: [plid]
   })
-  return rows as { a1_group: string; a1_mp_sessions: number; a1_mp_avg_pct: number; a1_vp_sessions: number; a1_vp_avg_vp: number }[]
+  return rows as {
+    a1_group:       string
+    a1_mp_sessions: number
+    a1_mp_avg_pct:  number
+    a1_mp_stddev:   number | null
+    mp_pct_rank:    number | null
+    a1_vp_sessions: number
+    a1_vp_avg_vp:   number
+    a1_vp_stddev:   number | null
+    vp_pct_rank:    number | null
+  }[]
 }
 
 /** Upsert full player data including NZ bridge number. */
@@ -174,7 +197,7 @@ const PARTNERS_TABLE = 'tpa_partners'
 export async function updateIncrementalPartnerStats(): Promise<{ sessions: number; pairs: number }> {
   const unbuilt = await table_query({
     caller: 'updateIncrementalPartnerStats/sessions',
-    query: `SELECT se_seid FROM tse_sessions WHERE se_partners_built = FALSE`,
+    query: `SELECT se_seid FROM tse_sessions WHERE se_partners_built = FALSE AND se_is_summary IS NOT TRUE`,
     params: []
   }) as { se_seid: number }[]
 

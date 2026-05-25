@@ -9,19 +9,22 @@ export async function POST() {
       query: `INSERT INTO tse_sessions
                 (se_source_id, se_date, se_day_of_week, se_scoring, se_name,
                  se_club, se_tournament, se_event_type, se_is_summary)
-              SELECT DISTINCT ON (s9_run_id)
-                s9_run_id,
-                s9_date,
-                TO_CHAR(s9_date, 'FMDay'),
-                CASE WHEN s9_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
-                s9_event_name,
-                s9_club,
-                s9_tournament,
-                s9_event_type,
-                s9_is_summary
-              FROM ts9_nzb_results
-              WHERE s9_date IS NOT NULL
-              ORDER BY s9_run_id, s9_s9id
+              SELECT * FROM (
+                SELECT DISTINCT ON (s9_run_id)
+                  s9_run_id,
+                  s9_date,
+                  TO_CHAR(s9_date, 'FMDay'),
+                  CASE WHEN s9_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
+                  s9_event_name,
+                  s9_club,
+                  s9_tournament,
+                  s9_event_type,
+                  s9_is_summary
+                FROM ts9_nzb_results
+                WHERE s9_date IS NOT NULL
+                ORDER BY s9_run_id, s9_s9id
+              ) sub
+              ORDER BY s9_date, s9_run_id
               ON CONFLICT (se_source_id) DO NOTHING
               RETURNING se_seid`,
       params: []

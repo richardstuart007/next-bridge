@@ -62,6 +62,8 @@ async function copyTable(sourceUrl: string, targetUrl: string, table: string): P
       .split('\n')
       .filter(line => !line.match(/transaction_timeout/))
       .filter(line => !line.match(/setval/))
+      .filter(line => !line.match(/DROP IDENTITY/))
+      .filter(line => !line.match(/DROP SEQUENCE/))
       .join('\n')
     writeFileSync(tmpFile, filtered, 'utf8')
 

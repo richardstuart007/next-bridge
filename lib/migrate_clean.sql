@@ -19,8 +19,6 @@ ALTER TABLE IF EXISTS tpa_partners         RENAME TO "#tpa_partners";
 ALTER TABLE IF EXISTS tre_results          RENAME TO "#tre_results";
 ALTER TABLE IF EXISTS tfl_fetch_log        RENAME TO "#tfl_fetch_log";
 ALTER TABLE IF EXISTS tlg_logging          RENAME TO "#tlg_logging";
-ALTER TABLE IF EXISTS ts8_nz_results        RENAME TO "#ts8_nz_results";
-
 
 -- ============================================================
 -- STEP 2: Create clean tables (no foreign keys)
@@ -106,38 +104,6 @@ CREATE TABLE tlg_logging (
   lg_severity     VARCHAR(4)
 );
 
-CREATE TABLE ts8_nz_results (
-  s8_s8id        SERIAL        PRIMARY KEY,
-  s8_run_id      INTEGER       NOT NULL,
-  s8_nz_number1  INTEGER       NOT NULL,
-  s8_nz_number2  INTEGER       NOT NULL,
-  s8_date        DATE,
-  s8_club        VARCHAR(100)  NOT NULL DEFAULT '',
-  s8_event_name  VARCHAR(200)  NOT NULL DEFAULT '',
-  s8_place       VARCHAR(10)   NOT NULL DEFAULT '',
-  s8_score_value NUMERIC(10,2) NOT NULL DEFAULT 0,
-  s8_score_type  VARCHAR(5)    NOT NULL DEFAULT '',
-  s8_tournament  VARCHAR(10)   NOT NULL DEFAULT '',
-  s8_event_type  VARCHAR(20)   NOT NULL DEFAULT '',
-  UNIQUE(s8_run_id, s8_nz_number1, s8_nz_number2)
-);
-CREATE INDEX idx_ts8_nz1    ON ts8_nz_results (s8_nz_number1);
-CREATE INDEX idx_ts8_nz2    ON ts8_nz_results (s8_nz_number2);
-CREATE INDEX idx_ts8_run_id ON ts8_nz_results (s8_run_id);
-
-CREATE TABLE ts61_session_teams (
-  s61_s61id      SERIAL        PRIMARY KEY,
-  s61_event_id   INTEGER       NOT NULL,
-  s61_match_id   INTEGER       NOT NULL,
-  s61_round_num  INTEGER       NOT NULL DEFAULT 0,
-  s61_url        VARCHAR(300)  NOT NULL DEFAULT '',
-  s61_home_pair1 TEXT[]        NOT NULL DEFAULT '{}',
-  s61_home_pair2 TEXT[]        NOT NULL DEFAULT '{}',
-  s61_away_pair1 TEXT[]        NOT NULL DEFAULT '{}',
-  s61_away_pair2 TEXT[]        NOT NULL DEFAULT '{}'
-);
-CREATE UNIQUE INDEX uq_ts61_match ON ts61_session_teams (s61_match_id);
-CREATE INDEX idx_ts61_event ON ts61_session_teams (s61_event_id);
 
 CREATE TABLE tpr_partnership_results (
   pr_prid        SERIAL        PRIMARY KEY,
@@ -217,9 +183,6 @@ SELECT
   lg_lgid, lg_datetime, lg_msg, lg_functionname, lg_caller, lg_severity
 FROM "#tlg_logging";
 
--- ts8_nz_results redesigned (pair-based) — no data migration, will be re-scraped
--- ts9_nz_session_pairs eliminated
--- ts61_session_teams is new — no data to copy
 -- tpr_partnership_results is new — no data to copy
 
 
@@ -233,8 +196,6 @@ SELECT setval('tpa_partners_pa_paid_seq',          (SELECT COALESCE(MAX(pa_paid)
 SELECT setval('tre_results_re_reid_seq',           (SELECT COALESCE(MAX(re_reid), 0)  FROM tre_results));
 SELECT setval('tfl_fetch_log_fl_flid_seq',         (SELECT COALESCE(MAX(fl_flid), 0)  FROM tfl_fetch_log));
 SELECT setval('tlg_logging_lg_lgid_seq',           (SELECT COALESCE(MAX(lg_lgid), 0)  FROM tlg_logging));
-SELECT setval('ts8_nz_results_s8_s8id_seq',        (SELECT COALESCE(MAX(s8_s8id), 0)  FROM ts8_nz_results));
-SELECT setval('ts61_session_teams_s61_s61id_seq',    (SELECT COALESCE(MAX(s61_s61id), 0) FROM ts61_session_teams));
 SELECT setval('tpr_partnership_results_pr_prid_seq', (SELECT COALESCE(MAX(pr_prid), 0)   FROM tpr_partnership_results));
 
 
@@ -248,4 +209,3 @@ SELECT setval('tpr_partnership_results_pr_prid_seq', (SELECT COALESCE(MAX(pr_pri
 -- DROP TABLE "#tre_results";
 -- DROP TABLE "#tfl_fetch_log";
 -- DROP TABLE "#tlg_logging";
--- DROP TABLE "#ts8_nz_results";

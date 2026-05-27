@@ -18,7 +18,7 @@ ALTER TABLE IF EXISTS tse_sessions         RENAME TO "#tse_sessions";
 ALTER TABLE IF EXISTS tpa_partners         RENAME TO "#tpa_partners";
 ALTER TABLE IF EXISTS tre_results          RENAME TO "#tre_results";
 ALTER TABLE IF EXISTS tfl_fetch_log        RENAME TO "#tfl_fetch_log";
-ALTER TABLE IF EXISTS tlg_logging          RENAME TO "#tlg_logging";
+ALTER TABLE IF EXISTS xlg_logging          RENAME TO "#xlg_logging";
 
 -- ============================================================
 -- STEP 2: Create clean tables (no foreign keys)
@@ -77,7 +77,7 @@ CREATE TABLE tre_results (
   re_plid         INTEGER,
   re_partner_plid INTEGER,
   re_paid       INTEGER,
-  re_percentage   NUMERIC(5,2)  NOT NULL,
+  re_percentage   NUMERIC(5,2),
   re_vp           NUMERIC(5,2),
 );
 CREATE INDEX idx_tre_results_plid         ON tre_results (re_plid);
@@ -95,7 +95,7 @@ CREATE TABLE tfl_fetch_log (
 );
 CREATE INDEX idx_tfl_fetch_log_seid ON tfl_fetch_log (fl_seid);
 
-CREATE TABLE tlg_logging (
+CREATE TABLE xlg_logging (
   lg_lgid         SERIAL        PRIMARY KEY,
   lg_datetime     TIMESTAMPTZ,
   lg_msg          TEXT,
@@ -176,12 +176,12 @@ SELECT
   fl_flid, fl_seid, fl_run_at, fl_pairs, fl_skipped, fl_error
 FROM "#tfl_fetch_log";
 
-INSERT INTO tlg_logging (
+INSERT INTO xlg_logging (
   lg_lgid, lg_datetime, lg_msg, lg_functionname, lg_caller, lg_severity
 )
 SELECT
   lg_lgid, lg_datetime, lg_msg, lg_functionname, lg_caller, lg_severity
-FROM "#tlg_logging";
+FROM "#xlg_logging";
 
 -- tpr_partnership_results is new — no data to copy
 
@@ -195,7 +195,7 @@ SELECT setval('tse_sessions_se_seid_seq',          (SELECT COALESCE(MAX(se_seid)
 SELECT setval('tpa_partners_pa_paid_seq',          (SELECT COALESCE(MAX(pa_paid), 0)  FROM tpa_partners));
 SELECT setval('tre_results_re_reid_seq',           (SELECT COALESCE(MAX(re_reid), 0)  FROM tre_results));
 SELECT setval('tfl_fetch_log_fl_flid_seq',         (SELECT COALESCE(MAX(fl_flid), 0)  FROM tfl_fetch_log));
-SELECT setval('tlg_logging_lg_lgid_seq',           (SELECT COALESCE(MAX(lg_lgid), 0)  FROM tlg_logging));
+SELECT setval('xlg_logging_lg_lgid_seq',           (SELECT COALESCE(MAX(lg_lgid), 0)  FROM xlg_logging));
 SELECT setval('tpr_partnership_results_pr_prid_seq', (SELECT COALESCE(MAX(pr_prid), 0)   FROM tpr_partnership_results));
 
 
@@ -208,4 +208,4 @@ SELECT setval('tpr_partnership_results_pr_prid_seq', (SELECT COALESCE(MAX(pr_pri
 -- DROP TABLE "#tpa_partners";
 -- DROP TABLE "#tre_results";
 -- DROP TABLE "#tfl_fetch_log";
--- DROP TABLE "#tlg_logging";
+-- DROP TABLE "#xlg_logging";

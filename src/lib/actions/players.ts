@@ -193,66 +193,45 @@ export async function upsertPlayer(data: {
 
 const PARTNERS_TABLE = 'tpa_partners'
 
-/** Incremental: process only sessions flagged se_partners_built = FALSE. */
-export async function updateIncrementalPartnerStats(): Promise<{ sessions: number; pairs: number }> {
-  const unbuilt = await table_query({
-    caller: 'updateIncrementalPartnerStats/sessions',
-    query: `SELECT se_seid FROM tse_sessions WHERE se_partners_built = FALSE AND se_is_summary IS NOT TRUE`,
-    params: []
-  }) as { se_seid: number }[]
-
-  if (unbuilt.length === 0) return { sessions: 0, pairs: 0 }
-
-  const seids = unbuilt.map(r => r.se_seid)
-
-  // Insert tpa_partners rows for any new pairs in these sessions
+export async function buildAllPartnerStats(): Promise<{ pairs: number }> {
   await table_query({
-    caller: 'updateIncrementalPartnerStats/insert',
+    caller: 'buildAllPartnerStats/insert',
     query: `
       INSERT INTO tpa_partners (pa_plid1, pa_plid2)
       SELECT DISTINCT
         CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid1 ELSE re.re_plid2 END,
         CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid2 ELSE re.re_plid1 END
       FROM tre_results re
+      JOIN tse_sessions se ON se.se_seid = re.re_seid
       JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1, re.re_plid2)
       JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
-      WHERE re.re_seid = ANY($1)
-        AND re.re_plid1 <> re.re_plid2
+      WHERE re.re_plid1 <> re.re_plid2
+        AND se.se_is_summary IS NOT TRUE
       ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING
     `,
-    params: [seids] as unknown as (string | number | boolean | null)[]
+    params: []
   })
 
-  const pairsResult = await table_query({
-    caller: 'updateIncrementalPartnerStats/count',
-    query: `
-      SELECT COUNT(DISTINCT (LEAST(re_plid1,re_plid2), GREATEST(re_plid1,re_plid2)))::int AS n
-      FROM tre_results WHERE re_seid = ANY($1) AND re_plid1 <> re_plid2
-    `,
-    params: [seids] as unknown as (string | number | boolean | null)[]
-  }) as { n: number }[]
-
   await table_query({
-    caller: 'updateIncrementalPartnerStats/link',
+    caller: 'buildAllPartnerStats/link',
     query: `
       UPDATE tre_results re
       SET re_paid = pa.pa_paid
       FROM tpa_partners pa
       WHERE pa.pa_plid1 = LEAST(re.re_plid1, re.re_plid2)
         AND pa.pa_plid2 = GREATEST(re.re_plid1, re.re_plid2)
-        AND re.re_seid = ANY($1)
         AND re.re_paid IS NULL
     `,
-    params: [seids] as unknown as (string | number | boolean | null)[]
+    params: []
   })
 
-  await table_query({
-    caller: 'updateIncrementalPartnerStats/flag',
-    query: `UPDATE tse_sessions SET se_partners_built = TRUE WHERE se_seid = ANY($1)`,
-    params: [seids] as unknown as (string | number | boolean | null)[]
-  })
+  const result = await table_query({
+    caller: 'buildAllPartnerStats/count',
+    query: `SELECT COUNT(*)::int AS n FROM tpa_partners`,
+    params: []
+  }) as { n: number }[]
 
-  return { sessions: seids.length, pairs: pairsResult[0]?.n ?? 0 }
+  return { pairs: result[0]?.n ?? 0 }
 }
 
 /**

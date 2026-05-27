@@ -12,7 +12,7 @@ function datesInRange(from: string, to: string): string[] {
     dates.push(cur.toISOString().slice(0, 10))
     cur.setDate(cur.getDate() + 1)
   }
-  return dates.reverse()
+  return dates
 }
 
 
@@ -39,11 +39,9 @@ export async function POST(request: NextRequest) {
       const missing: { date: string; run_id: number }[] = []
 
       try {
-        await table_query({
-          caller: 'scrape/discover/nzb-by-date/truncate',
-          query: `TRUNCATE ts10_sessions`,
-          params: []
-        })
+        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts0', query: `TRUNCATE ts0_scraped`,  params: [] })
+        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts1', query: `TRUNCATE ts1_sessions`, params: [] })
+        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts2', query: `TRUNCATE ts2_results`,  params: [] })
 
         const dates = datesInRange(date_from, date_end)
 
@@ -53,6 +51,12 @@ export async function POST(request: NextRequest) {
           const url =
             `${NZB_BASE}/results.html?mp_filter_club=${club_id}` +
             `&date_start=${day}&date_end=${day}&mp_results=Search`
+
+          await table_query({
+            caller: 'scrape/discover/nzb-by-date/insert-ts0',
+            query: `INSERT INTO ts0_scraped (s0_run_id, s0_source, s0_url) VALUES (0, 'club', $1)`,
+            params: [url]
+          })
 
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
@@ -82,8 +86,8 @@ export async function POST(request: NextRequest) {
             missing.push({ date: day, run_id })
             await table_query({
               caller: 'scrape/discover/nzb-by-date/insert',
-              query: `INSERT INTO ts10_sessions (s10_run_id, s10_date, s10_club_id, s10_is_summary)
-                      VALUES ($1, $2, $3, $4) ON CONFLICT (s10_run_id) DO NOTHING`,
+              query: `INSERT INTO ts1_sessions (s1_run_id, s1_date, s1_club_id, s1_is_summary)
+                      VALUES ($1, $2, $3, $4) ON CONFLICT (s1_run_id) DO NOTHING`,
               params: [run_id, day, club_id, is_final]
             })
           }

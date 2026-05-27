@@ -2,15 +2,29 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_Logging } from 'nextjs-shared/write_logging'
-import { updateIncrementalPartnerStats } from '@/src/lib/actions/players'
+import { buildAllPartnerStats } from '@/src/lib/actions/players'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
 
-const NZB_BASE = 'https://www.nzbridge.co.nz'
+const NZB_BASE       = 'https://www.nzbridge.co.nz'
 const BRIDGE_CLUB_ID = 106
+const UA = { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
+
+const GRP_EXPR = `CASE WHEN RIGHT(se.se_tournament,1)='A' THEN 'A' WHEN RIGHT(se.se_tournament,1)='B' THEN 'B' ELSE 'C' END`
 
 const MONTH: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
   Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
+}
+
+function datesInRange(from: string, to: string): string[] {
+  const dates: string[] = []
+  const cur = new Date(from)
+  const end = new Date(to)
+  while (cur <= end) {
+    dates.push(cur.toISOString().slice(0, 10))
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
 }
 
 function parseDate(raw: string): string | null {
@@ -34,28 +48,15 @@ function normaliseScore(value: number, type: 'PCT' | 'VP'): number {
   return value
 }
 
-
-function datesInRange(from: string, to: string): string[] {
-  const dates: string[] = []
-  const cur = new Date(from)
-  const end = new Date(to)
-  while (cur <= end) {
-    dates.push(cur.toISOString().slice(0, 10))
-    cur.setDate(cur.getDate() + 1)
-  }
-  return dates
-}
-
 interface ParsedRow {
-  run_id: number
-  event_name: string
-  date: string | null
-  club: string
-  place: string
+  run_id:       number
+  event_name:   string
+  date:         string | null
+  club:         string
   player_names: string[]
-  score_value: number
-  score_type: 'PCT' | 'VP'
-  tournament: string
+  score_value:  number
+  score_type:   'PCT' | 'VP'
+  tournament:   string
 }
 
 function parsePage(html: string): Map<number, ParsedRow[]> {
@@ -63,7 +64,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
   const rowsByRunId = new Map<number, ParsedRow[]>()
 
   $('table').each((_, table) => {
-    const headerRow = $(table).find('tr').first()
+    const headerRow   = $(table).find('tr').first()
     const headerCells = headerRow.find('th, td').toArray().map(th => $(th).text().trim().toLowerCase())
 
     if (!headerCells.some(h => h.includes('event')) || !headerCells.some(h => h.includes('player'))) return
@@ -71,7 +72,6 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
     const colDate    = headerCells.findIndex(h => h === 'date')
     const colClub    = headerCells.findIndex(h => h.includes('club'))
     const colEvent   = headerCells.findIndex(h => h.includes('event'))
-    const colPlace   = headerCells.findIndex(h => h.includes('place'))
     const colPlayers = headerCells.findIndex(h => h.includes('player'))
     const colMpts    = headerCells.findIndex(h => h.includes('mpt') || h === 'mp' || h.includes('point'))
     const colScore   = headerCells.findIndex(h => h.includes('score'))
@@ -92,26 +92,21 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
 
       const run_id     = parseInt(runMatch[1], 10)
       const event_name = eventCell?.find('a').text().trim() || get(colEvent)
-      const dateRaw    = get(colDate)
-      const clubText   = get(colClub)
-      const placeRaw   = get(colPlace)
       const playersRaw = get(colPlayers)
-      const mpts       = get(colMpts)
       const scoreRaw   = get(colScore)
 
-      const parsedDate = parseDate(dateRaw)
-      const score      = parseScore(scoreRaw)
+      const parsedDate   = parseDate(get(colDate))
+      const score        = parseScore(scoreRaw)
       if (!score) return
 
       const player_names = playersRaw.split(',').map(s => s.trim()).filter(Boolean)
-
-      const existing = rowsByRunId.get(run_id) ?? []
+      const existing     = rowsByRunId.get(run_id) ?? []
       existing.push({
-        run_id, event_name, date: parsedDate, club: clubText, place: placeRaw,
+        run_id, event_name, date: parsedDate, club: get(colClub),
         player_names,
         score_value: normaliseScore(score.value, score.type),
         score_type: score.type,
-        tournament: mpts
+        tournament: get(colMpts)
       })
       rowsByRunId.set(run_id, existing)
     })
@@ -124,27 +119,23 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
   const name = rawName.replace(/\s+/g, ' ').trim()
   const existing = await table_query({
     caller: 'cron/update-sessions/lookup',
-    query: `SELECT pl_plid FROM tpl_players WHERE LOWER(pl_name) = LOWER($1)`,
+    query:  `SELECT pl_plid FROM tpl_players WHERE LOWER(pl_name) = LOWER($1)`,
     params: [name]
   }) as { pl_plid: number }[]
-
   if (existing.length > 0) return { plid: existing[0].pl_plid, created: false }
 
   const inserted = await table_query({
     caller: 'cron/update-sessions/create',
-    query: `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number)
-            VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
+    query:  `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number) VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
     params: [name]
   }) as { pl_plid: number }[]
-
   if (inserted.length > 0) return { plid: inserted[0].pl_plid, created: true }
 
   const reselect = await table_query({
     caller: 'cron/update-sessions/reselect',
-    query: `SELECT pl_plid FROM tpl_players WHERE pl_name = $1`,
+    query:  `SELECT pl_plid FROM tpl_players WHERE pl_name = $1`,
     params: [name]
   }) as { pl_plid: number }[]
-
   return { plid: reselect[0].pl_plid, created: false }
 }
 
@@ -152,260 +143,281 @@ async function batchCheckMissing(runIds: number[]): Promise<number[]> {
   if (runIds.length === 0) return []
   const existing = await table_query({
     caller: 'cron/update-sessions/check',
-    query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
+    query:  `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
     params: [runIds] as unknown as (string | number | boolean | null)[]
   }) as { se_run_id: number }[]
   const existingSet = new Set(existing.map(r => r.se_run_id))
   return runIds.filter(id => !existingSet.has(id))
 }
 
+async function scrapeRunId(run_id: number): Promise<{ pairs: number; created: number }> {
+  const response = await fetch(`${NZB_BASE}/results.html?run_id=${run_id}`, { headers: UA })
+  if (!response.ok) return { pairs: 0, created: 0 }
+
+  const rowsByRunId = parsePage(await response.text())
+  const rows = rowsByRunId.get(run_id) ?? []
+  if (rows.length === 0) return { pairs: 0, created: 0 }
+
+  const headerRow = rows.find(r => r.player_names.length === 2 || r.player_names.length === 4)
+  if (headerRow) {
+    const event_type = headerRow.player_names.length === 4 ? 'teams' : 'pairs'
+    await table_query({
+      caller: 'cron/update-sessions/upsert-ts1',
+      query: `INSERT INTO ts1_sessions
+                (s1_run_id, s1_date, s1_club, s1_event_name, s1_score_type, s1_event_type, s1_tournament)
+              VALUES ($1,$2,$3,$4,$5,$6,$7)
+              ON CONFLICT (s1_run_id) DO UPDATE SET
+                s1_date = EXCLUDED.s1_date, s1_club = EXCLUDED.s1_club,
+                s1_event_name = EXCLUDED.s1_event_name, s1_score_type = EXCLUDED.s1_score_type,
+                s1_event_type = EXCLUDED.s1_event_type, s1_tournament = EXCLUDED.s1_tournament`,
+      params: [run_id, headerRow.date, headerRow.club, headerRow.event_name,
+               headerRow.score_type, event_type, headerRow.tournament]
+    })
+  }
+
+  let pairs = 0, created = 0
+  for (const row of rows) {
+    const { player_names, score_value } = row
+    let pairList: [string, string][] = []
+    if (player_names.length === 2)      pairList = [[player_names[0], player_names[1]]]
+    else if (player_names.length === 4) pairList = [[player_names[0], player_names[1]], [player_names[2], player_names[3]]]
+    else continue
+
+    for (const [nameA, nameB] of pairList) {
+      const a = await getOrCreatePlayer(nameA)
+      const b = await getOrCreatePlayer(nameB)
+      if (a.created) created++
+      if (b.created) created++
+      await table_query({
+        caller: 'cron/update-sessions/insert-ts2',
+        query:  `INSERT INTO ts2_results (s2_run_id, s2_plid1, s2_plid2, s2_score_value)
+                 VALUES ($1,$2,$3,$4) ON CONFLICT (s2_run_id, s2_plid1, s2_plid2) DO NOTHING`,
+        params: [run_id, Math.min(a.plid, b.plid), Math.max(a.plid, b.plid), score_value]
+      })
+      pairs++
+    }
+  }
+  return { pairs, created }
+}
+
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (secret) {
     const auth = request.headers.get('authorization')
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (auth !== `Bearer ${secret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const log = (msg: string, severity = 'I') =>
+    write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: msg, lg_severity: severity })
+
   try {
-    // Determine start date
     const maxDateResult = await table_query({
       caller: 'cron/update-sessions/from-date',
-      query: `SELECT MAX(se_date)::text AS from_date FROM tse_sessions`,
+      query:  `SELECT MAX(se_date)::text AS from_date FROM tse_sessions`,
       params: []
     }) as { from_date: string | null }[]
 
-    const rawFrom = maxDateResult[0]?.from_date
-    const from_date = rawFrom ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const to_date   = new Date().toISOString().slice(0, 10)
+    const from_date = maxDateResult[0]?.from_date
+      ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const to_date = new Date().toISOString().slice(0, 10)
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `START from_date=${from_date} to_date=${to_date}`, lg_severity: 'I' })
+    await log(`START from_date=${from_date} to_date=${to_date}`)
+    await table_query({ caller: 'cron/update-sessions/truncate-staging', query: `TRUNCATE ts1_sessions, ts2_results`, params: [] })
 
     const allMissingIds = new Set<number>()
-    const allFinalIds   = new Set<number>()
-    let players_scraped = 0
-    let run_ids_found   = 0
 
-    // Phase A — flagged players
+    // Phase A — Club by date
+    const dates = datesInRange(from_date, to_date)
+    for (const day of dates) {
+      const url = `${NZB_BASE}/results.html?mp_filter_club=${BRIDGE_CLUB_ID}&date_start=${day}&date_end=${day}&mp_results=Search`
+      const res = await fetch(url, { headers: UA })
+      if (!res.ok) continue
+      const { runIds } = extractRunIds(await res.text())
+      const missing = await batchCheckMissing(runIds)
+      missing.forEach(id => allMissingIds.add(id))
+    }
+    await log(`Phase A club (${dates.length} days): ${allMissingIds.size} new run_ids`)
+
+    // Phase B — Tracked players
     const flagged = await table_query({
       caller: 'cron/update-sessions/flagged',
-      query: `SELECT pl_plid, pl_name, pl_nz_bridge_number
-              FROM tpl_players
-              WHERE pl_all_results = TRUE AND pl_nz_bridge_number > 0
-              ORDER BY pl_name ASC`,
+      query:  `SELECT pl_nz_bridge_number FROM tpl_players WHERE pl_all_results = TRUE AND pl_nz_bridge_number > 0 ORDER BY pl_name ASC`,
       params: []
-    }) as { pl_plid: number; pl_name: string; pl_nz_bridge_number: number }[]
+    }) as { pl_nz_bridge_number: number }[]
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A: ${flagged.length} flagged players`, lg_severity: 'I' })
-
+    const beforeB = allMissingIds.size
     for (const player of flagged) {
-      players_scraped++
       const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nz_bridge_number}`
-      const response = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
-      })
-      if (!response.ok) {
-        await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A: ${player.pl_name} fetch failed (${response.status})`, lg_severity: 'W' })
-        continue
-      }
-
-      const { runIds, finalRunIds } = extractRunIds(await response.text())
-      run_ids_found += runIds.length
-      finalRunIds.forEach(id => allFinalIds.add(id))
+      const res = await fetch(url, { headers: UA })
+      if (!res.ok) continue
+      const { runIds } = extractRunIds(await res.text())
       const missing = await batchCheckMissing(runIds)
       missing.forEach(id => allMissingIds.add(id))
     }
+    await log(`Phase B tracked (${flagged.length} players): ${allMissingIds.size - beforeB} additional run_ids`)
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase A complete: ${players_scraped} players, ${run_ids_found} run_ids found, ${allMissingIds.size} new so far`, lg_severity: 'I' })
-
-    // Phase B — Auckland club by date range
-    const dates = datesInRange(from_date, to_date)
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B: club ${BRIDGE_CLUB_ID} over ${dates.length} days (${from_date} → ${to_date})`, lg_severity: 'I' })
-
-    let club_run_ids_found  = 0
-    let club_run_ids_missing = 0
-    for (const day of dates) {
-      const url =
-        `${NZB_BASE}/results.html?mp_filter_club=${BRIDGE_CLUB_ID}` +
-        `&date_start=${day}&date_end=${day}&mp_results=Search`
-      const response = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
-      })
-      if (!response.ok) continue
-
-      const { runIds, finalRunIds } = extractRunIds(await response.text())
-      run_ids_found += runIds.length
-      club_run_ids_found += runIds.length
-      finalRunIds.forEach(id => allFinalIds.add(id))
-      const missing = await batchCheckMissing(runIds)
-      club_run_ids_missing += missing.length
-      missing.forEach(id => allMissingIds.add(id))
+    // Phase C — Scrape all missing run_ids → ts1 + ts2
+    let pairs_total = 0, players_created = 0
+    for (const run_id of allMissingIds) {
+      const { pairs, created } = await scrapeRunId(run_id)
+      pairs_total   += pairs
+      players_created += created
     }
+    await log(`Phase C scrape (${allMissingIds.size} run_ids): ${pairs_total} pairs, ${players_created} new players`)
 
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase B complete: ${club_run_ids_found} run_ids found, ${club_run_ids_missing} new. Total new: ${allMissingIds.size}`, lg_severity: 'I' })
-
-    const run_ids_new = allMissingIds.size
-
-    let pairs_inserted  = 0
-    let players_created = 0
-
-    // Phase C — populate ts9 with missing sessions
-    if (allMissingIds.size > 0) {
-      await table_query({
-        caller: 'cron/update-sessions/truncate',
-        query: `TRUNCATE ts09_results`,
-        params: []
-      })
-      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C: ts9 truncated, importing ${allMissingIds.size} run_ids`, lg_severity: 'I' })
-
-      let run_id_count = 0
-      for (const run_id of allMissingIds) {
-        run_id_count++
-        const url = `${NZB_BASE}/results.html?run_id=${run_id}`
-        const response = await fetch(url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
-        })
-        if (!response.ok) continue
-
-        const rowsByRunId = parsePage(await response.text())
-        const rows = rowsByRunId.get(run_id) ?? []
-
-        for (const row of rows) {
-          const { player_names, score_value, score_type, date, club, event_name, place, tournament } = row
-          const count = player_names.length
-
-          let pairs: [string, string][] = []
-          let event_type = 'pairs'
-
-          if (count === 2) {
-            pairs = [[player_names[0], player_names[1]]]
-          } else if (count === 4) {
-            pairs = [
-              [player_names[0], player_names[1]],
-              [player_names[2], player_names[3]]
-            ]
-            event_type = 'teams'
-          } else {
-            continue
-          }
-
-          for (const [nameA, nameB] of pairs) {
-            const a = await getOrCreatePlayer(nameA)
-            const b = await getOrCreatePlayer(nameB)
-            if (a.created) players_created++
-            if (b.created) players_created++
-
-            const plid1 = Math.min(a.plid, b.plid)
-            const plid2 = Math.max(a.plid, b.plid)
-
-            await table_query({
-              caller: 'cron/update-sessions/insert-ts9',
-              query: `INSERT INTO ts09_results
-                        (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
-                         s9_event_name, s9_place, s9_score_value, s9_score_type,
-                         s9_event_type, s9_tournament, s9_is_summary)
-                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-                      ON CONFLICT (s9_run_id, s9_plid1, s9_plid2) DO NOTHING`,
-              params: [run_id, plid1, plid2, date, club, event_name, place,
-                       score_value, score_type, event_type, tournament, allFinalIds.has(run_id)]
-            })
-            pairs_inserted++
-          }
-        }
-      }
-      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C complete: ${pairs_inserted} pairs inserted, ${players_created} new players`, lg_severity: 'I' })
-    } else {
-      await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase C skipped: no new run_ids`, lg_severity: 'I' })
-    }
-
-    // Phase D — build stats from ts9
+    // Phase D — Build production tables
     const sessionsResult = await table_query({
       caller: 'cron/update-sessions/sessions-nzb',
       query: `INSERT INTO tse_sessions
                 (se_run_id, se_date, se_day_of_week, se_scoring, se_name,
                  se_club, se_tournament, se_event_type, se_is_summary)
-              SELECT * FROM (
-                SELECT DISTINCT ON (s9_run_id)
-                  s9_run_id,
-                  s9_date,
-                  TO_CHAR(s9_date, 'FMDay'),
-                  CASE WHEN s9_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
-                  s9_event_name,
-                  s9_club,
-                  s9_tournament,
-                  s9_event_type,
-                  s9_is_summary
-                FROM ts09_results
-                WHERE s9_date IS NOT NULL
-                ORDER BY s9_run_id, s9_s9id
-              ) sub
-              ORDER BY s9_date, s9_run_id
+              SELECT s1_run_id, s1_date, TO_CHAR(s1_date, 'FMDay'),
+                CASE WHEN s1_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
+                s1_event_name, s1_club, s1_tournament, s1_event_type, s1_is_summary
+              FROM ts1_sessions
+              WHERE s1_date IS NOT NULL
+              ORDER BY s1_date, s1_run_id
               ON CONFLICT (se_run_id) DO NOTHING
               RETURNING se_seid`,
       params: []
     }) as { se_seid: number }[]
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D sessions: ${sessionsResult.length} inserted`, lg_severity: 'I' })
 
     const resultsResult = await table_query({
       caller: 'cron/update-sessions/results-nzb',
       query: `INSERT INTO tre_results (re_seid, re_plid1, re_plid2, re_percentage, re_vp)
               SELECT * FROM (
-                SELECT s.se_seid, t.s9_plid1, t.s9_plid2,
-                  CASE WHEN t.s9_score_type = 'VP'
-                       THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
-                       ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
-                  CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
-                FROM ts09_results t
-                JOIN tse_sessions s ON s.se_run_id = t.s9_run_id
+                SELECT s.se_seid, t.s2_plid1, t.s2_plid2,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN NULL ELSE GREATEST(25.0, LEAST(75.0, t.s2_score_value)) END,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN t.s2_score_value ELSE NULL END
+                FROM ts2_results t
+                JOIN tse_sessions  s  ON s.se_run_id  = t.s2_run_id
+                JOIN ts1_sessions  s1 ON s1.s1_run_id = t.s2_run_id
                 WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
                 UNION ALL
-                SELECT s.se_seid, t.s9_plid2, t.s9_plid1,
-                  CASE WHEN t.s9_score_type = 'VP'
-                       THEN 35 + (LEAST(t.s9_score_value, 20) / 20 * 30)
-                       ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
-                  CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
-                FROM ts09_results t
-                JOIN tse_sessions s ON s.se_run_id = t.s9_run_id
+                SELECT s.se_seid, t.s2_plid2, t.s2_plid1,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN NULL ELSE GREATEST(25.0, LEAST(75.0, t.s2_score_value)) END,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN t.s2_score_value ELSE NULL END
+                FROM ts2_results t
+                JOIN tse_sessions  s  ON s.se_run_id  = t.s2_run_id
+                JOIN ts1_sessions  s1 ON s1.s1_run_id = t.s2_run_id
                 WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
               ) combined
               RETURNING re_reid`,
       params: []
     }) as { re_reid: number }[]
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D results: ${resultsResult.length} inserted`, lg_severity: 'I' })
 
-    const { sessions: partner_sessions, pairs: partner_pairs } = await updateIncrementalPartnerStats()
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: `Phase D partners: ${partner_sessions} sessions, ${partner_pairs} pairs`, lg_severity: 'I' })
+    const { pairs: partner_pairs } = await buildAllPartnerStats()
+    await log(`Phase D build: ${sessionsResult.length} sessions, ${resultsResult.length} results, ${partner_pairs} partners`)
+
+    // Phase E — Recalculate stats
+    await table_query({ caller: 'cron/update-sessions/truncate-stats', query: `TRUNCATE ta1_player_stats, ta2_partner_stats`, params: [] })
+
+    for (const grp of ['A', 'B', 'C']) {
+      await table_query({
+        caller: `cron/update-sessions/player-stats-${grp}`,
+        query: `INSERT INTO ta1_player_stats
+                  (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
+                   a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev)
+                SELECT re.re_plid1, $1::varchar,
+                  COUNT(*)                FILTER (WHERE se.se_scoring = 'MP')::integer,
+                  COALESCE(ROUND(AVG(re.re_percentage)        FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re.re_percentage)         FILTER (WHERE se.se_scoring = 'MP')::numeric, 2),
+                  COUNT(*)                FILTER (WHERE se.se_scoring = 'VP')::integer,
+                  COALESCE(ROUND(AVG(re.re_vp)               FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re.re_vp)                FILTER (WHERE se.se_scoring = 'VP')::numeric, 2)
+                FROM tre_results re
+                JOIN tse_sessions se ON se.se_seid = re.re_seid
+                WHERE se.se_is_summary IS NOT TRUE AND ${GRP_EXPR} = $1
+                GROUP BY re.re_plid1`,
+        params: [grp]
+      })
+    }
+    await table_query({
+      caller: 'cron/update-sessions/player-stats-all',
+      query: `INSERT INTO ta1_player_stats
+                (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
+                 a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev)
+              SELECT re.re_plid1, 'all',
+                COUNT(*)                FILTER (WHERE se.se_scoring = 'MP')::integer,
+                COALESCE(ROUND(AVG(re.re_percentage)        FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re.re_percentage)         FILTER (WHERE se.se_scoring = 'MP')::numeric, 2),
+                COUNT(*)                FILTER (WHERE se.se_scoring = 'VP')::integer,
+                COALESCE(ROUND(AVG(re.re_vp)               FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re.re_vp)                FILTER (WHERE se.se_scoring = 'VP')::numeric, 2)
+              FROM tre_results re
+              JOIN tse_sessions se ON se.se_seid = re.re_seid
+              WHERE se.se_is_summary IS NOT TRUE
+              GROUP BY re.re_plid1`,
+      params: []
+    })
+
+    for (const grp of ['A', 'B', 'C']) {
+      await table_query({
+        caller: `cron/update-sessions/partner-stats-${grp}`,
+        query: `WITH pairs AS (
+                  SELECT CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid1 ELSE re.re_plid2 END AS plid1,
+                         CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid2 ELSE re.re_plid1 END AS plid2,
+                         re.re_percentage, re.re_vp, se.se_scoring
+                  FROM tre_results re
+                  JOIN tse_sessions se ON se.se_seid = re.re_seid
+                  JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1,    re.re_plid2)
+                  JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
+                  WHERE re.re_plid1 < re.re_plid2 AND se.se_is_summary IS NOT TRUE AND ${GRP_EXPR} = $1
+                )
+                INSERT INTO ta2_partner_stats
+                  (a2_plid1, a2_plid2, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_mp_stddev,
+                   a2_vp_sessions, a2_vp_avg_vp, a2_vp_stddev)
+                SELECT plid1, plid2, $1::varchar,
+                  COUNT(*)                FILTER (WHERE se_scoring = 'MP')::integer,
+                  COALESCE(ROUND(AVG(re_percentage)        FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re_percentage)         FILTER (WHERE se_scoring = 'MP')::numeric, 2),
+                  COUNT(*)                FILTER (WHERE se_scoring = 'VP')::integer,
+                  COALESCE(ROUND(AVG(re_vp)               FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re_vp)                FILTER (WHERE se_scoring = 'VP')::numeric, 2)
+                FROM pairs GROUP BY plid1, plid2`,
+        params: [grp]
+      })
+    }
+    await table_query({
+      caller: 'cron/update-sessions/partner-stats-all',
+      query: `WITH pairs AS (
+                SELECT CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid1 ELSE re.re_plid2 END AS plid1,
+                       CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid2 ELSE re.re_plid1 END AS plid2,
+                       re.re_percentage, re.re_vp, se.se_scoring
+                FROM tre_results re
+                JOIN tse_sessions se ON se.se_seid = re.re_seid
+                JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1,    re.re_plid2)
+                JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
+                WHERE re.re_plid1 < re.re_plid2 AND se.se_is_summary IS NOT TRUE
+              )
+              INSERT INTO ta2_partner_stats
+                (a2_plid1, a2_plid2, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_mp_stddev,
+                 a2_vp_sessions, a2_vp_avg_vp, a2_vp_stddev)
+              SELECT plid1, plid2, 'all',
+                COUNT(*)                FILTER (WHERE se_scoring = 'MP')::integer,
+                COALESCE(ROUND(AVG(re_percentage)        FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re_percentage)         FILTER (WHERE se_scoring = 'MP')::numeric, 2),
+                COUNT(*)                FILTER (WHERE se_scoring = 'VP')::integer,
+                COALESCE(ROUND(AVG(re_vp)               FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re_vp)                FILTER (WHERE se_scoring = 'VP')::numeric, 2)
+              FROM pairs GROUP BY plid1, plid2`,
+      params: []
+    })
+    await log(`Phase E stats: player and partner stats rebuilt`)
 
     const summary = {
-      from_date,
-      to_date,
-      players_scraped,
-      run_ids_found,
-      run_ids_new,
-      pairs_inserted,
-      players_created,
-      sessions_built: sessionsResult.length,
-      results_built: resultsResult.length,
-      partner_sessions,
+      from_date, to_date,
+      run_ids_new:     allMissingIds.size,
+      pairs_total,     players_created,
+      sessions_built:  sessionsResult.length,
+      results_built:   resultsResult.length,
       partner_pairs,
     }
-
-    await write_Logging({
-      lg_functionname: 'GET',
-      lg_caller: 'cron/update-sessions',
-      lg_msg: `${from_date}→${to_date}: ${run_ids_new} new run_ids, ${sessionsResult.length} sessions, ${resultsResult.length} results, ${partner_sessions} partner sessions`,
-      lg_severity: 'I'
-    })
-
+    await log(`DONE: ${allMissingIds.size} run_ids, ${sessionsResult.length} sessions, ${resultsResult.length} results`)
     return NextResponse.json(summary)
+
   } catch (err) {
-    await write_Logging({
-      lg_functionname: 'GET',
-      lg_caller: 'cron/update-sessions',
-      lg_msg: String(err),
-      lg_severity: 'E'
-    })
+    await log(String(err), 'E')
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

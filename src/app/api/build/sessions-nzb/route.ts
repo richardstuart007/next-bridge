@@ -9,22 +9,19 @@ export async function POST() {
       query: `INSERT INTO tse_sessions
                 (se_run_id, se_date, se_day_of_week, se_scoring, se_name,
                  se_club, se_tournament, se_event_type, se_is_summary)
-              SELECT * FROM (
-                SELECT DISTINCT ON (s9_run_id)
-                  s9_run_id,
-                  s9_date,
-                  TO_CHAR(s9_date, 'FMDay'),
-                  CASE WHEN s9_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
-                  s9_event_name,
-                  s9_club,
-                  s9_tournament,
-                  s9_event_type,
-                  s9_is_summary
-                FROM ts09_results
-                WHERE s9_date IS NOT NULL
-                ORDER BY s9_run_id, s9_s9id
-              ) sub
-              ORDER BY s9_date, s9_run_id
+              SELECT
+                s1_run_id,
+                s1_date,
+                TO_CHAR(s1_date, 'FMDay'),
+                CASE WHEN s1_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
+                s1_event_name,
+                s1_club,
+                s1_tournament,
+                s1_event_type,
+                s1_is_summary
+              FROM ts1_sessions
+              WHERE s1_date IS NOT NULL
+              ORDER BY s1_date, s1_run_id
               ON CONFLICT (se_run_id) DO NOTHING
               RETURNING se_seid`,
       params: []
@@ -32,7 +29,7 @@ export async function POST() {
 
     const total = await table_query({
       caller: 'build/sessions-nzb/count',
-      query: `SELECT COUNT(DISTINCT s9_run_id)::int AS n FROM ts09_results WHERE s9_date IS NOT NULL`,
+      query: `SELECT COUNT(s1_run_id)::int AS n FROM ts1_sessions WHERE s1_date IS NOT NULL`,
       params: []
     }) as { n: number }[]
 

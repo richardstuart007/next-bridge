@@ -1,4 +1,4 @@
-import RawScrape from '@/src/ui/admin/RawScrape'
+import ScrapeTabs from '@/src/ui/admin/ScrapeTabs'
 import Link from 'next/link'
 
 export default function ScrapePage() {
@@ -14,7 +14,7 @@ export default function ScrapePage() {
         </Link>
         <h1 className='text-xl font-bold text-gray-900'>Raw Data Scraping</h1>
       </div>
-      <RawScrape />
+      <ScrapeTabs />
     </div>
   )
 }

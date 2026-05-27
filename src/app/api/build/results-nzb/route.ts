@@ -8,22 +8,22 @@ export async function POST() {
       caller: 'build/results-nzb/insert',
       query: `INSERT INTO tre_results (re_seid, re_plid1, re_plid2, re_percentage, re_vp)
               SELECT * FROM (
-                SELECT s.se_seid, t.s9_plid1, t.s9_plid2,
-                  CASE WHEN t.s9_score_type = 'VP'
-                       THEN 0
-                       ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
-                  CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
-                FROM ts09_results t
-                JOIN tse_sessions s ON s.se_run_id = t.s9_run_id
+                SELECT s.se_seid, t.s2_plid1, t.s2_plid2,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN NULL
+                       ELSE GREATEST(25.0, LEAST(75.0, t.s2_score_value)) END,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN t.s2_score_value ELSE NULL END
+                FROM ts2_results t
+                JOIN tse_sessions s  ON s.se_run_id  = t.s2_run_id
+                JOIN ts1_sessions s1 ON s1.s1_run_id = t.s2_run_id
                 WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
                 UNION ALL
-                SELECT s.se_seid, t.s9_plid2, t.s9_plid1,
-                  CASE WHEN t.s9_score_type = 'VP'
-                       THEN 0
-                       ELSE GREATEST(25.0, LEAST(75.0, t.s9_score_value)) END,
-                  CASE WHEN t.s9_score_type = 'VP' THEN t.s9_score_value ELSE NULL END
-                FROM ts09_results t
-                JOIN tse_sessions s ON s.se_run_id = t.s9_run_id
+                SELECT s.se_seid, t.s2_plid2, t.s2_plid1,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN NULL
+                       ELSE GREATEST(25.0, LEAST(75.0, t.s2_score_value)) END,
+                  CASE WHEN s1.s1_score_type = 'VP' THEN t.s2_score_value ELSE NULL END
+                FROM ts2_results t
+                JOIN tse_sessions s  ON s.se_run_id  = t.s2_run_id
+                JOIN ts1_sessions s1 ON s1.s1_run_id = t.s2_run_id
                 WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
               ) combined
               RETURNING re_reid`,

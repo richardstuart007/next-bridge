@@ -26,8 +26,7 @@ CREATE TABLE IF NOT EXISTS tse_sessions (
   se_name         VARCHAR(200) NOT NULL DEFAULT '',
   se_club         VARCHAR(100) NOT NULL DEFAULT '',
   se_tournament        VARCHAR(10)  NOT NULL DEFAULT '',
-  se_event_type        VARCHAR(20)  NOT NULL DEFAULT '',
-  se_partners_built    BOOLEAN      NOT NULL DEFAULT false
+  se_event_type        VARCHAR(20)  NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS tpa_partners (
@@ -43,7 +42,7 @@ CREATE TABLE IF NOT EXISTS tre_results (
   re_plid1        INTEGER,
   re_plid2        INTEGER,
   re_paid         INTEGER,
-  re_percentage   NUMERIC(5,2) NOT NULL,
+  re_percentage   NUMERIC(5,2),
   re_vp           NUMERIC(5,2)
 );
 CREATE INDEX IF NOT EXISTS idx_tre_results_plid1 ON tre_results (re_plid1);

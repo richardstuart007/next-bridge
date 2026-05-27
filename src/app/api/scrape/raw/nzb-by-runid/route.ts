@@ -36,7 +36,6 @@ interface ParsedRow {
   event_name: string
   date: string | null
   club: string
-  place: string
   player_names: string[]
   score_value: number
   score_type: 'PCT' | 'VP'
@@ -56,7 +55,6 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
     const colDate    = headerCells.findIndex(h => h === 'date')
     const colClub    = headerCells.findIndex(h => h.includes('club'))
     const colEvent   = headerCells.findIndex(h => h.includes('event'))
-    const colPlace   = headerCells.findIndex(h => h.includes('place'))
     const colPlayers = headerCells.findIndex(h => h.includes('player'))
     const colMpts    = headerCells.findIndex(h => h.includes('mpt') || h === 'mp' || h.includes('point'))
     const colScore   = headerCells.findIndex(h => h.includes('score'))
@@ -79,7 +77,6 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
       const event_name = eventCell?.find('a').text().trim() || get(colEvent)
       const dateRaw    = get(colDate)
       const clubText   = get(colClub)
-      const placeRaw   = get(colPlace)
       const playersRaw = get(colPlayers)
       const mpts       = get(colMpts)
       const scoreRaw   = get(colScore)
@@ -92,7 +89,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
 
       const existing = rowsByRunId.get(run_id) ?? []
       existing.push({
-        run_id, event_name, date: parsedDate, club: clubText, place: placeRaw,
+        run_id, event_name, date: parsedDate, club: clubText,
         player_names,
         score_value: normaliseScore(score.value, score.type),
         score_type: score.type,
@@ -134,13 +131,12 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
 }
 
 export async function POST(request: NextRequest) {
-  let body: { run_ids?: number[]; final_run_ids?: number[] }
+  let body: { run_ids?: number[] }
   try { body = await request.json() } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
   }
 
-  const { run_ids, final_run_ids = [] } = body
-  const finalSet = new Set(final_run_ids)
+  const { run_ids } = body
   if (!run_ids || run_ids.length === 0) {
     return new Response(JSON.stringify({ error: 'run_ids array is required' }), { status: 400 })
   }
@@ -158,7 +154,7 @@ export async function POST(request: NextRequest) {
       try {
         await table_query({
           caller: 'scrape/nzb-by-runid/truncate',
-          query: `TRUNCATE ts09_results`,
+          query: `TRUNCATE ts2_results`,
           params: []
         })
 
@@ -176,13 +172,32 @@ export async function POST(request: NextRequest) {
 
           if (rows.length === 0) { send({ run_id, skipped: true }); continue }
 
+          // Upsert ts1 header from first valid row
+          const headerRow = rows.find(r => r.player_names.length === 2 || r.player_names.length === 4)
+          if (headerRow) {
+            const event_type = headerRow.player_names.length === 4 ? 'teams' : 'pairs'
+            await table_query({
+              caller: 'scrape/nzb-by-runid/upsert-ts1',
+              query: `INSERT INTO ts1_sessions
+                        (s1_run_id, s1_date, s1_club, s1_event_name, s1_score_type, s1_event_type, s1_tournament)
+                      VALUES ($1,$2,$3,$4,$5,$6,$7)
+                      ON CONFLICT (s1_run_id) DO UPDATE SET
+                        s1_date = EXCLUDED.s1_date,
+                        s1_club = EXCLUDED.s1_club,
+                        s1_event_name = EXCLUDED.s1_event_name,
+                        s1_score_type = EXCLUDED.s1_score_type,
+                        s1_event_type = EXCLUDED.s1_event_type,
+                        s1_tournament = EXCLUDED.s1_tournament`,
+              params: [run_id, headerRow.date, headerRow.club, headerRow.event_name,
+                       headerRow.score_type, event_type, headerRow.tournament]
+            })
+          }
+
           for (const row of rows) {
-            const { player_names, score_value, score_type, date, club, event_name, place, tournament } = row
+            const { player_names, score_value } = row
             const count = player_names.length
 
             let pairs: [string, string][] = []
-            let event_type = 'pairs'
-
             if (count === 2) {
               pairs = [[player_names[0], player_names[1]]]
             } else if (count === 4) {
@@ -190,7 +205,6 @@ export async function POST(request: NextRequest) {
                 [player_names[0], player_names[1]],
                 [player_names[2], player_names[3]]
               ]
-              event_type = 'teams'
             } else {
               skipped_rows++
               continue
@@ -207,16 +221,11 @@ export async function POST(request: NextRequest) {
 
               await table_query({
                 caller: 'scrape/nzb-by-runid/insert',
-                query: `INSERT INTO ts09_results
-                          (s9_run_id, s9_plid1, s9_plid2, s9_date, s9_club,
-                           s9_event_name, s9_place, s9_score_value, s9_score_type,
-                           s9_event_type, s9_tournament, s9_is_summary)
-                        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-                        ON CONFLICT (s9_run_id, s9_plid1, s9_plid2) DO NOTHING`,
-                params: [run_id, plid1, plid2, date, club, event_name, place,
-                         score_value, score_type, event_type, tournament, finalSet.has(run_id)]
+                query: `INSERT INTO ts2_results (s2_run_id, s2_plid1, s2_plid2, s2_score_value)
+                        VALUES ($1,$2,$3,$4)
+                        ON CONFLICT (s2_run_id, s2_plid1, s2_plid2) DO NOTHING`,
+                params: [run_id, plid1, plid2, score_value]
               })
-
               pairs_inserted++
             }
 

@@ -47,6 +47,7 @@ interface ParsedRow {
   event_name: string
   date: string | null
   club: string
+  place: string
   player_names: string[]
   score_value: number
   score_type: 'PCT' | 'VP'
@@ -66,6 +67,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
     const colDate    = headerCells.findIndex(h => h === 'date')
     const colClub    = headerCells.findIndex(h => h.includes('club'))
     const colEvent   = headerCells.findIndex(h => h.includes('event'))
+    const colPlace   = headerCells.findIndex(h => h.includes('place'))
     const colPlayers = headerCells.findIndex(h => h.includes('player'))
     const colMpts    = headerCells.findIndex(h => h.includes('mpt') || h === 'mp' || h.includes('point'))
     const colScore   = headerCells.findIndex(h => h.includes('score'))
@@ -88,6 +90,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
       const event_name = eventCell?.find('a').text().trim() || get(colEvent)
       const dateRaw    = get(colDate)
       const clubText   = get(colClub)
+      const placeRaw   = get(colPlace)
       const playersRaw = get(colPlayers)
       const mpts       = get(colMpts)
       const scoreRaw   = get(colScore)
@@ -100,7 +103,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
 
       const existing = rowsByRunId.get(run_id) ?? []
       existing.push({
-        run_id, event_name, date: parsedDate, club: clubText,
+        run_id, event_name, date: parsedDate, club: clubText, place: placeRaw,
         player_names,
         score_value: normaliseScore(score.value, score.type),
         score_type: score.type,
@@ -113,41 +116,13 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
   return rowsByRunId
 }
 
-async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; created: boolean }> {
-  const name = rawName.replace(/\s+/g, ' ').trim()
-  const existing = await table_query({
-    caller: 'scrape/nzb-by-flagged/lookup',
-    query: `SELECT pl_plid FROM tpl_players WHERE LOWER(pl_name) = LOWER($1)`,
-    params: [name]
-  }) as { pl_plid: number }[]
-
-  if (existing.length > 0) return { plid: existing[0].pl_plid, created: false }
-
-  const inserted = await table_query({
-    caller: 'scrape/nzb-by-flagged/create',
-    query: `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number)
-            VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
-    params: [name]
-  }) as { pl_plid: number }[]
-
-  if (inserted.length > 0) return { plid: inserted[0].pl_plid, created: true }
-
-  const reselect = await table_query({
-    caller: 'scrape/nzb-by-flagged/reselect',
-    query: `SELECT pl_plid FROM tpl_players WHERE pl_name = $1`,
-    params: [name]
-  }) as { pl_plid: number }[]
-
-  return { plid: reselect[0].pl_plid, created: false }
-}
-
 export async function POST(request: NextRequest) {
-  let body: { date_from?: string; date_end?: string }
+  let body: { date_from?: string; date_end?: string; skip_truncate?: boolean }
   try { body = await request.json() } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
   }
 
-  const { date_from, date_end } = body
+  const { date_from, date_end, skip_truncate = false } = body
   if (!date_from || !date_end) {
     return new Response(JSON.stringify({ error: 'date_from and date_end are required' }), { status: 400 })
   }
@@ -158,20 +133,17 @@ export async function POST(request: NextRequest) {
       const send = (data: object) =>
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
 
-      let total_found    = 0
-      let total_missing  = 0
-      let pairs_inserted = 0
-      let players_created = 0
-      let skipped_rows   = 0
+      let total_sessions = 0
 
       try {
-        await table_query({ caller: 'scrape/nzb-by-flagged/truncate-ts0', query: `TRUNCATE ts0_scraped`, params: [] })
-        await table_query({ caller: 'scrape/nzb-by-flagged/truncate-ts1', query: `TRUNCATE ts1_sessions`, params: [] })
-        await table_query({ caller: 'scrape/nzb-by-flagged/truncate-ts2', query: `TRUNCATE ts2_results`,  params: [] })
+        if (!skip_truncate) {
+          await table_query({ caller: 'scrape/discover/nzb-by-flagged/truncate-ts0', query: `TRUNCATE ts0_scraped`,  params: [] })
+          await table_query({ caller: 'scrape/discover/nzb-by-flagged/truncate-ts1', query: `TRUNCATE ts1_sessions`, params: [] })
+          await table_query({ caller: 'scrape/discover/nzb-by-flagged/truncate-ts2', query: `TRUNCATE ts2_results`,  params: [] })
+        }
 
-        // Get all flagged players with a valid NZ bridge number
         const flagged = await table_query({
-          caller: 'scrape/nzb-by-flagged/flagged',
+          caller: 'scrape/discover/nzb-by-flagged/flagged',
           query: `SELECT pl_plid, pl_name, pl_nz_bridge_number
                   FROM tpl_players
                   WHERE pl_all_results = TRUE AND pl_nz_bridge_number > 0
@@ -180,20 +152,19 @@ export async function POST(request: NextRequest) {
         }) as { pl_plid: number; pl_name: string; pl_nz_bridge_number: number }[]
 
         if (flagged.length === 0) {
-          send({ done: true, total_found: 0, total_missing: 0, pairs_inserted: 0, players_created: 0, skipped_rows: 0 })
+          send({ done: true, total_sessions: 0 })
           return
         }
 
-        // Discover all missing run_ids across all flagged players
         const allMissingIds = new Set<number>()
 
         for (const player of flagged) {
-          send({ player: player.pl_name, nz_number: player.pl_nz_bridge_number })
+          send({ player: player.pl_name })
 
           const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nz_bridge_number}`
           await table_query({
-            caller: 'scrape/nzb-by-flagged/insert-ts0-player',
-            query: `INSERT INTO ts0_scraped (s0_run_id, s0_url) VALUES (0, $1)`,
+            caller: 'scrape/discover/nzb-by-flagged/insert-ts0-player',
+            query: `INSERT INTO ts0_scraped (s0_run_id, s0_source, s0_url) VALUES (0, 'player', $1)`,
             params: [url]
           })
 
@@ -211,10 +182,8 @@ export async function POST(request: NextRequest) {
             continue
           }
 
-          total_found += runIds.length
-
           const existing = await table_query({
-            caller: 'scrape/nzb-by-flagged/check',
+            caller: 'scrape/discover/nzb-by-flagged/check',
             query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
             params: [runIds] as unknown as (string | number | boolean | null)[]
           }) as { se_run_id: number }[]
@@ -223,25 +192,18 @@ export async function POST(request: NextRequest) {
           const playerMissing = runIds.filter(id => !existingSet.has(id))
 
           playerMissing.forEach(id => allMissingIds.add(id))
-          total_missing += playerMissing.length
-
           send({ player: player.pl_name, found: runIds.length, missing: playerMissing.length })
         }
 
-        if (allMissingIds.size === 0) {
-          send({ done: true, total_found, total_missing: 0, pairs_inserted: 0, players_created: 0, skipped_rows: 0 })
-          return
-        }
-
+        // Fetch each missing result page to extract date, then write to ts1
         for (const run_id of allMissingIds) {
-          send({ run_id })
-
           const url = `${NZB_BASE}/results.html?run_id=${run_id}`
           await table_query({
-            caller: 'scrape/nzb-by-flagged/insert-ts0',
-            query: `INSERT INTO ts0_scraped (s0_run_id, s0_url) VALUES ($1, $2)`,
+            caller: 'scrape/discover/nzb-by-flagged/insert-ts0',
+            query: `INSERT INTO ts0_scraped (s0_run_id, s0_source, s0_url) VALUES ($1, 'player', $2)`,
             params: [run_id, url]
           })
+          send({ run_id })
 
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
@@ -250,90 +212,46 @@ export async function POST(request: NextRequest) {
 
           const rowsByRunId = parsePage(await response.text())
           const rows = rowsByRunId.get(run_id) ?? []
-          if (rows.length === 0) { send({ run_id, skipped: true }); continue }
-
-          // Skip sessions outside the requested date range
           const firstRow = rows.find(r => r.date)
-          if (firstRow?.date && (firstRow.date < date_from || firstRow.date > date_end)) {
-            send({ run_id, skipped: true })
-            continue
+
+          if (!firstRow?.date) { send({ run_id, skipped: true }); continue }
+
+          if (firstRow.date < date_from || firstRow.date > date_end) {
+            send({ run_id, skipped: true }); continue
           }
 
-          // Upsert ts1 header from first valid row
           const headerRow = rows.find(r => r.player_names.length === 2 || r.player_names.length === 4)
-          if (headerRow) {
-            const event_type = headerRow.player_names.length === 4 ? 'teams' : 'pairs'
-            await table_query({
-              caller: 'scrape/nzb-by-flagged/upsert-ts1',
-              query: `INSERT INTO ts1_sessions
-                        (s1_run_id, s1_date, s1_club, s1_event_name, s1_score_type, s1_event_type, s1_tournament)
-                      VALUES ($1,$2,$3,$4,$5,$6,$7)
-                      ON CONFLICT (s1_run_id) DO UPDATE SET
-                        s1_date = EXCLUDED.s1_date,
-                        s1_club = EXCLUDED.s1_club,
-                        s1_event_name = EXCLUDED.s1_event_name,
-                        s1_score_type = EXCLUDED.s1_score_type,
-                        s1_event_type = EXCLUDED.s1_event_type,
-                        s1_tournament = EXCLUDED.s1_tournament`,
-              params: [run_id, headerRow.date, headerRow.club, headerRow.event_name,
-                       headerRow.score_type, event_type, headerRow.tournament]
-            })
-          }
+          if (!headerRow) { send({ run_id, skipped: true }); continue }
 
-          for (const row of rows) {
-            const { player_names, score_value } = row
-            const count = player_names.length
-
-            let pairs: [string, string][] = []
-            if (count === 0) {
-              skipped_rows++
-              continue
-            } else if (count === 2) {
-              pairs = [[player_names[0], player_names[1]]]
-            } else if (count === 3) {
-              pairs = [[player_names[0], player_names[1]]]
-            } else if (count === 4) {
-              pairs = [
-                [player_names[0], player_names[1]],
-                [player_names[2], player_names[3]]
-              ]
-            } else {
-              skipped_rows++
-              continue
-            }
-
-            for (const [nameA, nameB] of pairs) {
-              const a = await getOrCreatePlayer(nameA)
-              const b = await getOrCreatePlayer(nameB)
-              if (a.created) players_created++
-              if (b.created) players_created++
-
-              const plid1 = Math.min(a.plid, b.plid)
-              const plid2 = Math.max(a.plid, b.plid)
-
-              await table_query({
-                caller: 'scrape/nzb-by-flagged/insert',
-                query: `INSERT INTO ts2_results (s2_run_id, s2_plid1, s2_plid2, s2_score_value)
-                        VALUES ($1,$2,$3,$4)
-                        ON CONFLICT (s2_run_id, s2_plid1, s2_plid2) DO NOTHING`,
-                params: [run_id, plid1, plid2, score_value]
-              })
-              pairs_inserted++
-            }
-          }
-
-          send({ run_id, pairs: pairs_inserted, inserted: true })
+          const event_type = headerRow.player_names.length === 4 ? 'teams' : 'pairs'
+          await table_query({
+            caller: 'scrape/discover/nzb-by-flagged/upsert-ts1',
+            query: `INSERT INTO ts1_sessions
+                      (s1_run_id, s1_date, s1_club, s1_event_name, s1_score_type, s1_event_type, s1_tournament)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7)
+                    ON CONFLICT (s1_run_id) DO UPDATE SET
+                      s1_date       = EXCLUDED.s1_date,
+                      s1_club       = EXCLUDED.s1_club,
+                      s1_event_name = EXCLUDED.s1_event_name,
+                      s1_score_type = EXCLUDED.s1_score_type,
+                      s1_event_type = EXCLUDED.s1_event_type,
+                      s1_tournament = EXCLUDED.s1_tournament`,
+            params: [run_id, firstRow.date, headerRow.club, headerRow.event_name,
+                     headerRow.score_type, event_type, headerRow.tournament]
+          })
+          total_sessions++
+          send({ run_id, added: true })
         }
 
         await write_Logging({
-          lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-flagged',
-          lg_msg: `${flagged.length} players ${date_from}–${date_end}: ${total_found} found, ${total_missing} missing, ${pairs_inserted} pairs, ${players_created} new players`,
+          lg_functionname: 'POST', lg_caller: 'scrape/discover/nzb-by-flagged',
+          lg_msg: `${flagged.length} players ${date_from}–${date_end}: ${total_sessions} sessions added to ts1`,
           lg_severity: 'I'
         })
 
-        send({ done: true, total_found, total_missing, pairs_inserted, players_created, skipped_rows })
+        send({ done: true, total_sessions })
       } catch (err) {
-        await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-flagged', lg_msg: String(err), lg_severity: 'E' })
+        await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/discover/nzb-by-flagged', lg_msg: String(err), lg_severity: 'E' })
         send({ error: String(err) })
       } finally {
         controller.close()

@@ -19,9 +19,9 @@ async function createClient(envFile: string): Promise<Client> {
 }
 
 async function ensureTable(storeClient: Client): Promise<void> {
-  await storeClient.query(`DROP TABLE IF EXISTS tsc_schema`)
+  await storeClient.query(`DROP TABLE IF EXISTS xsc_schema`)
   await storeClient.query(`
-    CREATE TABLE tsc_schema (
+    CREATE TABLE xsc_schema (
       sc_id        SERIAL PRIMARY KEY,
       sc_source    TEXT NOT NULL,
       sc_table     TEXT NOT NULL,
@@ -38,7 +38,7 @@ async function ensureTable(storeClient: Client): Promise<void> {
 }
 
 async function schemaSnapshot(sourceClient: Client, source: string, storeClient: Client = sourceClient): Promise<void> {
-  await storeClient.query('DELETE FROM tsc_schema WHERE sc_source = $1', [source])
+  await storeClient.query('DELETE FROM xsc_schema WHERE sc_source = $1', [source])
 
   const result = await sourceClient.query(`
     SELECT c.table_name, c.column_name, c.data_type, c.character_maximum_length,
@@ -82,7 +82,7 @@ async function schemaSnapshot(sourceClient: Client, source: string, storeClient:
       return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10})`
     })
     await storeClient.query(
-      `INSERT INTO tsc_schema (sc_source,sc_table,sc_column,sc_datatype,sc_maxlen,sc_nullable,sc_default,sc_is_pk,sc_is_unique,sc_has_index)
+      `INSERT INTO xsc_schema (sc_source,sc_table,sc_column,sc_datatype,sc_maxlen,sc_nullable,sc_default,sc_is_pk,sc_is_unique,sc_has_index)
        VALUES ${placeholders.join(',')}`, values)
   }
 }
@@ -91,10 +91,10 @@ const COLS = `sc_table,sc_column,sc_datatype,sc_maxlen,sc_nullable,sc_default,sc
 
 async function schemaCompare(storeClient: Client, source1: string, source2: string) {
   const only1 = await storeClient.query(
-    `SELECT ${COLS} FROM tsc_schema WHERE sc_source=$1 EXCEPT SELECT ${COLS} FROM tsc_schema WHERE sc_source=$2 ORDER BY sc_table,sc_column`,
+    `SELECT ${COLS} FROM xsc_schema WHERE sc_source=$1 EXCEPT SELECT ${COLS} FROM xsc_schema WHERE sc_source=$2 ORDER BY sc_table,sc_column`,
     [source1, source2])
   const only2 = await storeClient.query(
-    `SELECT ${COLS} FROM tsc_schema WHERE sc_source=$1 EXCEPT SELECT ${COLS} FROM tsc_schema WHERE sc_source=$2 ORDER BY sc_table,sc_column`,
+    `SELECT ${COLS} FROM xsc_schema WHERE sc_source=$1 EXCEPT SELECT ${COLS} FROM xsc_schema WHERE sc_source=$2 ORDER BY sc_table,sc_column`,
     [source2, source1])
   return [
     ...only1.rows.map(row => ({ direction: 'only_in_1' as const, row })),

@@ -14,16 +14,22 @@ const SECTIONS = [
     step: '2',
   },
   {
-    href: '/admin/builddata',
-    label: 'Build Data Viewer',
-    description: 'Inspect and validate the production tables populated by the build steps.',
+    href: '/admin/stats',
+    label: 'Update Stats',
+    description: 'Recompute averages and partnership stats from stored results.',
     step: '3',
   },
   {
-    href: '/admin/stats',
-    label: 'Update Stats',
-    description: 'Recompute averages, partnership stats and session date sequence from stored results.',
+    href: '/admin/builddata',
+    label: 'Build Data Viewer',
+    description: 'Inspect and validate the production tables populated by the build steps.',
     step: '4',
+  },
+  {
+    href: '/admin/db-tools',
+    label: 'Database Tools',
+    description: 'Compare schemas between local and prod databases, and copy tables between them.',
+    step: '✦',
   },
 ]
 

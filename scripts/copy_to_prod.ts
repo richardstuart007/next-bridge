@@ -131,9 +131,11 @@ END $$;
 }
 
 // ── tables to copy ────────────────────────────────────────────────────────────
-// Excluded: tsc_schema (temp schema comparison table)
-//           tlg_logging (don't overwrite prod logs)
+// Excluded: xsc_schema (temp schema comparison table)
+//           xlg_logging (don't overwrite prod logs)
 //           ttt_tournament_types (removed from codebase)
+// Excluded: xsc_schema (temp schema comparison table)
+//           xlg_logging (don't overwrite prod logs — create manually on first deploy)
 const TABLES = [
   'tpl_players',
   'tse_sessions',
@@ -141,8 +143,9 @@ const TABLES = [
   'ta1_player_stats',
   'ta2_partner_stats',
   'tpa_partners',
-  'ts09_results',
-  'ts10_sessions',
+  'ts0_scraped',
+  'ts1_sessions',
+  'ts2_results',
   'tcl_clubs',
   'tgr_grades',
   'trk_ranks',

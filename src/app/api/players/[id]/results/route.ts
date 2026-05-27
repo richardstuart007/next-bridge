@@ -56,7 +56,7 @@ export async function GET(
       queryParams.push(partnerId)
     }
 
-    query += ' ORDER BY se_date ASC'
+    query += ' ORDER BY se_run_id DESC'
 
     const rows = await table_query({ caller: 'players/[id]/results', query, params: queryParams })
 

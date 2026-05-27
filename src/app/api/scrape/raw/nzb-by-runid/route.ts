@@ -25,7 +25,8 @@ function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
   return { value: parseFloat(m[1]), type: m[2].toUpperCase() as 'PCT' | 'VP' }
 }
 
-function normaliseScore(value: number, type: 'PCT' | 'VP'): number {
+function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {
+  if (isSummary) return value
   if (type === 'PCT' && (value < 25 || value > 75)) return 50
   if (type === 'VP' && value > 20) return 10
   return value
@@ -42,7 +43,7 @@ interface ParsedRow {
   tournament: string
 }
 
-function parsePage(html: string): Map<number, ParsedRow[]> {
+function parsePage(html: string, isSummary = false): Map<number, ParsedRow[]> {
   const $ = cheerio.load(html)
   const rowsByRunId = new Map<number, ParsedRow[]>()
 
@@ -91,7 +92,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
       existing.push({
         run_id, event_name, date: parsedDate, club: clubText,
         player_names,
-        score_value: normaliseScore(score.value, score.type),
+        score_value: normaliseScore(score.value, score.type, isSummary),
         score_type: score.type,
         tournament: mpts
       })
@@ -158,8 +159,16 @@ export async function POST(request: NextRequest) {
           params: []
         })
 
+        const summaryRows = await table_query({
+          caller: 'scrape/nzb-by-runid/summary-lookup',
+          query: `SELECT s1_run_id FROM ts1_sessions WHERE s1_is_summary = true AND s1_run_id = ANY($1)`,
+          params: [run_ids] as unknown as (string | number | boolean | null)[]
+        }) as { s1_run_id: number }[]
+        const summarySet = new Set(summaryRows.map(r => r.s1_run_id))
+
         for (const run_id of run_ids) {
           send({ run_id })
+          const isSummary = summarySet.has(run_id)
 
           const url = `${NZB_BASE}/results.html?run_id=${run_id}`
           const response = await fetch(url, {
@@ -167,7 +176,7 @@ export async function POST(request: NextRequest) {
           })
           if (!response.ok) { send({ run_id, skipped: true }); continue }
 
-          const rowsByRunId = parsePage(await response.text())
+          const rowsByRunId = parsePage(await response.text(), isSummary)
           const rows = rowsByRunId.get(run_id) ?? []
 
           if (rows.length === 0) { send({ run_id, skipped: true }); continue }

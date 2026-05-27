@@ -504,7 +504,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
               <table className='w-full text-sm'>
                 <thead>
                   <tr className='border-b border-gray-200'>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Source</th>
+                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Run ID</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Date</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Day</th>
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-36'>Partner</th>

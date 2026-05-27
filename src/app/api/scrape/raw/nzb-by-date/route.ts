@@ -25,7 +25,8 @@ function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
   return { value: parseFloat(m[1]), type: m[2].toUpperCase() as 'PCT' | 'VP' }
 }
 
-function normaliseScore(value: number, type: 'PCT' | 'VP'): number {
+function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {
+  if (isSummary) return value
   if (type === 'PCT' && (value < 25 || value > 75)) return 50
   if (type === 'VP' && value > 20) return 10
   return value

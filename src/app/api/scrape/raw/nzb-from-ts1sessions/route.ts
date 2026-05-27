@@ -25,7 +25,8 @@ function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
   return { value: parseFloat(m[1]), type: m[2].toUpperCase() as 'PCT' | 'VP' }
 }
 
-function normaliseScore(value: number, type: 'PCT' | 'VP'): number {
+function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {
+  if (isSummary) return value
   if (type === 'PCT' && (value < 25 || value > 75)) return 50
   if (type === 'VP' && value > 20) return 10
   return value
@@ -42,7 +43,7 @@ interface ParsedRow {
   tournament: string
 }
 
-function parsePage(html: string): Map<number, ParsedRow[]> {
+function parsePage(html: string, isSummary = false): Map<number, ParsedRow[]> {
   const $ = cheerio.load(html)
   const rowsByRunId = new Map<number, ParsedRow[]>()
 
@@ -91,7 +92,7 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
       existing.push({
         run_id, event_name, date: parsedDate, club: clubText,
         player_names,
-        score_value: normaliseScore(score.value, score.type),
+        score_value: normaliseScore(score.value, score.type, isSummary),
         score_type: score.type,
         tournament: mpts
       })
@@ -170,19 +171,18 @@ export async function POST(request: Request) {
       try {
         const ts1Rows = await table_query({
           caller: 'scrape/nzb-from-ts1sessions/read',
-          query: `SELECT s1_run_id FROM ts1_sessions ORDER BY s1_date ASC, s1_run_id`,
+          query: `SELECT s1_run_id, s1_is_summary FROM ts1_sessions ORDER BY s1_date ASC, s1_run_id`,
           params: []
-        }) as { s1_run_id: number }[]
+        }) as { s1_run_id: number; s1_is_summary: boolean }[]
 
         if (ts1Rows.length === 0) {
           send({ done: true, run_ids_total: 0, pairs_inserted: 0, players_created: 0, skipped_rows: 0 })
           return
         }
 
-        const run_ids   = ts1Rows.map(r => r.s1_run_id)
         const robotPlid = await getRobotPlid()
 
-        for (const run_id of run_ids) {
+        for (const { s1_run_id: run_id, s1_is_summary: isSummary } of ts1Rows) {
           send({ run_id })
 
           const url = `${NZB_BASE}/results.html?run_id=${run_id}`
@@ -196,7 +196,7 @@ export async function POST(request: Request) {
           })
           if (!response.ok) { send({ run_id, skipped: true }); continue }
 
-          const rowsByRunId = parsePage(await response.text())
+          const rowsByRunId = parsePage(await response.text(), isSummary)
           const rows = rowsByRunId.get(run_id) ?? []
           if (rows.length === 0) { send({ run_id, skipped: true }); continue }
 

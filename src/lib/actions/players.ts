@@ -232,11 +232,13 @@ export async function getOrCreatePartnerRow(
 export async function getPartnerStats(plid1: number, plid2: number) {
   const rows = await table_query({
     caller: 'getPartnerStats',
-    query: `SELECT a2.* FROM ta2_partner_stats a2
-            JOIN tpa_partners pa ON pa.pa_paid = a2.a2_paid
-            WHERE ((pa.pa_plid1 = $1 AND pa.pa_plid2 = $2)
-               OR  (pa.pa_plid1 = $2 AND pa.pa_plid2 = $1))
-              AND a2.a2_group = 'C'`,
+    query: `SELECT * FROM ta2_partner_stats
+            WHERE a2_paid IN (
+              SELECT pa_paid FROM tpa_partners
+              WHERE (pa_plid1 = $1 AND pa_plid2 = $2)
+                 OR (pa_plid1 = $2 AND pa_plid2 = $1)
+            )
+            AND a2_group = 'C'`,
     params: [plid1, plid2]
   })
   return rows[0] ?? null

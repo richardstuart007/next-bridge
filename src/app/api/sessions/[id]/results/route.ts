@@ -19,22 +19,22 @@ export async function GET(
       query: `
         WITH ranked AS (
           SELECT
-            re.re_percentage,
-            pa.pa_plid1         AS plid1,
-            pa.pa_plid2         AS plid2,
-            p1.pl_name          AS name1,
-            p2.pl_name          AS name2,
+            re_percentage,
+            pa_plid1         AS plid1,
+            pa_plid2         AS plid2,
+            p1.pl_name       AS name1,
+            p2.pl_name       AS name2,
             COALESCE(p1.pl_nz_bridge_number, 0) AS nz1,
             COALESCE(p2.pl_nz_bridge_number, 0) AS nz2,
             CASE WHEN COALESCE(p1.pl_nz_bridge_number, 0) = 0 THEN 2147483647
                  ELSE p1.pl_nz_bridge_number END AS sort1,
             CASE WHEN COALESCE(p2.pl_nz_bridge_number, 0) = 0 THEN 2147483647
                  ELSE p2.pl_nz_bridge_number END AS sort2
-          FROM tre_results re
-          JOIN tpa_partners pa ON pa.pa_paid = re.re_paid
-          JOIN tpl_players p1  ON p1.pl_plid  = pa.pa_plid1
-          JOIN tpl_players p2  ON p2.pl_plid  = pa.pa_plid2
-          WHERE re.re_seid = $1
+          FROM tre_results
+          JOIN tpa_partners ON pa_paid = re_paid
+          JOIN tpl_players p1 ON p1.pl_plid = pa_plid1
+          JOIN tpl_players p2 ON p2.pl_plid = pa_plid2
+          WHERE re_seid = $1
         )
         SELECT
           re_percentage      AS percentage,

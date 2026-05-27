@@ -20,15 +20,15 @@ export async function GET(request: NextRequest) {
     const rows = await table_query({
       caller: 'admin/players',
       query: `
-        SELECT p.pl_plid, p.pl_name, p.pl_club, p.pl_grade, p.pl_rank,
-               p.pl_a_points, p.pl_rating,
-               COALESCE(a1.a1_mp_sessions, 0) + COALESCE(a1.a1_vp_sessions, 0) AS a1_sessions,
-               COALESCE(a1.a1_mp_avg_pct, 0)  AS a1_avg_pct,
-               p.pl_all_results, p.pl_nz_bridge_number
-        FROM tpl_players p
-        LEFT JOIN ta1_player_stats a1 ON a1.a1_plid = p.pl_plid AND a1.a1_group = 'C'
+        SELECT pl_plid, pl_name, pl_club, pl_grade, pl_rank,
+               pl_a_points, pl_rating,
+               COALESCE(a1_mp_sessions, 0) + COALESCE(a1_vp_sessions, 0) AS a1_sessions,
+               COALESCE(a1_mp_avg_pct, 0)  AS a1_avg_pct,
+               pl_all_results, pl_nz_bridge_number
+        FROM tpl_players
+        LEFT JOIN ta1_player_stats ON a1_plid = pl_plid AND a1_group = 'C'
         ${where}
-        ORDER BY p.pl_name ASC
+        ORDER BY pl_name ASC
       `,
       params
     })

@@ -53,10 +53,10 @@ export async function POST(request: NextRequest) {
         await table_query({
           caller: 'players/merge/upsert-partnership',
           query: `INSERT INTO tpa_partners (pa_plid1, pa_plid2)
-                  SELECT CASE WHEN pk.pl_name <= pp.pl_name THEN $1 ELSE $2 END,
-                         CASE WHEN pk.pl_name <= pp.pl_name THEN $2 ELSE $1 END
-                  FROM tpl_players pk, tpl_players pp
-                  WHERE pk.pl_plid = $1 AND pp.pl_plid = $2
+                  SELECT CASE WHEN p1.pl_name <= p2.pl_name THEN $1 ELSE $2 END,
+                         CASE WHEN p1.pl_name <= p2.pl_name THEN $2 ELSE $1 END
+                  FROM tpl_players p1, tpl_players p2
+                  WHERE p1.pl_plid = $1 AND p2.pl_plid = $2
                   ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING`,
           params: [keep_plid, partner_id]
         })

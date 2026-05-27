@@ -9,7 +9,7 @@ const NZB_BASE       = 'https://www.nzbridge.co.nz'
 const BRIDGE_CLUB_ID = 106
 const UA = { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
 
-const GRP_EXPR = `CASE WHEN RIGHT(se.se_tournament,1)='A' THEN 'A' WHEN RIGHT(se.se_tournament,1)='B' THEN 'B' ELSE 'C' END`
+const GRP_EXPR = `CASE WHEN RIGHT(se_tournament,1)='A' THEN 'A' WHEN RIGHT(se_tournament,1)='B' THEN 'B' ELSE 'C' END`
 
 const MONTH: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -286,13 +286,13 @@ export async function GET(request: NextRequest) {
       caller: 'cron/update-sessions/upsert-partners',
       query: `INSERT INTO tpa_partners (pa_plid1, pa_plid2)
               SELECT DISTINCT
-                CASE WHEN p1.pl_name <= p2.pl_name THEN t.s2_plid1 ELSE t.s2_plid2 END,
-                CASE WHEN p1.pl_name <= p2.pl_name THEN t.s2_plid2 ELSE t.s2_plid1 END
-              FROM ts2_results t
-              JOIN tpl_players p1 ON p1.pl_plid = t.s2_plid1
-              JOIN tpl_players p2 ON p2.pl_plid = t.s2_plid2
-              JOIN tse_sessions s ON s.se_run_id = t.s2_run_id
-              WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
+                CASE WHEN p1.pl_name <= p2.pl_name THEN s2_plid1 ELSE s2_plid2 END,
+                CASE WHEN p1.pl_name <= p2.pl_name THEN s2_plid2 ELSE s2_plid1 END
+              FROM ts2_results
+              JOIN tpl_players p1 ON p1.pl_plid = s2_plid1
+              JOIN tpl_players p2 ON p2.pl_plid = s2_plid2
+              JOIN tse_sessions ON se_run_id = s2_run_id
+              WHERE NOT EXISTS (SELECT 1 FROM tre_results WHERE re_seid = se_seid)
               ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING`,
       params: []
     })
@@ -300,15 +300,15 @@ export async function GET(request: NextRequest) {
     const resultsResult = await table_query({
       caller: 'cron/update-sessions/results-nzb',
       query: `INSERT INTO tre_results (re_seid, re_paid, re_percentage, re_vp)
-              SELECT s.se_seid, pa.pa_paid,
-                CASE WHEN s1.s1_score_type = 'VP' THEN NULL ELSE GREATEST(25.0, LEAST(75.0, t.s2_score_value)) END,
-                CASE WHEN s1.s1_score_type = 'VP' THEN t.s2_score_value ELSE NULL END
-              FROM ts2_results t
-              JOIN tse_sessions  s  ON s.se_run_id  = t.s2_run_id
-              JOIN ts1_sessions  s1 ON s1.s1_run_id = t.s2_run_id
-              JOIN tpa_partners  pa ON (pa.pa_plid1 = t.s2_plid1 AND pa.pa_plid2 = t.s2_plid2)
-                                    OR (pa.pa_plid1 = t.s2_plid2 AND pa.pa_plid2 = t.s2_plid1)
-              WHERE NOT EXISTS (SELECT 1 FROM tre_results re WHERE re.re_seid = s.se_seid)
+              SELECT se_seid, pa_paid,
+                CASE WHEN s1_score_type = 'VP' THEN NULL ELSE GREATEST(25.0, LEAST(75.0, s2_score_value)) END,
+                CASE WHEN s1_score_type = 'VP' THEN s2_score_value ELSE NULL END
+              FROM ts2_results
+              JOIN tse_sessions ON se_run_id  = s2_run_id
+              JOIN ts1_sessions ON s1_run_id  = s2_run_id
+              JOIN tpa_partners ON (pa_plid1 = s2_plid1 AND pa_plid2 = s2_plid2)
+                                OR (pa_plid1 = s2_plid2 AND pa_plid2 = s2_plid1)
+              WHERE NOT EXISTS (SELECT 1 FROM tre_results WHERE re_seid = se_seid)
               RETURNING re_reid`,
       params: []
     }) as { re_reid: number }[]
@@ -326,17 +326,17 @@ export async function GET(request: NextRequest) {
                   (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
                    a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev)
                 SELECT u.plid, $1::varchar,
-                  COUNT(*)                FILTER (WHERE se.se_scoring = 'MP')::integer,
-                  COALESCE(ROUND(AVG(re.re_percentage)        FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
-                  ROUND(STDDEV_SAMP(re.re_percentage)         FILTER (WHERE se.se_scoring = 'MP')::numeric, 2),
-                  COUNT(*)                FILTER (WHERE se.se_scoring = 'VP')::integer,
-                  COALESCE(ROUND(AVG(re.re_vp)               FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0),
-                  ROUND(STDDEV_SAMP(re.re_vp)                FILTER (WHERE se.se_scoring = 'VP')::numeric, 2)
-                FROM tre_results re
-                JOIN tse_sessions se ON se.se_seid = re.re_seid
-                JOIN tpa_partners pa ON pa.pa_paid = re.re_paid
-                CROSS JOIN LATERAL unnest(ARRAY[pa.pa_plid1, pa.pa_plid2]) AS u(plid)
-                WHERE se.se_is_summary IS NOT TRUE AND ${GRP_EXPR} = $1
+                  COUNT(*)                FILTER (WHERE se_scoring = 'MP')::integer,
+                  COALESCE(ROUND(AVG(re_percentage)        FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re_percentage)         FILTER (WHERE se_scoring = 'MP')::numeric, 2),
+                  COUNT(*)                FILTER (WHERE se_scoring = 'VP')::integer,
+                  COALESCE(ROUND(AVG(re_vp)               FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re_vp)                FILTER (WHERE se_scoring = 'VP')::numeric, 2)
+                FROM tre_results
+                JOIN tse_sessions ON se_seid = re_seid
+                JOIN tpa_partners ON pa_paid = re_paid
+                CROSS JOIN LATERAL unnest(ARRAY[pa_plid1, pa_plid2]) AS u(plid)
+                WHERE se_is_summary IS NOT TRUE AND ${GRP_EXPR} = $1
                 GROUP BY u.plid`,
         params: [grp]
       })
@@ -347,17 +347,17 @@ export async function GET(request: NextRequest) {
                 (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
                  a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev)
               SELECT u.plid, 'all',
-                COUNT(*)                FILTER (WHERE se.se_scoring = 'MP')::integer,
-                COALESCE(ROUND(AVG(re.re_percentage)        FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
-                ROUND(STDDEV_SAMP(re.re_percentage)         FILTER (WHERE se.se_scoring = 'MP')::numeric, 2),
-                COUNT(*)                FILTER (WHERE se.se_scoring = 'VP')::integer,
-                COALESCE(ROUND(AVG(re.re_vp)               FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0),
-                ROUND(STDDEV_SAMP(re.re_vp)                FILTER (WHERE se.se_scoring = 'VP')::numeric, 2)
-              FROM tre_results re
-              JOIN tse_sessions se ON se.se_seid = re.re_seid
-              JOIN tpa_partners pa ON pa.pa_paid = re.re_paid
-              CROSS JOIN LATERAL unnest(ARRAY[pa.pa_plid1, pa.pa_plid2]) AS u(plid)
-              WHERE se.se_is_summary IS NOT TRUE
+                COUNT(*)                FILTER (WHERE se_scoring = 'MP')::integer,
+                COALESCE(ROUND(AVG(re_percentage)        FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re_percentage)         FILTER (WHERE se_scoring = 'MP')::numeric, 2),
+                COUNT(*)                FILTER (WHERE se_scoring = 'VP')::integer,
+                COALESCE(ROUND(AVG(re_vp)               FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re_vp)                FILTER (WHERE se_scoring = 'VP')::numeric, 2)
+              FROM tre_results
+              JOIN tse_sessions ON se_seid = re_seid
+              JOIN tpa_partners ON pa_paid = re_paid
+              CROSS JOIN LATERAL unnest(ARRAY[pa_plid1, pa_plid2]) AS u(plid)
+              WHERE se_is_summary IS NOT TRUE
               GROUP BY u.plid`,
       params: []
     })
@@ -368,17 +368,17 @@ export async function GET(request: NextRequest) {
         query: `INSERT INTO ta2_partner_stats
                   (a2_paid, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_mp_stddev,
                    a2_vp_sessions, a2_vp_avg_vp, a2_vp_stddev)
-                SELECT re.re_paid, $1::varchar,
-                  COUNT(*)                FILTER (WHERE se.se_scoring = 'MP')::integer,
-                  COALESCE(ROUND(AVG(re.re_percentage)        FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
-                  ROUND(STDDEV_SAMP(re.re_percentage)         FILTER (WHERE se.se_scoring = 'MP')::numeric, 2),
-                  COUNT(*)                FILTER (WHERE se.se_scoring = 'VP')::integer,
-                  COALESCE(ROUND(AVG(re.re_vp)               FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0),
-                  ROUND(STDDEV_SAMP(re.re_vp)                FILTER (WHERE se.se_scoring = 'VP')::numeric, 2)
-                FROM tre_results re
-                JOIN tse_sessions se ON se.se_seid = re.re_seid
-                WHERE se.se_is_summary IS NOT TRUE AND ${GRP_EXPR} = $1
-                GROUP BY re.re_paid`,
+                SELECT re_paid, $1::varchar,
+                  COUNT(*)                FILTER (WHERE se_scoring = 'MP')::integer,
+                  COALESCE(ROUND(AVG(re_percentage)        FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re_percentage)         FILTER (WHERE se_scoring = 'MP')::numeric, 2),
+                  COUNT(*)                FILTER (WHERE se_scoring = 'VP')::integer,
+                  COALESCE(ROUND(AVG(re_vp)               FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0),
+                  ROUND(STDDEV_SAMP(re_vp)                FILTER (WHERE se_scoring = 'VP')::numeric, 2)
+                FROM tre_results
+                JOIN tse_sessions ON se_seid = re_seid
+                WHERE se_is_summary IS NOT TRUE AND ${GRP_EXPR} = $1
+                GROUP BY re_paid`,
         params: [grp]
       })
     }
@@ -387,17 +387,17 @@ export async function GET(request: NextRequest) {
       query: `INSERT INTO ta2_partner_stats
                 (a2_paid, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_mp_stddev,
                  a2_vp_sessions, a2_vp_avg_vp, a2_vp_stddev)
-              SELECT re.re_paid, 'all',
-                COUNT(*)                FILTER (WHERE se.se_scoring = 'MP')::integer,
-                COALESCE(ROUND(AVG(re.re_percentage)        FILTER (WHERE se.se_scoring = 'MP')::numeric, 2), 0),
-                ROUND(STDDEV_SAMP(re.re_percentage)         FILTER (WHERE se.se_scoring = 'MP')::numeric, 2),
-                COUNT(*)                FILTER (WHERE se.se_scoring = 'VP')::integer,
-                COALESCE(ROUND(AVG(re.re_vp)               FILTER (WHERE se.se_scoring = 'VP')::numeric, 2), 0),
-                ROUND(STDDEV_SAMP(re.re_vp)                FILTER (WHERE se.se_scoring = 'VP')::numeric, 2)
-              FROM tre_results re
-              JOIN tse_sessions se ON se.se_seid = re.re_seid
-              WHERE se.se_is_summary IS NOT TRUE
-              GROUP BY re.re_paid`,
+              SELECT re_paid, 'all',
+                COUNT(*)                FILTER (WHERE se_scoring = 'MP')::integer,
+                COALESCE(ROUND(AVG(re_percentage)        FILTER (WHERE se_scoring = 'MP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re_percentage)         FILTER (WHERE se_scoring = 'MP')::numeric, 2),
+                COUNT(*)                FILTER (WHERE se_scoring = 'VP')::integer,
+                COALESCE(ROUND(AVG(re_vp)               FILTER (WHERE se_scoring = 'VP')::numeric, 2), 0),
+                ROUND(STDDEV_SAMP(re_vp)                FILTER (WHERE se_scoring = 'VP')::numeric, 2)
+              FROM tre_results
+              JOIN tse_sessions ON se_seid = re_seid
+              WHERE se_is_summary IS NOT TRUE
+              GROUP BY re_paid`,
       params: []
     })
     await log(`Phase E stats: player and partner stats rebuilt`)

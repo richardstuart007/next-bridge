@@ -279,11 +279,11 @@ export async function POST(request: Request) {
 
         await write_Logging({
           lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions',
-          lg_msg: `${run_ids.length} run_ids from ts1_sessions: ${pairs_inserted} pairs, ${players_created} new players`,
+          lg_msg: `${ts1Rows.length} run_ids from ts1_sessions: ${pairs_inserted} pairs, ${players_created} new players`,
           lg_severity: 'I'
         })
 
-        send({ done: true, run_ids_total: run_ids.length, pairs_inserted, players_created, skipped_rows })
+        send({ done: true, run_ids_total: ts1Rows.length, pairs_inserted, players_created, skipped_rows })
       } catch (err) {
         await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions', lg_msg: String(err), lg_severity: 'E' })
         send({ error: String(err) })

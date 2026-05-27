@@ -4,13 +4,13 @@ const SECTIONS = [
   {
     href: '/admin/scrape',
     label: 'Raw Data Scraping',
-    description: 'Import NZ Bridge results by date range into ts9 staging table.',
+    description: 'Import NZ Bridge results by date range into ts1/ts2 staging tables.',
     step: '1',
   },
   {
     href: '/admin/build',
     label: 'Build Tables',
-    description: 'Populate production tables (tse_sessions, tre_results, tpa_partners) from ts9.',
+    description: 'Populate production tables (tse_sessions, tre_results, tpa_partners) from ts1/ts2.',
     step: '2',
   },
   {
@@ -39,8 +39,7 @@ export default function AdminPage() {
   }
   return (
     <div className='p-8 max-w-2xl'>
-      <h1 className='text-xl font-bold text-gray-900 mb-1'>Admin</h1>
-      <p className='text-sm text-gray-400 mb-6'>Active pipeline — ts9 NZ Bridge import.</p>
+      <h1 className='text-xl font-bold text-gray-900 mb-6'>Admin</h1>
       <div className='space-y-3'>
         {SECTIONS.map(s => (
           <Link key={s.href} href={s.href}

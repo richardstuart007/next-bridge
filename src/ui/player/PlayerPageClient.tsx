@@ -327,7 +327,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
       r.tournament,
       r.event_type,
       r.scoring,
-      r.is_summary === true ? 'Summary' : r.is_summary === null ? '?' : '',
+      r.is_summary === true ? 'Summary' : r.is_summary === null ? '?' : 'Session',
       r.scoring === 'MP' ? parseFloat(String(r.percentage)).toFixed(2) : '',
       r.scoring === 'VP' ? parseFloat(String(r.vp ?? 0)).toFixed(2) : '',
     ].map(esc).join(','))
@@ -627,7 +627,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
                       <td className='py-1.5'>
                         {r.is_summary === true
                           ? <span className='rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700'>Summary</span>
-                          : <span className='text-gray-300 text-xs'>{r.is_summary === null ? '?' : '—'}</span>}
+                          : <span className='text-gray-400 text-xs'>{r.is_summary === null ? '?' : 'Session'}</span>}
                       </td>
                       <td className='py-1.5 text-right font-medium text-xs'>
                         {r.scoring === 'MP' ? `${parseFloat(String(r.percentage)).toFixed(2)}%` : ''}

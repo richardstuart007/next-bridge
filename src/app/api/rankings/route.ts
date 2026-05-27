@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
             p2.pl_name               AS player2_name,
             p2.pl_all_results        AS player2_tracked
           FROM tpa_partners pa
-          JOIN ta2_partner_stats a2 ON a2.a2_plid1 = pa.pa_plid1 AND a2.a2_plid2 = pa.pa_plid2 AND a2.a2_group = $2
+          JOIN ta2_partner_stats a2 ON a2.a2_paid = pa.pa_paid AND a2.a2_group = $2
           JOIN tpl_players p1 ON p1.pl_plid = pa.pa_plid1
           JOIN tpl_players p2 ON p2.pl_plid = pa.pa_plid2
           WHERE ${cols.partnerCount} >= $1

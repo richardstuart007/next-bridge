@@ -194,37 +194,6 @@ export async function upsertPlayer(data: {
 const PARTNERS_TABLE = 'tpa_partners'
 
 export async function buildAllPartnerStats(): Promise<{ pairs: number }> {
-  await table_query({
-    caller: 'buildAllPartnerStats/insert',
-    query: `
-      INSERT INTO tpa_partners (pa_plid1, pa_plid2)
-      SELECT DISTINCT
-        CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid1 ELSE re.re_plid2 END,
-        CASE WHEN p1.pl_name <= p2.pl_name THEN re.re_plid2 ELSE re.re_plid1 END
-      FROM tre_results re
-      JOIN tse_sessions se ON se.se_seid = re.re_seid
-      JOIN tpl_players p1 ON p1.pl_plid = LEAST(re.re_plid1, re.re_plid2)
-      JOIN tpl_players p2 ON p2.pl_plid = GREATEST(re.re_plid1, re.re_plid2)
-      WHERE re.re_plid1 <> re.re_plid2
-        AND se.se_is_summary IS NOT TRUE
-      ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING
-    `,
-    params: []
-  })
-
-  await table_query({
-    caller: 'buildAllPartnerStats/link',
-    query: `
-      UPDATE tre_results re
-      SET re_paid = pa.pa_paid
-      FROM tpa_partners pa
-      WHERE pa.pa_plid1 = LEAST(re.re_plid1, re.re_plid2)
-        AND pa.pa_plid2 = GREATEST(re.re_plid1, re.re_plid2)
-        AND re.re_paid IS NULL
-    `,
-    params: []
-  })
-
   const result = await table_query({
     caller: 'buildAllPartnerStats/count',
     query: `SELECT COUNT(*)::int AS n FROM tpa_partners`,
@@ -261,19 +230,14 @@ export async function getOrCreatePartnerRow(
 
 /** Fetch C-group partnership stats for a pair from ta2_partner_stats (order of IDs does not matter). */
 export async function getPartnerStats(plid1: number, plid2: number) {
-  const [p1, p2] = await Promise.all([getPlayerById(plid1), getPlayerById(plid2)])
-  if (!p1 || !p2) return null
-  const firstIsAlpha = (p1.pl_name as string) <= (p2.pl_name as string)
-  const lo = firstIsAlpha ? plid1 : plid2
-  const hi = firstIsAlpha ? plid2 : plid1
-  const rows = await table_fetch({
+  const rows = await table_query({
     caller: 'getPartnerStats',
-    table: 'ta2_partner_stats',
-    whereColumnValuePairs: [
-      { column: 'a2_plid1', value: lo },
-      { column: 'a2_plid2', value: hi },
-      { column: 'a2_group', value: 'C'  }
-    ]
+    query: `SELECT a2.* FROM ta2_partner_stats a2
+            JOIN tpa_partners pa ON pa.pa_paid = a2.a2_paid
+            WHERE ((pa.pa_plid1 = $1 AND pa.pa_plid2 = $2)
+               OR  (pa.pa_plid1 = $2 AND pa.pa_plid2 = $1))
+              AND a2.a2_group = 'C'`,
+    params: [plid1, plid2]
   })
   return rows[0] ?? null
 }

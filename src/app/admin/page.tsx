@@ -2,6 +2,12 @@ import Link from 'next/link'
 
 const SECTIONS = [
   {
+    href: '/admin/players',
+    label: 'Players',
+    description: 'Manage which players are tracked (all results scraped automatically).',
+    step: '✦',
+  },
+  {
     href: '/admin/scrape',
     label: 'Raw Data Scraping',
     description: 'Import NZ Bridge results by date range into ts1/ts2 staging tables.',

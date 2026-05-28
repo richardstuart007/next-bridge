@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
                COALESCE(a1_mp_avg_pct, 0)  AS a1_avg_pct,
                pl_all_results, pl_nz_bridge_number
         FROM tpl_players
-        LEFT JOIN ta1_player_stats ON a1_plid = pl_plid AND a1_group = 'C'
+        LEFT JOIN ta1_player_stats ON a1_plid = pl_plid AND a1_group = 'all'
         ${where}
         ORDER BY pl_name ASC
       `,

@@ -119,7 +119,7 @@ export default function PerformanceChart({ results, scoring }: Props) {
             : `${r.date.slice(0, 10)} · ${r.day_of_week}`
         })
         return {
-          label: `${meta.name} (${meta.avg.toFixed(dp)}${unit})`,
+          label: `${meta.name} →`,
           data, keys, keyType: 'seid',
           borderColor: meta.color, tension: 0.2, tooltipData: tips,
         }
@@ -194,7 +194,8 @@ export default function PerformanceChart({ results, scoring }: Props) {
 
       {/* Partner chips — click to toggle */}
       {partnerOrder.length > 0 && (
-        <div className='flex flex-wrap gap-1.5'>
+        <div className='flex flex-wrap items-center gap-1.5'>
+          <span className='text-xs text-gray-500 font-medium whitespace-nowrap'>Show on graph:</span>
           {partnerOrder.map(id => {
             const meta = partnerMeta.get(id)!
             const sel  = selectedIds.has(id)
@@ -228,7 +229,7 @@ export default function PerformanceChart({ results, scoring }: Props) {
       <p className='text-xs text-gray-500'>
         {sorted.length} session{sorted.length !== 1 ? 's' : ''}
         {' · '}{selectedIds.size} of {partnerOrder.length} partner{partnerOrder.length !== 1 ? 's' : ''}
-        {' · '}click point → session · click legend → player
+        {' · '}click point → session · click legend → player page
       </p>
     </div>
   )

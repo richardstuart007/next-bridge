@@ -168,11 +168,11 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
 
   const num = (v: string) => v === '' ? null : parseFloat(v)
 
-  const isTracked = (p: PlayerRow) => p.pl_all_results === true || (p.pl_all_results as unknown) === 't' || (p.pl_all_results as unknown) === 'true' || (p.pl_all_results as unknown) === 1
+  const isTracked = (v: unknown) => v === true || v === 't' || v === 'true' || v === 1
 
   const filteredPlayers = useMemo(() => {
     let rows = allPlayers
-    if (fTracked)        rows = rows.filter(p => isTracked(p))
+    if (fTracked)        rows = rows.filter(p => isTracked(p.pl_all_results))
     if (fExcludeNz0)     rows = rows.filter(p => (p.pl_nz_bridge_number ?? 0) > 0)
     if (fName)           rows = rows.filter(p => p.pl_name.toLowerCase().includes(fName.toLowerCase()))
     if (fNz)             rows = rows.filter(p => String(p.pl_nz_bridge_number ?? '').includes(fNz))
@@ -295,16 +295,16 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                         <ClubSelect mode='any' selected={fClubs} onChange={setFClubs} placeholder='All' />
                       </td>
                       <td className='py-1 pr-1'>
-                        <input type='number' placeholder='Min' value={fRatingMin} step='0.01'
+                        <input type='text' inputMode='decimal' placeholder='Min' value={fRatingMin}
                           onChange={e => setFRatingMin(e.target.value)} className={NUM_CLS} />
                       </td>
                       <td className='py-1 pr-1'>
-                        <input type='number' placeholder='Min' value={fAMin} step='0.01'
+                        <input type='text' inputMode='decimal' placeholder='Min' value={fAMin}
                           onChange={e => setFAMin(e.target.value)} className={NUM_CLS} />
                       </td>
                       <td className='py-1 pr-1' />
                       <td className='py-1 pr-1'>
-                        <input type='number' placeholder='Min' value={fSessMin}
+                        <input type='text' inputMode='numeric' placeholder='Min' value={fSessMin}
                           onChange={e => setFSessMin(e.target.value)} className={NUM_CLS} />
                       </td>
                       <td className='py-1 text-center'>
@@ -315,22 +315,22 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPlayers.slice((playerPage - 1) * playerItemsPerPage, playerPage * playerItemsPerPage).map(p => (
-                      <tr key={p.pl_plid}
-                        className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${isTracked(p) ? 'bg-green-50' : ''}`}
-                        onClick={() => router.push(`/player/${p.pl_plid}`)}
+                    {filteredPlayers.slice((playerPage - 1) * playerItemsPerPage, playerPage * playerItemsPerPage).map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_rank, pl_grade, pl_club, pl_rating, pl_a_points, a1_avg_pct, a1_sessions, pl_all_results }) => (
+                      <tr key={pl_plid}
+                        className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${isTracked(pl_all_results) ? 'bg-green-50' : ''}`}
+                        onClick={() => router.push(`/player/${pl_plid}`)}
                       >
-                        <td className='py-1.5 font-medium text-blue-600'>{p.pl_name}</td>
-                        <td className='py-1.5 text-gray-500 text-xs'>{p.pl_nz_bridge_number || '—'}</td>
-                        <td className='py-1.5 text-gray-600'>{p.pl_rank || '—'}</td>
-                        <td className='py-1.5 text-gray-600'>{p.pl_grade || '—'}</td>
-                        <td className='py-1.5 text-gray-500'>{p.pl_club || '—'}</td>
-                        <td className='py-1.5 text-right text-gray-700 font-mono text-xs'>{p.pl_rating > 0 ? parseFloat(String(p.pl_rating)).toFixed(2) : '—'}</td>
-                        <td className='py-1.5 text-right text-gray-700 font-mono text-xs'>{p.pl_a_points > 0 ? parseFloat(String(p.pl_a_points)).toFixed(2) : '—'}</td>
-                        <td className='py-1.5 text-right font-medium'>{p.a1_avg_pct > 0 ? parseFloat(String(p.a1_avg_pct)).toFixed(2) + '%' : '—'}</td>
-                        <td className='py-1.5 text-right text-gray-600'>{p.a1_sessions > 0 ? p.a1_sessions : '—'}</td>
+                        <td className='py-1.5 font-medium text-blue-600'>{pl_name}</td>
+                        <td className='py-1.5 text-gray-500 text-xs'>{pl_nz_bridge_number || '—'}</td>
+                        <td className='py-1.5 text-gray-600'>{pl_rank || '—'}</td>
+                        <td className='py-1.5 text-gray-600'>{pl_grade || '—'}</td>
+                        <td className='py-1.5 text-gray-500'>{pl_club || '—'}</td>
+                        <td className='py-1.5 text-right text-gray-700 font-mono text-xs'>{parseFloat(String(pl_rating)).toFixed(2)}</td>
+                        <td className='py-1.5 text-right text-gray-700 font-mono text-xs'>{parseFloat(String(pl_a_points)).toFixed(2)}</td>
+                        <td className='py-1.5 text-right font-medium'>{parseFloat(String(a1_avg_pct)).toFixed(2)}%</td>
+                        <td className='py-1.5 text-right text-gray-600'>{a1_sessions}</td>
                         <td className='py-1.5 text-center'>
-                          {isTracked(p) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
+                          {isTracked(pl_all_results) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
                         </td>
                       </tr>
                     ))}

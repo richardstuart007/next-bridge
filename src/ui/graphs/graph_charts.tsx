@@ -250,7 +250,7 @@ export function MyLineChart({
           label: function (context: any) {
             if (context.raw === null || context.raw === undefined) return undefined
             const label = context.dataset.label || ''
-            const value = context.raw
+            const value = typeof context.raw === 'number' ? context.raw.toFixed(2) : context.raw
             const tooltipData = context.dataset.tooltipData
             if (tooltipData?.[context.dataIndex]) {
               return [`${label}: ${value}`, tooltipData[context.dataIndex]]

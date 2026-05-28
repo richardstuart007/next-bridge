@@ -20,9 +20,10 @@ function parseDate(raw: string): string | null {
 }
 
 function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
-  const m = raw.trim().match(/^([\d.]+)\s*(PCT|VP)$/i)
+  const m = raw.trim().match(/^([\d.]+)\s*(PCT|VP|XIMPS)$/i)
   if (!m) return null
-  return { value: parseFloat(m[1]), type: m[2].toUpperCase() as 'PCT' | 'VP' }
+  const type = m[2].toUpperCase() === 'XIMPS' ? 'VP' : m[2].toUpperCase() as 'PCT' | 'VP'
+  return { value: parseFloat(m[1]), type }
 }
 
 function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {

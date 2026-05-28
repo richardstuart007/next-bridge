@@ -273,7 +273,7 @@ export async function GET(request: NextRequest) {
                  se_club, se_tournament, se_event_type, se_is_summary)
               SELECT s1_run_id, s1_date, TO_CHAR(s1_date, 'FMDay'),
                 CASE WHEN s1_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
-                s1_event_name, s1_club, s1_tournament, s1_event_type, s1_is_summary
+                s1_event_name, CASE s1_club WHEN 'Auckland' THEN 'Remuera Bowls & Bridge Inc' ELSE s1_club END, s1_tournament, s1_event_type, s1_is_summary
               FROM ts1_sessions
               WHERE s1_date IS NOT NULL
               ORDER BY s1_date, s1_run_id
@@ -285,12 +285,8 @@ export async function GET(request: NextRequest) {
     await table_query({
       caller: 'cron/update-sessions/upsert-partners',
       query: `INSERT INTO tpa_partners (pa_plid1, pa_plid2)
-              SELECT DISTINCT
-                CASE WHEN p1.pl_name <= p2.pl_name THEN s2_plid1 ELSE s2_plid2 END,
-                CASE WHEN p1.pl_name <= p2.pl_name THEN s2_plid2 ELSE s2_plid1 END
+              SELECT DISTINCT s2_plid1, s2_plid2
               FROM ts2_results
-              JOIN tpl_players p1 ON p1.pl_plid = s2_plid1
-              JOIN tpl_players p2 ON p2.pl_plid = s2_plid2
               JOIN tse_sessions ON se_run_id = s2_run_id
               WHERE NOT EXISTS (SELECT 1 FROM tre_results WHERE re_seid = se_seid)
               ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING`,
@@ -300,14 +296,13 @@ export async function GET(request: NextRequest) {
     const resultsResult = await table_query({
       caller: 'cron/update-sessions/results-nzb',
       query: `INSERT INTO tre_results (re_seid, re_paid, re_percentage, re_vp)
-              SELECT se_seid, pa_paid,
-                CASE WHEN s1_score_type = 'VP' THEN NULL ELSE GREATEST(25.0, LEAST(75.0, s2_score_value)) END,
-                CASE WHEN s1_score_type = 'VP' THEN s2_score_value ELSE NULL END
+              SELECT DISTINCT ON (se_seid, pa_paid) se_seid, pa_paid,
+                CASE WHEN s1_score_type = 'VP' THEN NULL ELSE LEAST(999.0, GREATEST(25.0, LEAST(75.0, s2_score_value))) END,
+                CASE WHEN s1_score_type = 'VP' THEN LEAST(999.0, s2_score_value) ELSE NULL END
               FROM ts2_results
               JOIN tse_sessions ON se_run_id  = s2_run_id
               JOIN ts1_sessions ON s1_run_id  = s2_run_id
-              JOIN tpa_partners ON (pa_plid1 = s2_plid1 AND pa_plid2 = s2_plid2)
-                                OR (pa_plid1 = s2_plid2 AND pa_plid2 = s2_plid1)
+              JOIN tpa_partners ON pa_plid1 = s2_plid1 AND pa_plid2 = s2_plid2
               WHERE NOT EXISTS (SELECT 1 FROM tre_results WHERE re_seid = se_seid)
               RETURNING re_reid`,
       params: []

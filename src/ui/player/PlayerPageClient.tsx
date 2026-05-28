@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { getPlayerById, getPartnerStats, getPlayerAllGroupStats } from '@/src/lib/actions/players'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 import PerformanceChart from './PerformanceChart'
-import PartnersChart from './PartnersChart'
+import PartnersTable from './PartnersTable'
 import MyPagination from 'nextjs-shared/MyPagination'
 import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
 
@@ -155,7 +155,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [eventTypeOptions,   setEventTypeOptions]   = useState<string[]>([])
   const [summaryFilter,        setSummaryFilter]        = useState<'all' | 'summary' | 'session'>('all')
   const [scoringFilter,      setScoringFilter]      = useState<'all' | 'MP' | 'VP'>('all')
-  const [activeTab,    setActiveTab]    = useState<'history' | 'graph' | 'partners'>('history')
+  const [activeTab,    setActiveTab]    = useState<'history' | 'partners'>('history')
+  const [historyView,  setHistoryView]  = useState<'data' | 'graph'>('data')
   const [currentPage,  setCurrentPage]  = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(ROWS_PER_PAGE)
 
@@ -164,7 +165,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     const s = loadPlayerSaved(playerId)
     savedRef.current = s
     if (s) {
-      if (s.activeTab)              setActiveTab(s.activeTab as 'history' | 'graph' | 'partners')
+      if (s.activeTab === 'history' || s.activeTab === 'partners') setActiveTab(s.activeTab)
+      if (s.historyView === 'data' || s.historyView === 'graph') setHistoryView(s.historyView)
       if (s.dateFrom)               setDateFrom(s.dateFrom as string)
       if (s.dateTo)                 setDateTo(s.dateTo as string)
       if (s.dayFilter)              setDayFilter(s.dayFilter as string)
@@ -183,7 +185,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (!restoredRef.current) return
     try {
       sessionStorage.setItem(playerStorageKey(playerId), JSON.stringify({
-        activeTab, dateFrom, dateTo, dayFilter, scoring, sessionNameFilter,
+        activeTab, historyView, dateFrom, dateTo, dayFilter, scoring, sessionNameFilter,
         selectedTournaments: [...selectedTournaments],
         selectedClubs: [...selectedClubs],
         selectedEventTypes: [...selectedEventTypes],
@@ -249,15 +251,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
       selectedClubs, clubOptions.length, selectedTournaments,
       selectedEventTypes, eventTypeOptions.length, summaryFilter])
 
-  const visiblePartners = useMemo(() => {
-    const seen = new Map<number, { name: string; nz_number: number | null }>()
-    sessionsSorted.forEach(r => {
-      if (!seen.has(r.partner_id)) seen.set(r.partner_id, { name: r.partner_name || `Player ${r.partner_id}`, nz_number: r.partner_nz_number ?? null })
-    })
-    return [...seen.entries()].map(([id, { name, nz_number }]) => ({ id, name, nz_number }))
-  }, [sessionsSorted])
-
-  useEffect(() => { setCurrentPage(1) },
+useEffect(() => { setCurrentPage(1) },
     [dateFrom, dateTo, dayFilter, selectedPartnerIds, scoringFilter, sessionNameFilter,
      selectedClubs, selectedTournaments, selectedEventTypes, summaryFilter])
 
@@ -472,33 +466,59 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
 
       {/* Tabs */}
       <div className='flex gap-1 border-b border-gray-200'>
-        {(['history', 'graph', 'partners'] as const).map(tab => (
+        {(['history', 'partners'] as const).map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === tab ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}>
-            {tab === 'history' ? 'Session History' : tab === 'graph' ? 'Partner-Me' : 'Partners-All'}
+            {tab === 'history' ? 'Player History' : 'All Partners History'}
           </button>
         ))}
       </div>
 
-      {/* Session history */}
+      {/* Player History */}
       {activeTab === 'history' && (
         <div className='rounded border border-gray-200 p-4'>
           <div className='flex items-center justify-between mb-3'>
             <div className='flex items-center gap-3'>
               <h2 className='text-base font-semibold text-gray-800'>
-                Session History
+                Player History
                 <span className='ml-2 text-xs font-normal text-gray-400'>{sessionsSorted.length} of {results.length}</span>
               </h2>
+              {/* Data / Graph sub-tabs */}
+              <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
+                {(['data', 'graph'] as const).map(v => (
+                  <button key={v} onClick={() => setHistoryView(v)}
+                    className={`px-2 py-0.5 capitalize ${historyView === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className='flex items-center gap-3'>
-              {hasFilter && (
+            <div className='flex items-center gap-2'>
+              {historyView === 'data' && hasFilter && (
                 <button onClick={clearFilters} className='text-xs text-blue-600 hover:underline'>Clear filters</button>
               )}
-              <button onClick={exportCSV} className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50'>Export CSV</button>
+              {historyView === 'data'
+                ? <button onClick={exportCSV} className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50'>Export CSV</button>
+                : <button onClick={exportGraphCSV} className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50'>Export Graph CSV</button>
+              }
             </div>
           </div>
           {results.length === 0 ? (
             <div className='text-sm text-gray-400 py-4 text-center'>No results recorded yet</div>
+          ) : historyView === 'graph' ? (
+            <>
+              <div className='flex items-center gap-2 mb-3'>
+                <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
+                  {(['MP', 'VP'] as const).map(s => (
+                    <button key={s} onClick={() => setScoring(s)}
+                      className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <PerformanceChart results={sessionsSorted} scoring={scoring} />
+            </>
           ) : (
             <div className='overflow-x-auto'>
               <table className='w-full text-sm'>
@@ -641,7 +661,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
               </table>
             </div>
           )}
-          {sessionsSorted.length > itemsPerPage && (
+          {historyView === 'data' && sessionsSorted.length > itemsPerPage && (
             <div className='mt-3 flex items-center gap-3'>
               <select value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
                 className='rounded border border-gray-300 px-1.5 py-0.5 text-xs'>
@@ -658,56 +678,12 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
         </div>
       )}
 
-      {/* Performance chart */}
-      {activeTab === 'graph' && (
-        <div className='rounded border border-gray-200 p-4'>
-          <div className='flex items-center justify-between mb-2'>
-            <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
-              {(['MP', 'VP'] as const).map(s => (
-                <button key={s} onClick={() => setScoring(s)}
-                  className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
-            <button onClick={exportGraphCSV} className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50'>Export CSV</button>
-          </div>
-          {results.length === 0
-            ? <div className='text-sm text-gray-400 py-4 text-center'>No results recorded yet</div>
-            : <>
-                {(() => {
-                  const reduced = visiblePartners.length < uniquePartners.length
-                  return (
-                    <div className={`mb-3 rounded px-3 py-1.5 text-xs font-medium ${reduced ? 'bg-amber-100 border border-amber-300 text-amber-800' : 'bg-green-50 border border-green-200 text-green-700'}`}>
-                      {reduced
-                        ? `Filtered session history · ${visiblePartners.length} of ${uniquePartners.length} partners shown`
-                        : `All partners · ${uniquePartners.length} partners`}
-                    </div>
-                  )
-                })()}
-                <PerformanceChart results={sessionsSorted} scoring={scoring} />
-              </>}
-        </div>
-      )}
-
-      {/* Partners chart */}
+      {/* All Partners History */}
       {activeTab === 'partners' && (
         <div className='rounded border border-gray-200 p-4'>
           {results.length === 0
             ? <div className='text-sm text-gray-400 py-4 text-center'>No results recorded yet</div>
-            : <>
-                {(() => {
-                  const reduced = visiblePartners.length < uniquePartners.length
-                  return (
-                    <div className={`mb-3 rounded px-3 py-1.5 text-xs font-medium ${reduced ? 'bg-amber-100 border border-amber-300 text-amber-800' : 'bg-green-50 border border-green-200 text-green-700'}`}>
-                      {reduced
-                        ? `Filtered session history · ${visiblePartners.length} of ${uniquePartners.length} partners shown`
-                        : `All partners · ${uniquePartners.length} partners`}
-                    </div>
-                  )
-                })()}
-                <PartnersChart partners={visiblePartners} self={{ id: playerId, name: player.pl_name, nz_number: player.pl_nz_bridge_number }} />
-              </>}
+            : <PartnersTable partners={uniquePartners} />}
         </div>
       )}
     </div>

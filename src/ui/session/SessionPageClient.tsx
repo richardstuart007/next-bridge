@@ -17,7 +17,8 @@ interface SessionRow {
 }
 
 interface ResultRow {
-  percentage: number
+  percentage: number | null
+  re_vp: number | null
   pl_id: number
   player_name: string
   player_nz_number: number
@@ -118,7 +119,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>NZ#</th>
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Player 2</th>
                 <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>NZ#</th>
-                <th className='py-1.5 text-right text-xs text-gray-500 font-medium'>%</th>
+                <th className='py-1.5 text-right text-xs text-gray-500 font-medium'>{session.se_scoring === 'VP' ? 'VP' : '%'}</th>
               </tr>
             </thead>
             <tbody>
@@ -144,7 +145,9 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                   </td>
                   <td className='py-1.5 text-xs text-gray-400'>{r.partner_nz_number || '—'}</td>
                   <td className='py-1.5 text-right font-medium'>
-                    {parseFloat(String(r.percentage)).toFixed(2)}%
+                    {session.se_scoring === 'VP'
+                      ? parseFloat(String(r.re_vp)).toFixed(2)
+                      : `${parseFloat(String(r.percentage)).toFixed(2)}%`}
                   </td>
                 </tr>
               )})}

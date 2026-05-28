@@ -118,7 +118,7 @@ const TOP_OPTS = [10, 25, 50, 100]
 export default function RankingsPageClient() {
   const [min, setMin] = useState(10)
   const [scoring, setScoring] = useState<Scoring>('mp')
-  const [group, setGroup] = useState<Group>('C')
+  const [group, setGroup] = useState<Group>('all')
   const [players, setPlayers] = useState<PlayerRow[]>([])
   const [partnerships, setPartnerships] = useState<PartnershipRow[]>([])
   const [loading, setLoading] = useState(true)

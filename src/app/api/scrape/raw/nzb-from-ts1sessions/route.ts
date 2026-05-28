@@ -20,9 +20,10 @@ function parseDate(raw: string): string | null {
 }
 
 function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
-  const m = raw.trim().match(/^([\d.]+)\s*(PCT|VP)$/i)
+  const m = raw.trim().match(/^([\d.]+)\s*(PCT|VP|XIMPS)$/i)
   if (!m) return null
-  return { value: parseFloat(m[1]), type: m[2].toUpperCase() as 'PCT' | 'VP' }
+  const type = m[2].toUpperCase() === 'XIMPS' ? 'VP' : m[2].toUpperCase() as 'PCT' | 'VP'
+  return { value: parseFloat(m[1]), type }
 }
 
 function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {
@@ -171,7 +172,9 @@ export async function POST(request: Request) {
       try {
         const ts1Rows = await table_query({
           caller: 'scrape/nzb-from-ts1sessions/read',
-          query: `SELECT s1_run_id, s1_is_summary FROM ts1_sessions ORDER BY s1_date ASC, s1_run_id`,
+          query: `SELECT s1_run_id, s1_is_summary FROM ts1_sessions
+                  WHERE s1_run_id NOT IN (SELECT DISTINCT s2_run_id FROM ts2_results)
+                  ORDER BY s1_date ASC, s1_run_id`,
           params: []
         }) as { s1_run_id: number; s1_is_summary: boolean }[]
 

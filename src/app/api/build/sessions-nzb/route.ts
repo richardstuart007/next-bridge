@@ -15,7 +15,7 @@ export async function POST() {
                 TO_CHAR(s1_date, 'FMDay'),
                 CASE WHEN s1_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
                 s1_event_name,
-                s1_club,
+                CASE s1_club WHEN 'Auckland' THEN 'Remuera Bowls & Bridge Inc' ELSE s1_club END,
                 s1_tournament,
                 s1_event_type,
                 s1_is_summary

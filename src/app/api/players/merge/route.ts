@@ -49,14 +49,11 @@ export async function POST(request: NextRequest) {
           params: [old_paid]
         })
       } else {
-        // Create/find equivalent partnership with keep_plid in name-alphabetical order
+        // Create/find equivalent partnership with keep_plid
         await table_query({
           caller: 'players/merge/upsert-partnership',
           query: `INSERT INTO tpa_partners (pa_plid1, pa_plid2)
-                  SELECT CASE WHEN p1.pl_name <= p2.pl_name THEN $1 ELSE $2 END,
-                         CASE WHEN p1.pl_name <= p2.pl_name THEN $2 ELSE $1 END
-                  FROM tpl_players p1, tpl_players p2
-                  WHERE p1.pl_plid = $1 AND p2.pl_plid = $2
+                  VALUES (LEAST($1,$2), GREATEST($1,$2))
                   ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING`,
           params: [keep_plid, partner_id]
         })
@@ -64,7 +61,7 @@ export async function POST(request: NextRequest) {
         const newPaRows = await table_query({
           caller: 'players/merge/get-new-paid',
           query: `SELECT pa_paid FROM tpa_partners
-                  WHERE (pa_plid1 = $1 AND pa_plid2 = $2) OR (pa_plid1 = $2 AND pa_plid2 = $1)`,
+                  WHERE pa_plid1 = LEAST($1,$2) AND pa_plid2 = GREATEST($1,$2)`,
           params: [keep_plid, partner_id]
         }) as { pa_paid: number }[]
 

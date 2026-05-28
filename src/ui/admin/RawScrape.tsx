@@ -239,8 +239,8 @@ export default function RawScrape() {
         </section>
       </div>
 
-      {/* ── 3 — Build ts2 ── show when ts1 has rows and ts2 is empty ── */}
-      {(staging !== null && staging.ts1 > 0 && staging.ts2 === 0) && (
+      {/* ── 3 — Build ts2 ── show when ts1 has rows ── */}
+      {(staging !== null && staging.ts1 > 0) && (
         <div>
           <StepHeading n={3} label='Scrape results → ts2' next={suggestedStep === 3} />
           <PopulateTs2 ts1Count={ts1Count ?? staging?.ts1 ?? 0} source={source} onDone={() => { loadStaging() }} />

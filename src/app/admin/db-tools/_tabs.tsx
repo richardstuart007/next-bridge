@@ -1,8 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import SchemaSync from 'nextjs-shared/SchemaSync'
-import CopyTable from 'nextjs-shared/CopyTable'
+import dynamic from 'next/dynamic'
+
+const SchemaSync = dynamic(() => import('nextjs-shared/SchemaSync'), { ssr: false })
+const CopyTable  = dynamic(() => import('nextjs-shared/CopyTable'),  { ssr: false })
 
 const TABS = ['Schema', 'Data-copy'] as const
 type Tab = typeof TABS[number]

@@ -7,7 +7,7 @@ import { ClubSelect, GradeSelect, RankSelect, StringMultiSelect } from '@/src/ui
 import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
-import FieldHelp from '@/src/ui/shared/FieldHelp'
+import { MyHelpField } from 'nextjs-shared/MyHelpField'
 
 interface PlayerRow {
   pl_plid: number
@@ -228,7 +228,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
         >
           <span className='flex items-center gap-1'>
             Players
-            <FieldHelp text='List of players who have had sessions imported.' />
+            <MyHelpField text='List of players who have had sessions imported.' />
           </span>
         </button>
         <button onClick={() => setActiveTab('sessions')}
@@ -273,7 +273,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                         <div className='relative'>
                           <input type='text' value={fName} onChange={e => setFName(e.target.value)}
                             placeholder='Filter…' className={`${INPUT_CLS} pr-5`} />
-                          <FieldHelp text='Type any part of a player name. Case-insensitive.'
+                          <MyHelpField text='Type any part of a player name. Case-insensitive.'
                             className='absolute right-1 top-1/2 -translate-y-1/2' />
                         </div>
                       </td>

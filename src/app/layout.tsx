@@ -25,8 +25,6 @@ export default function RootLayout({
 }>) {
   const DB_LOCATION = process.env.POSTGRES_DATABASE_LOCATION ?? 'unknown'
   const IS_DEV = process.env.NEXT_PUBLIC_APPENV_ISDEV === 'true'
-  const IS_ADMIN = process.env.NEXT_PUBLIC_APPENV_ISADMIN === 'true'
-
   return (
     <html
       lang='en'
@@ -44,7 +42,7 @@ export default function RootLayout({
             <nav className='flex gap-4 text-sm'>
               <Link href='/' className='text-gray-600 hover:text-gray-900'>Home</Link>
               <Link href='/rankings' className='text-gray-600 hover:text-gray-900'>Rankings</Link>
-              {IS_ADMIN && <Link href='/admin' className='text-gray-600 hover:text-gray-900'>Admin</Link>}
+              {IS_DEV && <Link href='/owner' className='text-gray-600 hover:text-gray-900'>Owner</Link>}
             </nav>
           </div>
         </header>

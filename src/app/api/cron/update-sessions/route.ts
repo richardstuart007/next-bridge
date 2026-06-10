@@ -201,8 +201,9 @@ async function scrapeRunId(run_id: number): Promise<{ pairs: number; created: nu
 }
 
 export async function GET(request: NextRequest) {
+  const isDev  = process.env.NEXT_PUBLIC_APPENV_ISDEV === 'true'
   const secret = process.env.CRON_SECRET
-  if (secret) {
+  if (secret && !isDev) {
     const auth = request.headers.get('authorization')
     if (auth !== `Bearer ${secret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

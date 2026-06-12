@@ -37,12 +37,6 @@ const SECTIONS = [
     description: 'Inspect and validate the production tables populated by the build steps.',
     step: '4',
   },
-  {
-    href: '/owner/admin/db-tools',
-    label: 'Database Tools',
-    description: 'Compare schemas between local and prod databases, and copy tables between them.',
-    step: '✦',
-  },
 ]
 
 export default function AdminPage() {

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     // 2. For each old partnership, remap or delete results
     for (const { pa_paid: old_paid, partner_id } of discardPartnerships) {
       if (partner_id === keep_plid) {
-        // keep_plid was paired with discard_plid — would become self-pair, delete results
+        // keep_plid was paired with discard_plid â€” would become self-pair, delete results
         await table_query({
           caller: 'players/merge/delete-self-results',
           query: `DELETE FROM tre_results WHERE re_paid = $1`,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
       params: [discard_plid]
     })
 
-    await write_Logging({
+    await write_logging({
       lg_functionname: 'POST',
       lg_caller: 'players/merge',
       lg_msg: `Merged plid ${discard_plid} (${discardName}) into plid ${keep_plid} (${keepName})`,
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
       discarded: { plid: discard_plid, name: discardName }
     })
   } catch (err) {
-    await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/merge', lg_msg: String(err), lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'POST', lg_caller: 'players/merge', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

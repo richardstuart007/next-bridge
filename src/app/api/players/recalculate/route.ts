@@ -1,6 +1,6 @@
-import { NextRequest } from 'next/server'
+﻿import { NextRequest } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 const GRP_EXPR = `CASE WHEN RIGHT(se_tournament,1)='A' THEN 'A' WHEN RIGHT(se_tournament,1)='B' THEN 'B' ELSE 'C' END`
 
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
         await send({ done: true, updated: rows.length, failed: 0 })
       }
     } catch (err) {
-      await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: String(err), lg_severity: 'E' })
+      await write_logging({ lg_functionname: 'POST', lg_caller: 'players/recalculate', lg_msg: String(err), lg_severity: 'E' })
       await send({ error: String(err) })
     } finally {
       try { await writer.close() } catch { /* already closed */ }

@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 export async function POST() {
   try {
@@ -31,10 +31,10 @@ export async function POST() {
     }) as { re_reid: number }[]
 
     const inserted = result.length
-    await write_Logging({ lg_functionname: 'POST', lg_caller: 'build/results-nzb', lg_msg: `Inserted ${inserted} result rows`, lg_severity: 'I' })
+    await write_logging({ lg_functionname: 'POST', lg_caller: 'build/results-nzb', lg_msg: `Inserted ${inserted} result rows`, lg_severity: 'I' })
     return NextResponse.json({ inserted })
   } catch (err) {
-    await write_Logging({ lg_functionname: 'POST', lg_caller: 'build/results-nzb', lg_msg: String(err), lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'POST', lg_caller: 'build/results-nzb', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

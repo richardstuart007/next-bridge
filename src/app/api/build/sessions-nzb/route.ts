@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 export async function POST() {
   try {
@@ -35,10 +35,10 @@ export async function POST() {
 
     const inserted = result.length
     const skipped  = (total[0]?.n ?? 0) - inserted
-    await write_Logging({ lg_functionname: 'POST', lg_caller: 'build/sessions-nzb', lg_msg: `Sessions: ${inserted} inserted, ${skipped} already existed`, lg_severity: 'I' })
+    await write_logging({ lg_functionname: 'POST', lg_caller: 'build/sessions-nzb', lg_msg: `Sessions: ${inserted} inserted, ${skipped} already existed`, lg_severity: 'I' })
     return NextResponse.json({ inserted, skipped, total: total[0]?.n ?? 0 })
   } catch (err) {
-    await write_Logging({ lg_functionname: 'POST', lg_caller: 'build/sessions-nzb', lg_msg: String(err), lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'POST', lg_caller: 'build/sessions-nzb', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

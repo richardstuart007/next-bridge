@@ -1,6 +1,6 @@
-import * as cheerio from 'cheerio'
+﻿import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 import { ROBOT_PLAYER_NAME } from '@/src/lib/constants'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
@@ -228,7 +228,7 @@ export async function POST(request: Request) {
               continue
             } else if (count === 1) {
               pairs = [[player_names[0], ROBOT_PLAYER_NAME]]
-              await write_Logging({
+              await write_logging({
                 lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions',
                 lg_msg: `run_id=${run_id} solo player paired with Robot: "${player_names[0]}"`,
                 lg_severity: 'I'
@@ -237,9 +237,9 @@ export async function POST(request: Request) {
               pairs = [[player_names[0], player_names[1]]]
             } else if (count === 3) {
               pairs = [[player_names[0], player_names[1]]]
-              await write_Logging({
+              await write_logging({
                 lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions',
-                lg_msg: `run_id=${run_id} 3 players — took first 2, ignored "${player_names[2]}"`,
+                lg_msg: `run_id=${run_id} 3 players â€” took first 2, ignored "${player_names[2]}"`,
                 lg_severity: 'W'
               })
             } else if (count === 4) {
@@ -249,7 +249,7 @@ export async function POST(request: Request) {
               ]
             } else {
               skipped_rows++
-              await write_Logging({
+              await write_logging({
                 lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions',
                 lg_msg: `run_id=${run_id} skipped row: player_count=${count} players="${player_names.join(', ')}"`,
                 lg_severity: 'E'
@@ -280,7 +280,7 @@ export async function POST(request: Request) {
           send({ run_id, pairs: pairs_inserted, inserted: true })
         }
 
-        await write_Logging({
+        await write_logging({
           lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions',
           lg_msg: `${ts1Rows.length} run_ids from ts1_sessions: ${pairs_inserted} pairs, ${players_created} new players`,
           lg_severity: 'I'
@@ -288,7 +288,7 @@ export async function POST(request: Request) {
 
         send({ done: true, run_ids_total: ts1Rows.length, pairs_inserted, players_created, skipped_rows })
       } catch (err) {
-        await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions', lg_msg: String(err), lg_severity: 'E' })
+        await write_logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-from-ts1sessions', lg_msg: String(err), lg_severity: 'E' })
         send({ error: String(err) })
       } finally {
         controller.close()

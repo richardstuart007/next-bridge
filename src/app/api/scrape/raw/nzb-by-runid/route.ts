@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server'
+﻿import { NextRequest } from 'next/server'
 import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
 
@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        await write_Logging({
+        await write_logging({
           lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-runid',
           lg_msg: `${run_ids.length} run_ids: ${pairs_inserted} pairs, ${players_created} new players`,
           lg_severity: 'I'
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
 
         send({ done: true, run_ids_total: run_ids.length, pairs_inserted, players_created, skipped_rows })
       } catch (err) {
-        await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-runid', lg_msg: String(err), lg_severity: 'E' })
+        await write_logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-runid', lg_msg: String(err), lg_severity: 'E' })
         send({ error: String(err) })
       } finally {
         controller.close()

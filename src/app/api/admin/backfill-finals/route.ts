@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       let failed       = 0
 
       try {
-        send({ status: 'querying sessions…' })
+        send({ status: 'querying sessionsâ€¦' })
 
         const sessions = await table_query({
           caller: 'admin/backfill-finals/sessions',
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
           params: []
         }) as { n: number }[]
 
-        await write_Logging({
+        await write_logging({
           lg_functionname: 'POST', lg_caller: 'admin/backfill-finals',
           lg_msg: `${processed} processed, ${finals_found} finals, ${failed} failed, ${remaining[0]?.n ?? 0} remaining`,
           lg_severity: 'I'
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
 
         send({ done: true, processed, finals_found, failed, total: sessions.length, remaining: remaining[0]?.n ?? 0 })
       } catch (err) {
-        await write_Logging({ lg_functionname: 'POST', lg_caller: 'admin/backfill-finals', lg_msg: String(err), lg_severity: 'E' })
+        await write_logging({ lg_functionname: 'POST', lg_caller: 'admin/backfill-finals', lg_msg: String(err), lg_severity: 'E' })
         send({ error: String(err) })
       } finally {
         controller.close()

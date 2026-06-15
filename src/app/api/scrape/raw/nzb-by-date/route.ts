@@ -1,7 +1,7 @@
-import { NextRequest } from 'next/server'
+﻿import { NextRequest } from 'next/server'
 import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
 
@@ -44,7 +44,7 @@ function datesInRange(from: string, to: string): string[] {
   return dates
 }
 
-// Fast pass — just extract unique run_ids from event link hrefs
+// Fast pass â€” just extract unique run_ids from event link hrefs
 function extractRunIds(html: string): number[] {
   const $ = cheerio.load(html)
   const runIds = new Set<number>()
@@ -67,7 +67,7 @@ interface ParsedRow {
   tournament: string
 }
 
-// Full parse — only called when missing sessions found on the page
+// Full parse â€” only called when missing sessions found on the page
 function parsePage(html: string): Map<number, ParsedRow[]> {
   const $ = cheerio.load(html)
   const rowsByRunId = new Map<number, ParsedRow[]>()
@@ -294,15 +294,15 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        await write_Logging({
+        await write_logging({
           lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-date',
-          lg_msg: `club=${club_id} ${date_from}–${date_end}: ${run_ids_found} run_ids (${run_ids_skipped} skipped, ${run_ids_inserted} new), ${pairs_inserted} pairs, ${players_created} new players`,
+          lg_msg: `club=${club_id} ${date_from}â€“${date_end}: ${run_ids_found} run_ids (${run_ids_skipped} skipped, ${run_ids_inserted} new), ${pairs_inserted} pairs, ${players_created} new players`,
           lg_severity: 'I'
         })
 
         send({ done: true, run_ids_found, run_ids_skipped, run_ids_inserted, pairs_inserted, players_created, skipped_rows })
       } catch (err) {
-        await write_Logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-date', lg_msg: String(err), lg_severity: 'E' })
+        await write_logging({ lg_functionname: 'POST', lg_caller: 'scrape/raw/nzb-by-date', lg_msg: String(err), lg_severity: 'E' })
         send({ error: String(err) })
       } finally {
         controller.close()

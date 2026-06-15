@@ -1,5 +1,5 @@
-import { parsePlayerTable, parsePlayerTableByName, parseAllPlayerMatches, parsePlayerTableFuzzy, parseAllPlayerMatchesFuzzy, parsePlayerResultsHistory, parseNzSessionPage, type ParsedPlayer, type ParsedPlayerResult, type ParsedSessionPair } from './parseHtml'
-import { write_Logging } from 'nextjs-shared/write_logging'
+﻿import { parsePlayerTable, parsePlayerTableByName, parseAllPlayerMatches, parsePlayerTableFuzzy, parseAllPlayerMatchesFuzzy, parsePlayerResultsHistory, parseNzSessionPage, type ParsedPlayer, type ParsedPlayerResult, type ParsedSessionPair } from './parseHtml'
+import { write_logging } from 'nextjs-shared/write_logging'
 import { fetchHtml } from './fetchHtml'
 
 const NZBRIDGE_BASE = 'https://www.nzbridge.co.nz'
@@ -24,11 +24,11 @@ export async function lookupPlayerByNumber(nzNumber: number): Promise<ParsedPlay
     const html = await fetchHtml(url, 'nzbridge')
     const result = parsePlayerTable(html)
     if (!result) {
-      await write_Logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `No data returned for NZ# ${nzNumber}`, lg_severity: 'W' })
+      await write_logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `No data returned for NZ# ${nzNumber}`, lg_severity: 'W' })
     }
     return result
   } catch (err) {
-    await write_Logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
     return null
   }
 }
@@ -37,15 +37,15 @@ export async function lookupPlayerByNumber(nzNumber: number): Promise<ParsedPlay
  * Look up a player on nzbridge.co.nz by name.
  *
  * Strategy:
- *  1. Search by full name — returns a single matching row if exact.
- *  1.5 Search by firstname%lastname — catches middle initials / suffixes.
+ *  1. Search by full name â€” returns a single matching row if exact.
+ *  1.5 Search by firstname%lastname â€” catches middle initials / suffixes.
  *  2. If not found, search by surname only and scan results for the full name.
  */
 export async function lookupPlayer(name: string): Promise<ParsedPlayer | null> {
   try {
     const parts = name.trim().split(/\s+/)
 
-    // Step 1: full name search — exact name match only
+    // Step 1: full name search â€” exact name match only
     const html = await fetchNzBridgePage(name)
     if (html) {
       const found = parsePlayerTableByName(html, name)
@@ -63,7 +63,7 @@ export async function lookupPlayer(name: string): Promise<ParsedPlayer | null> {
       }
     }
 
-    // Step 2: surname-only search — fuzzy first-name match (prefix)
+    // Step 2: surname-only search â€” fuzzy first-name match (prefix)
     const surname = parts[parts.length - 1]
     if (!surname || surname.toLowerCase() === name.toLowerCase()) return null
 
@@ -85,7 +85,7 @@ export async function fetchPlayerResultsHistory(nzNumber: number): Promise<Parse
     const url = `${NZBRIDGE_BASE}/online-points.html?mpsr=1&mp_user=${nzNumber}`
     return parsePlayerResultsHistory(await fetchHtml(url, 'nzbridge'))
   } catch (err) {
-    await write_Logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
     return []
   }
 }
@@ -99,7 +99,7 @@ export async function fetchNzSessionPage(runId: number): Promise<ParsedSessionPa
     const url = `${NZBRIDGE_BASE}/results.html?run_id=${runId}`
     return parseNzSessionPage(await fetchHtml(url, 'nzbridge'))
   } catch (err) {
-    await write_Logging({ lg_functionname: 'fetchNzSessionPage', lg_caller: 'nzbridge', lg_msg: `Error for run_id=${runId}: ${String(err)}`, lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'fetchNzSessionPage', lg_caller: 'nzbridge', lg_msg: `Error for run_id=${runId}: ${String(err)}`, lg_severity: 'E' })
     return []
   }
 }
@@ -107,9 +107,9 @@ export async function fetchNzSessionPage(runId: number): Promise<ParsedSessionPa
 /**
  * Like lookupPlayer but returns ALL non-archive matches across all search strategies,
  * deduplicated by nz_bridge_number.
- * - Empty array  → not found
- * - Length 1     → unambiguous, safe to auto-assign
- * - Length > 1   → ambiguous, needs manual review
+ * - Empty array  â†’ not found
+ * - Length 1     â†’ unambiguous, safe to auto-assign
+ * - Length > 1   â†’ ambiguous, needs manual review
  */
 export async function lookupPlayerCandidates(name: string): Promise<ParsedPlayer[]> {
   try {
@@ -139,7 +139,7 @@ export async function lookupPlayerCandidates(name: string): Promise<ParsedPlayer
       if (wildcardHtml) addAll(parseAllPlayerMatches(wildcardHtml, name))
     }
 
-    // Step 2: surname-only search — fuzzy first-name match (prefix)
+    // Step 2: surname-only search â€” fuzzy first-name match (prefix)
     const surname = parts[parts.length - 1]
     if (surname && surname.toLowerCase() !== name.toLowerCase()) {
       const surnameHtml = await fetchNzBridgePage(surname)

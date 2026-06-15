@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { lookupPlayer } from '@/src/lib/scrape/nzbridge'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 export async function GET(request: NextRequest) {
   const name = request.nextUrl.searchParams.get('name')
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(player)
   } catch (err) {
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'players/lookup', lg_msg: String(err), lg_severity: 'W' })
+    await write_logging({ lg_functionname: 'GET', lg_caller: 'players/lookup', lg_msg: String(err), lg_severity: 'W' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

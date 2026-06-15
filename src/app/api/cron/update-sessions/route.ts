@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 import { buildAllPartnerStats } from '@/src/lib/actions/players'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
 
@@ -209,7 +209,7 @@ export async function GET(request: NextRequest) {
   }
 
   const log = (msg: string, severity = 'I') =>
-    write_Logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: msg, lg_severity: severity })
+    write_logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: msg, lg_severity: severity })
 
   try {
     const maxDateResult = await table_query({
@@ -227,7 +227,7 @@ export async function GET(request: NextRequest) {
 
     const allMissingIds = new Set<number>()
 
-    // Phase A — Club by date
+    // Phase A â€” Club by date
     const dates = datesInRange(from_date, to_date)
     for (const day of dates) {
       const url = `${NZB_BASE}/results.html?mp_filter_club=${BRIDGE_CLUB_ID}&date_start=${day}&date_end=${day}&mp_results=Search`
@@ -239,7 +239,7 @@ export async function GET(request: NextRequest) {
     }
     await log(`Phase A club (${dates.length} days): ${allMissingIds.size} new run_ids`)
 
-    // Phase B — Tracked players
+    // Phase B â€” Tracked players
     const flagged = await table_query({
       caller: 'cron/update-sessions/flagged',
       query:  `SELECT pl_nz_bridge_number FROM tpl_players WHERE pl_all_results = TRUE AND pl_nz_bridge_number > 0 ORDER BY pl_name ASC`,
@@ -257,7 +257,7 @@ export async function GET(request: NextRequest) {
     }
     await log(`Phase B tracked (${flagged.length} players): ${allMissingIds.size - beforeB} additional run_ids`)
 
-    // Phase C — Scrape all missing run_ids → ts1 + ts2
+    // Phase C â€” Scrape all missing run_ids â†’ ts1 + ts2
     let pairs_total = 0, players_created = 0
     for (const run_id of allMissingIds) {
       const { pairs, created } = await scrapeRunId(run_id)
@@ -266,7 +266,7 @@ export async function GET(request: NextRequest) {
     }
     await log(`Phase C scrape (${allMissingIds.size} run_ids): ${pairs_total} pairs, ${players_created} new players`)
 
-    // Phase D — Build production tables
+    // Phase D â€” Build production tables
     const sessionsResult = await table_query({
       caller: 'cron/update-sessions/sessions-nzb',
       query: `INSERT INTO tse_sessions
@@ -312,7 +312,7 @@ export async function GET(request: NextRequest) {
     const { pairs: partner_pairs } = await buildAllPartnerStats()
     await log(`Phase D build: ${sessionsResult.length} sessions, ${resultsResult.length} results, ${partner_pairs} partners`)
 
-    // Phase E — Recalculate stats
+    // Phase E â€” Recalculate stats
     await table_query({ caller: 'cron/update-sessions/truncate-stats', query: `TRUNCATE ta1_player_stats, ta2_partner_stats`, params: [] })
 
     for (const grp of ['A', 'B', 'C']) {

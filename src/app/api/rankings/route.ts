@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 type Scoring = 'mp' | 'vp'
 
@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ players, partnerships })
   } catch (err) {
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'rankings', lg_msg: String(err), lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'GET', lg_caller: 'rankings', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

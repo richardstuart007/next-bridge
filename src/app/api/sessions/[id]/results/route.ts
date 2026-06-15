@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 export async function GET(
   _request: NextRequest,
@@ -54,7 +54,7 @@ export async function GET(
 
     return NextResponse.json(rows)
   } catch (err) {
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'sessions/[id]/results', lg_msg: String(err), lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'GET', lg_caller: 'sessions/[id]/results', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { searchAllPlayers, upsertPlayer } from '@/src/lib/actions/players'
 import { lookupPlayerByNumber } from '@/src/lib/scrape/nzbridge'
-import { write_Logging } from 'nextjs-shared/write_logging'
+import { write_logging } from 'nextjs-shared/write_logging'
 
 /**
  * GET /api/players/correct?q=name
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const rows = await searchAllPlayers(q)
     return NextResponse.json(rows)
   } catch (err) {
-    await write_Logging({ lg_functionname: 'GET', lg_caller: 'players/correct', lg_msg: String(err), lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'GET', lg_caller: 'players/correct', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
@@ -41,16 +41,16 @@ export async function POST(request: NextRequest) {
     // Override the name with the local DB name so the upsert matches by name
     await upsertPlayer({ ...player, name: pl_name })
 
-    await write_Logging({
+    await write_logging({
       lg_functionname: 'POST',
       lg_caller: 'players/correct',
-      lg_msg: `Corrected "${pl_name}" → NZ# ${nz_number} (${player.name})`,
+      lg_msg: `Corrected "${pl_name}" â†’ NZ# ${nz_number} (${player.name})`,
       lg_severity: 'I'
     })
 
     return NextResponse.json({ corrected: pl_name, nz_number, nz_name: player.name })
   } catch (err) {
-    await write_Logging({ lg_functionname: 'POST', lg_caller: 'players/correct', lg_msg: String(err), lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'POST', lg_caller: 'players/correct', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

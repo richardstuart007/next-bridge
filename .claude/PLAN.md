@@ -1,4 +1,4 @@
-# Plan — next-bridge, "version": "0.1.1"
+# Plan — next-bridge, "version": "0.1.2"
 
 ## Current task
 _No active task._

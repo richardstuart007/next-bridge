@@ -117,6 +117,10 @@ Other projects reuse them the same way. The route files in nextjs-shared are at:
 
 `/api/cron/update-sessions` — full pipeline in one request: discover → scrape → build sessions → build results → build stats. Secured with `CRON_SECRET`.
 
+## Schema file
+
+`scripts/schema.sql` is the single source of truth for the database structure. Every new table and index must be added here.
+
 ## Silent file updates — never ask permission
 
 **PLAN.md and CHANGES.md are always updated silently.**  

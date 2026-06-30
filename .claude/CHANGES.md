@@ -1,4 +1,4 @@
-# Changes — next-bridge, "version": "0.1.2"
+# Changes — next-bridge, "version": "0.1.3"
 
-## nextjs-shared — table_copy_data.ts
-- After INSERT, query `information_schema.columns` for identity columns in the destination table and call `setval(pg_get_serial_sequence(...), MAX(...))` for each — fixes duplicate PK errors when cron runs after a table copy
+## src/app/api/cron/update-sessions/route.ts
+- Added RESTART IDENTITY to both TRUNCATE statements (ts1_sessions/ts2_results and ta1_player_stats/ta2_partner_stats) so sequences reset to 1 on each rebuild rather than advancing indefinitely

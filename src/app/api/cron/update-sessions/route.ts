@@ -223,7 +223,7 @@ export async function GET(request: NextRequest) {
     const to_date = new Date().toISOString().slice(0, 10)
 
     await log(`START from_date=${from_date} to_date=${to_date}`)
-    await table_query({ caller: 'cron/update-sessions/truncate-staging', query: `TRUNCATE ts1_sessions, ts2_results`, params: [] })
+    await table_query({ caller: 'cron/update-sessions/truncate-staging', query: `TRUNCATE ts1_sessions, ts2_results RESTART IDENTITY`, params: [] })
 
     const allMissingIds = new Set<number>()
 
@@ -313,7 +313,7 @@ export async function GET(request: NextRequest) {
     await log(`Phase D build: ${sessionsResult.length} sessions, ${resultsResult.length} results, ${partner_pairs} partners`)
 
     // Phase E â€” Recalculate stats
-    await table_query({ caller: 'cron/update-sessions/truncate-stats', query: `TRUNCATE ta1_player_stats, ta2_partner_stats`, params: [] })
+    await table_query({ caller: 'cron/update-sessions/truncate-stats', query: `TRUNCATE ta1_player_stats, ta2_partner_stats RESTART IDENTITY`, params: [] })
 
     for (const grp of ['A', 'B', 'C']) {
       await table_query({

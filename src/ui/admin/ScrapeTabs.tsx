@@ -5,12 +5,12 @@ import RawScrape from '@/src/ui/admin/RawScrape'
 import Ts0Links  from '@/src/ui/admin/Ts0Links'
 import Ts1Table  from '@/src/ui/admin/Ts1Table'
 import Ts2Table  from '@/src/ui/admin/Ts2Table'
+import { MyTab } from 'nextjs-shared/MyTab'
 
 type Tab = 'scrape' | 'ts0' | 'ts1' | 'ts2'
 
-const TAB_CLS     = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors'
-const TAB_ACTIVE  = 'border-blue-600 text-blue-600'
-const TAB_PASSIVE = 'border-transparent text-gray-500 hover:text-gray-700'
+const TAB_ACTIVE  = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors border-blue-600 text-blue-600'
+const TAB_PASSIVE = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors border-transparent text-gray-500 hover:text-gray-700'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'scrape', label: 'Scrape' },
@@ -26,10 +26,10 @@ export default function ScrapeTabs() {
     <div>
       <div className='flex gap-0 border-b border-gray-200 mb-6'>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setActive(t.id)}
-            className={`${TAB_CLS} ${active === t.id ? TAB_ACTIVE : TAB_PASSIVE}`}>
+          <MyTab key={t.id} active={active === t.id} onClick={() => setActive(t.id)}
+            underlineActiveClass={TAB_ACTIVE} underlineInactiveClass={TAB_PASSIVE}>
             {t.label}
-          </button>
+          </MyTab>
         ))}
       </div>
 

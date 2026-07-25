@@ -5,9 +5,13 @@ import { useRouter } from 'next/navigation'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { ClubSelect, GradeSelect, RankSelect, StringMultiSelect } from '@/src/ui/shared/LookupSelects'
 import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
-import Link from 'next/link'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 import MyPagination from 'nextjs-shared/MyPagination'
 import { MyHelpField } from 'nextjs-shared/MyHelpField'
+import { MyButton } from 'nextjs-shared/MyButton'
+import { MyInput } from 'nextjs-shared/MyInput'
+import MySelect from 'nextjs-shared/MySelect'
+import { MyTab } from 'nextjs-shared/MyTab'
 
 interface PlayerRow {
   pl_plid: number
@@ -208,7 +212,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
     if (fDays.size < DAYS.length)  rows = rows.filter(s => fDays.has(s.se_day_of_week ?? ''))
     if (scoringFilter) rows = rows.filter(s => s.se_scoring === scoringFilter)
     if (sessNameFilter) rows = rows.filter(s => s.se_name.toLowerCase().includes(sessNameFilter.toLowerCase()))
-    if (fTournamentTypes.size < TOURNAMENT_TYPES.length) rows = rows.filter(s => fTournamentTypes.has((s.se_tournament ?? '')[1] ?? ''))
+    if (fTournamentTypes.size < TOURNAMENT_TYPES.length) rows = rows.filter(s => fTournamentTypes.has((s.se_tournament ?? '').slice(-1).toUpperCase()))
     if (fSessClubs.size < sessClubOptions.length) rows = rows.filter(s => fSessClubs.has(s.se_club ?? ''))
     if (summaryFilter === 'summary') rows = rows.filter(s => s.se_is_summary === true)
     if (summaryFilter === 'session') rows = rows.filter(s => s.se_is_summary !== true)
@@ -223,17 +227,19 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
 
       {/* Tabs */}
       <div className='flex gap-1 border-b border-gray-200'>
-        <button onClick={() => setActiveTab('players')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === 'players' ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}
+        <MyTab active={activeTab === 'players'} onClick={() => setActiveTab('players')}
+          underlineActiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-white border-gray-200 text-gray-900'
+          underlineInactiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'
         >
           <span className='flex items-center gap-1'>
             Players
             <MyHelpField text='List of players who have had sessions imported.' />
           </span>
-        </button>
-        <button onClick={() => setActiveTab('sessions')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === 'sessions' ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}
-        >Sessions</button>
+        </MyTab>
+        <MyTab active={activeTab === 'sessions'} onClick={() => setActiveTab('sessions')}
+          underlineActiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-white border-gray-200 text-gray-900'
+          underlineInactiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'
+        >Sessions</MyTab>
       </div>
 
       {/* ── Players tab ───────────────────────────────────────────────────── */}
@@ -244,7 +250,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
               <span className='ml-2 text-xs font-normal text-gray-400'>{filteredPlayers.length} of {allPlayers.length}</span>
             </h2>
             {hasPlayerFilter && (
-              <button onClick={clearPlayerFilters} className='text-xs text-blue-600 hover:underline'>Clear filters</button>
+              <MyButton onClick={clearPlayerFilters} overrideClass='text-xs text-blue-600 hover:underline bg-transparent hover:bg-transparent h-auto md:h-auto px-0'>Clear filters</MyButton>
             )}
           </div>
 
@@ -253,7 +259,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
           ) : (
             <>
               <div className='overflow-x-auto'>
-              <div className='max-h-[520px] overflow-y-auto'>
+              <div className='max-h-[760px] overflow-y-auto'>
                 <table className='w-full text-sm'>
                   <thead className='sticky top-0 z-10 bg-white'>
                     <tr className='border-b border-gray-200'>
@@ -271,15 +277,15 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     <tr className='border-b border-gray-100 bg-gray-50 align-top'>
                       <td className='py-1 pr-1'>
                         <div className='relative'>
-                          <input type='text' value={fName} onChange={e => setFName(e.target.value)}
-                            placeholder='Filter…' className={`${INPUT_CLS} pr-5`} />
+                          <MyInput type='text' value={fName} onChange={e => setFName(e.target.value)}
+                            placeholder='Filter…' overrideClass={`${INPUT_CLS} pr-5 h-auto md:h-auto`} />
                           <MyHelpField text='Type any part of a player name. Case-insensitive.'
                             className='absolute right-1 top-1/2 -translate-y-1/2' />
                         </div>
                       </td>
                       <td className='py-1 pr-1'>
-                        <input type='text' value={fNz} onChange={e => setFNz(e.target.value)}
-                          placeholder='Filter…' className={INPUT_CLS} />
+                        <MyInput type='text' value={fNz} onChange={e => setFNz(e.target.value)}
+                          placeholder='Filter…' overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
                         <label className='flex items-center gap-1 mt-0.5 cursor-pointer text-xs text-gray-500 whitespace-nowrap'>
                           <input type='checkbox' checked={fExcludeNz0} onChange={e => setFExcludeNz0(e.target.checked)} />
                           Excl. 0
@@ -295,17 +301,17 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                         <ClubSelect mode='any' selected={fClubs} onChange={setFClubs} placeholder='All' />
                       </td>
                       <td className='py-1 pr-1'>
-                        <input type='text' inputMode='decimal' placeholder='Min' value={fRatingMin}
-                          onChange={e => setFRatingMin(e.target.value)} className={NUM_CLS} />
+                        <MyInput type='text' inputMode='decimal' placeholder='Min' value={fRatingMin}
+                          onChange={e => setFRatingMin(e.target.value)} overrideClass={`${NUM_CLS} h-auto md:h-auto`} />
                       </td>
                       <td className='py-1 pr-1'>
-                        <input type='text' inputMode='decimal' placeholder='Min' value={fAMin}
-                          onChange={e => setFAMin(e.target.value)} className={NUM_CLS} />
+                        <MyInput type='text' inputMode='decimal' placeholder='Min' value={fAMin}
+                          onChange={e => setFAMin(e.target.value)} overrideClass={`${NUM_CLS} h-auto md:h-auto`} />
                       </td>
                       <td className='py-1 pr-1' />
                       <td className='py-1 pr-1'>
-                        <input type='text' inputMode='numeric' placeholder='Min' value={fSessMin}
-                          onChange={e => setFSessMin(e.target.value)} className={NUM_CLS} />
+                        <MyInput type='text' inputMode='numeric' placeholder='Min' value={fSessMin}
+                          onChange={e => setFSessMin(e.target.value)} overrideClass={`${NUM_CLS} h-auto md:h-auto`} />
                       </td>
                       <td className='py-1 text-center'>
                         <label className='flex items-center justify-center cursor-pointer' title='Tracked only'>
@@ -318,7 +324,10 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     {filteredPlayers.slice((playerPage - 1) * playerItemsPerPage, playerPage * playerItemsPerPage).map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_rank, pl_grade, pl_club, pl_rating, pl_a_points, a1_avg_pct, a1_sessions, pl_all_results }) => (
                       <tr key={pl_plid}
                         className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${isTracked(pl_all_results) ? 'bg-green-50' : ''}`}
-                        onClick={() => router.push(`/player/${pl_plid}`)}
+                        onClick={() => {
+                          sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                          router.push(`/player/${pl_plid}`)
+                        }}
                       >
                         <td className='py-1.5 font-medium text-blue-600'>{pl_name}</td>
                         <td className='py-1.5 text-gray-500 text-xs'>{pl_nz_bridge_number || '—'}</td>
@@ -340,13 +349,13 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
               </div>
               {filteredPlayers.length > playerItemsPerPage && (
                 <div className='mt-3 flex items-center gap-3'>
-                  <select
+                  <MySelect
                     value={playerItemsPerPage}
                     onChange={e => { setPlayerItemsPerPage(parseInt(e.target.value, 10)); setPlayerPage(1) }}
-                    className='rounded border border-gray-300 px-1.5 py-0.5 text-xs'
+                    overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'
                   >
                     {[15, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-                  </select>
+                  </MySelect>
                   <span className='text-xs text-gray-400'>
                     p.{playerPage}/{Math.ceil(filteredPlayers.length / playerItemsPerPage)}
                   </span>
@@ -370,13 +379,12 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                 {loadingSessions ? 'Loading…' : `${sessions.length} shown`}
               </span>
             </h2>
-            <Link href='/admin' className='text-xs text-blue-600 hover:underline'>Admin →</Link>
           </div>
 
           {allSessions.length === 0 && !loadingSessions ? (
-            <p className='text-sm text-gray-400'>No sessions found. <Link href='/admin' className='text-blue-600 hover:underline'>Import one now.</Link></p>
+            <p className='text-sm text-gray-400'>No sessions found.</p>
           ) : (
-            <div className='max-h-[520px] overflow-y-auto'>
+            <div className='max-h-[760px] overflow-y-auto'>
             <table className='w-full text-sm'>
               <thead className='sticky top-0 z-10 bg-white'>
                 <tr className='border-b border-gray-200'>
@@ -393,8 +401,8 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                   <td className='py-1 pr-2' />
                   <td className='py-1 pr-2'>
                     <div className='flex flex-col gap-0.5'>
-                      <input type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)} className={INPUT_CLS} />
-                      <input type='date' value={dateTo}   min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}   className={INPUT_CLS} />
+                      <MyInput type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)} overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
+                      <MyInput type='date' value={dateTo}   min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}   overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
                     </div>
                   </td>
                   <td className='py-1 pr-2'>
@@ -404,26 +412,26 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     <StringMultiSelect options={TOURNAMENT_TYPES} selected={fTournamentTypes} onChange={setFTournamentTypes} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value)} className={SELECT_CLS}>
+                    <MySelect value={scoringFilter} onChange={e => setScoringFilter(e.target.value)} overrideClass={`${SELECT_CLS} h-auto md:h-auto`}>
                       <option value=''>All</option>
                       <option value='MP'>MP</option>
                       <option value='VP'>VP</option>
-                    </select>
+                    </MySelect>
                   </td>
                   <td className='py-1 pr-2'>
-                    <select value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')} className={SELECT_CLS}>
+                    <MySelect value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')} overrideClass={`${SELECT_CLS} h-auto md:h-auto`}>
                       <option value='all'>All</option>
                       <option value='summary'>Summary</option>
                       <option value='session'>Session</option>
-                    </select>
+                    </MySelect>
                   </td>
                   <td className='py-1 pr-2'>
                     <ClubSelect mode='all' selected={fSessClubs} onChange={setFSessClubs}
                       onOptionsLoaded={opts => { setSessClubOptions(opts); setFSessClubs(new Set(opts)) }} />
                   </td>
                   <td className='py-1'>
-                    <input type='text' value={sessNameFilter} onChange={e => setSessNameFilter(e.target.value)}
-                      placeholder='Search…' className={INPUT_CLS} />
+                    <MyInput type='text' value={sessNameFilter} onChange={e => setSessNameFilter(e.target.value)}
+                      placeholder='Search…' overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
                   </td>
                 </tr>
               </thead>
@@ -431,7 +439,10 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                 {sessions.slice((sessionPage - 1) * sessionItemsPerPage, sessionPage * sessionItemsPerPage).map(s => (
                   <tr key={s.se_seid}
                     className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
-                    onClick={() => router.push(`/session/${s.se_seid}`)}
+                    onClick={() => {
+                      sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                      router.push(`/session/${s.se_seid}`)
+                    }}
                   >
                     <td className='py-1.5 font-mono text-xs text-gray-400'>
                       <a href={`https://www.nzbridge.co.nz/results.html?run_id=${s.se_run_id}`}
@@ -462,13 +473,13 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
           )}
           {sessions.length > sessionItemsPerPage && (
             <div className='mt-3 flex items-center gap-3'>
-              <select
+              <MySelect
                 value={sessionItemsPerPage}
                 onChange={e => { setSessionItemsPerPage(parseInt(e.target.value, 10)); setSessionPage(1) }}
-                className='rounded border border-gray-300 px-1.5 py-0.5 text-xs'
+                overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'
               >
                 {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-              </select>
+              </MySelect>
               <span className='text-xs text-gray-400'>
                 p.{sessionPage}/{Math.ceil(sessions.length / sessionItemsPerPage)}
               </span>

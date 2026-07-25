@@ -1,11 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { getSessionById } from '@/src/lib/actions/sessions'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
+import MySelect from 'nextjs-shared/MySelect'
+import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
 import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 
 interface SessionRow {
   se_seid: number
@@ -28,13 +30,18 @@ interface ResultRow {
 }
 
 export default function SessionPageClient({ sessionId }: { sessionId: number }) {
-  const router = useRouter()
   const [session, setSession] = useState<SessionRow | null>(null)
   const [results, setResults] = useState<ResultRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(ROWS_PER_PAGE)
+  const [backPath, setBackPath] = useState<string | null>(null)
+
+  useEffect(() => {
+    setBackPath(sessionStorage.getItem(NB_BACK_FROM_KEY))
+    sessionStorage.removeItem(NB_BACK_FROM_KEY)
+  }, [])
 
   useEffect(() => {
     if (isNaN(sessionId)) {
@@ -89,7 +96,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
       {/* Session header */}
       <div className='rounded border border-gray-200 p-4'>
         <div className='flex items-center gap-2 mb-1'>
-          <button onClick={() => router.back()} className='text-xs text-blue-600 hover:underline'>← Back</button>
+          <MyBackHomeNav backPath={backPath} linkClass='text-xs text-blue-600 hover:underline' />
         </div>
         <h1 className='text-xl font-bold text-gray-900'>
           {dateStr}
@@ -129,17 +136,22 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                 <tr
                   key={i}
                   className='border-b border-gray-100 hover:bg-blue-50 cursor-pointer'
-                  onClick={() => window.location.href = `/player/${r.pl_id}?partner=${r.partner_pl_id}`}
+                  onClick={() => {
+                    sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                    window.location.href = `/player/${r.pl_id}?partner=${r.partner_pl_id}`
+                  }}
                 >
                   <td className='py-1.5 text-gray-400'>{rowNum}</td>
                   <td className='py-1.5'>
-                    <Link href={`/player/${r.pl_id}`} className='text-blue-600 hover:underline' onClick={e => e.stopPropagation()}>
+                    <Link href={`/player/${r.pl_id}`} className='text-blue-600 hover:underline'
+                      onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
                       {r.player_name}
                     </Link>
                   </td>
                   <td className='py-1.5 text-xs text-gray-400'>{r.player_nz_number || '—'}</td>
                   <td className='py-1.5'>
-                    <Link href={`/player/${r.partner_pl_id}`} className='text-blue-600 hover:underline' onClick={e => e.stopPropagation()}>
+                    <Link href={`/player/${r.partner_pl_id}`} className='text-blue-600 hover:underline'
+                      onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
                       {r.partner_name}
                     </Link>
                   </td>
@@ -156,13 +168,13 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
         )}
         {results.length > itemsPerPage && (
           <div className='mt-3 flex items-center gap-3'>
-            <select
+            <MySelect
               value={itemsPerPage}
               onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
-              className='rounded border border-gray-300 px-1.5 py-0.5 text-xs'
+              overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'
             >
               {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-            </select>
+            </MySelect>
             <span className='text-xs text-gray-400'>
               p.{currentPage}/{Math.ceil(results.length / itemsPerPage)}
             </span>

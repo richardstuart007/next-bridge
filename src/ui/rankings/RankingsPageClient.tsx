@@ -4,6 +4,11 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { searchAllPlayers } from '@/src/lib/actions/players'
 import { ClubSelect, GradeSelect } from '@/src/ui/shared/LookupSelects'
+import { MyButton } from 'nextjs-shared/MyButton'
+import { MyInput } from 'nextjs-shared/MyInput'
+import MySelect from 'nextjs-shared/MySelect'
+import { MyTab } from 'nextjs-shared/MyTab'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 
 interface PlayerRow {
   id: number
@@ -74,33 +79,36 @@ function HeaderTypeahead({ placeholder, onSelect, onClear }: {
 
   return (
     <div className='relative w-full'>
-      <input
+      <MyInput
         type='text'
         value={value}
         onChange={e => { setValue(e.target.value); if (!e.target.value.trim()) clear() }}
         onFocus={() => { if (suggestions.length > 0) setOpen(true) }}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         placeholder={placeholder}
-        className='w-full rounded border border-gray-300 px-2 py-0.5 text-xs font-normal'
+        overrideClass='w-full rounded border border-gray-300 px-2 py-0.5 text-xs font-normal h-auto md:h-auto'
         autoComplete='off'
       />
       {searching && <span className='absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400'>…</span>}
       {selected && !searching && (
-        <button onClick={clear} className='absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-700'>×</button>
+        <MyButton onClick={clear}
+          overrideClass='absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-700 bg-transparent hover:bg-transparent h-auto md:h-auto px-0'>
+          ×
+        </MyButton>
       )}
       {open && suggestions.length > 0 && (
         <ul className='absolute left-0 z-50 mt-0.5 w-64 rounded border border-gray-200 bg-white shadow-lg divide-y divide-gray-100 max-h-60 overflow-auto'>
           {suggestions.map(p => (
             <li key={p.pl_plid}>
-              <button
+              <MyButton
                 type='button'
-                className='flex w-full items-center justify-between px-3 py-1.5 hover:bg-gray-50 text-xs text-left'
+                overrideClass='flex w-full items-center justify-between px-3 py-1.5 hover:bg-gray-50 text-xs text-left bg-white hover:text-current text-gray-900 h-auto md:h-auto rounded-none'
                 onMouseDown={e => e.preventDefault()}
                 onClick={() => { setValue(p.pl_name); setSelected(p.pl_name); setOpen(false); onSelect(p.pl_name) }}
               >
                 <span className='font-medium text-gray-900'>{p.pl_name}</span>
                 <span className='text-gray-400'>{[p.pl_grade, p.pl_club].filter(Boolean).join(' · ')}</span>
-              </button>
+              </MyButton>
             </li>
           ))}
         </ul>
@@ -218,9 +226,9 @@ export default function RankingsPageClient() {
 
   function SessionsSelect() {
     return (
-      <select value={min} onChange={e => setMin(parseInt(e.target.value, 10))} className={sel}>
+      <MySelect value={min} onChange={e => setMin(parseInt(e.target.value, 10))} overrideClass={`${sel} h-auto md:h-auto`}>
         {[5, 10, 20, 50].map(n => <option key={n} value={n}>≥ {n}</option>)}
-      </select>
+      </MySelect>
     )
   }
 
@@ -231,14 +239,11 @@ export default function RankingsPageClient() {
       <div className='flex items-center gap-4 border-b border-gray-200'>
         <div className='flex'>
           {(['players', 'partnerships'] as TabId[]).map(tab => (
-            <button key={tab} onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize ${
-                activeTab === tab
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}>
+            <MyTab key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}
+              underlineActiveClass='px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize border-blue-600 text-blue-600'
+              underlineInactiveClass='px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize border-transparent text-gray-500 hover:text-gray-700'>
               {tab === 'players' ? `Players (${players.length})` : `Partnerships (${partnerships.length})`}
-            </button>
+            </MyTab>
           ))}
         </div>
         {loading && <span className='text-xs text-gray-400'>Loading…</span>}
@@ -253,10 +258,10 @@ export default function RankingsPageClient() {
             <thead>
               <tr>
                 <th className={`${thF} w-24 text-right`}>
-                  <select value={topN} onChange={e => setTopN(parseInt(e.target.value, 10))} className={sel}>
+                  <MySelect value={topN} onChange={e => setTopN(parseInt(e.target.value, 10))} overrideClass={`${sel} h-auto md:h-auto`}>
                     <option value={0}>All</option>
                     {TOP_OPTS.map(n => <option key={n} value={n}>Top {n}</option>)}
-                  </select>
+                  </MySelect>
                 </th>
                 <th className={thF}>
                   <HeaderTypeahead
@@ -299,7 +304,10 @@ export default function RankingsPageClient() {
                     className={highlighted ? 'bg-yellow-100' : 'hover:bg-gray-50'}>
                     <td className='px-3 py-1.5 text-right text-gray-400'>{rank}</td>
                     <td className='px-3 py-1.5'>
-                      <Link href={`/player/${p.id}`} className='text-blue-600 hover:underline'>{p.name}</Link>
+                      <Link href={`/player/${p.id}`} className='text-blue-600 hover:underline'
+                        onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
+                        {p.name}
+                      </Link>
                     </td>
                     <td className='px-3 py-1.5 text-right font-medium'>
                       {scoring === 'mp' ? `${parseFloat(String(p.avg_pct)).toFixed(2)}%` : parseFloat(String(p.avg_pct)).toFixed(2)}
@@ -328,10 +336,10 @@ export default function RankingsPageClient() {
             <thead>
               <tr>
                 <th className={`${thF} w-24 text-right`}>
-                  <select value={partnerTopN} onChange={e => setPartnerTopN(parseInt(e.target.value, 10))} className={sel}>
+                  <MySelect value={partnerTopN} onChange={e => setPartnerTopN(parseInt(e.target.value, 10))} overrideClass={`${sel} h-auto md:h-auto`}>
                     <option value={0}>All</option>
                     {TOP_OPTS.map(n => <option key={n} value={n}>Top {n}</option>)}
-                  </select>
+                  </MySelect>
                 </th>
                 <th className={thF}>
                   <HeaderTypeahead
@@ -362,10 +370,16 @@ export default function RankingsPageClient() {
                 <tr key={p.id} className='hover:bg-gray-50'>
                   <td className='px-3 py-1.5 text-right text-gray-400'>{rank}</td>
                   <td className='px-3 py-1.5'>
-                    <Link href={`/player/${p.player1_id}`} className='text-blue-600 hover:underline'>{p.player1_name}</Link>
+                    <Link href={`/player/${p.player1_id}`} className='text-blue-600 hover:underline'
+                      onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
+                      {p.player1_name}
+                    </Link>
                     {isTracked(p.player1_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                     <span className='mx-1.5 text-gray-400'>&amp;</span>
-                    <Link href={`/player/${p.player2_id}`} className='text-blue-600 hover:underline'>{p.player2_name}</Link>
+                    <Link href={`/player/${p.player2_id}`} className='text-blue-600 hover:underline'
+                      onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
+                      {p.player2_name}
+                    </Link>
                     {isTracked(p.player2_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                   </td>
                   <td className='px-3 py-1.5 text-right font-medium'>

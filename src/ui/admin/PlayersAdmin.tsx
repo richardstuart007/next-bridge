@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { MyInput } from 'nextjs-shared/MyInput'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 
 interface PlayerRow {
   pl_plid:             number
@@ -60,9 +62,9 @@ export default function PlayersAdmin() {
   return (
     <div className='space-y-4'>
       <div className='flex items-center gap-4'>
-        <input type='text' value={nameFilter} onChange={e => setName(e.target.value)}
+        <MyInput type='text' value={nameFilter} onChange={e => setName(e.target.value)}
           placeholder='Search by name or NZB#…'
-          className='rounded border border-gray-300 px-2.5 py-1 text-sm w-64' />
+          overrideClass='rounded border border-gray-300 px-2.5 py-1 text-sm w-64 h-auto md:h-auto' />
         <span className='text-sm text-gray-500'>
           {trackedCount} tracked · {players.length} total
         </span>
@@ -95,7 +97,8 @@ export default function PlayersAdmin() {
                       className='cursor-pointer' />
                   </td>
                   <td className='py-1.5 font-medium'>
-                    <Link href={`/player/${pl_plid}`} className='text-blue-600 hover:underline'>
+                    <Link href={`/player/${pl_plid}`} className='text-blue-600 hover:underline'
+                      onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
                       {pl_name}
                     </Link>
                   </td>

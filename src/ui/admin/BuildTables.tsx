@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MyButton } from 'nextjs-shared/MyButton'
 
 interface StepResult {
   label: string
@@ -56,10 +57,10 @@ export default function BuildTables() {
   return (
     <div className='space-y-4 max-w-2xl'>
       <div className='flex items-center gap-3 mb-6'>
-        <button onClick={runAll} disabled={running !== null}
-          className='rounded bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50'>
+        <MyButton onClick={runAll} disabled={running !== null}
+          overrideClass='rounded bg-blue-600 text-white px-4 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 h-auto md:h-auto'>
           {running ? 'Running…' : 'Run All Steps'}
-        </button>
+        </MyButton>
         <span className='text-sm text-gray-500'>or run individual steps below</span>
       </div>
 
@@ -71,10 +72,10 @@ export default function BuildTables() {
               <p className='text-xs text-gray-400 mt-0.5'>{step.desc}</p>
               <ResultRow result={results[step.key] ?? { label: step.key, data: null, error: null }} />
             </div>
-            <button onClick={() => run(step.key, step.url)} disabled={running !== null}
-              className='shrink-0 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50'>
+            <MyButton onClick={() => run(step.key, step.url)} disabled={running !== null}
+              overrideClass='shrink-0 rounded border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
               {running === step.key ? 'Running…' : 'Run'}
-            </button>
+            </MyButton>
           </div>
         </div>
       ))}

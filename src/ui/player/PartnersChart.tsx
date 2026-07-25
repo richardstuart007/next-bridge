@@ -4,6 +4,9 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MyLineChart } from '@/src/ui/graphs/graph_charts'
 import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
+import { MyButton } from 'nextjs-shared/MyButton'
+import MySelect from 'nextjs-shared/MySelect'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 
 interface PartnerRef {
   id: number
@@ -268,19 +271,19 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
           {/* Smoothing */}
           <div className='flex items-center gap-1.5'>
             <label className='text-xs text-gray-500'>Smooth</label>
-            <select value={smoothing} onChange={e => setSmoothing(parseInt(e.target.value, 10))}
-              className='rounded border border-gray-300 px-2 py-0.5 text-xs'>
+            <MySelect value={smoothing} onChange={e => setSmoothing(parseInt(e.target.value, 10))}
+              overrideClass='rounded border border-gray-300 px-2 py-0.5 text-xs h-auto md:h-auto w-auto'>
               <option value={0}>Off</option>
               <option value={5}>5 sessions</option>
               <option value={10}>10 sessions</option>
               <option value={20}>20 sessions</option>
               <option value={50}>50 sessions</option>
-            </select>
+            </MySelect>
           </div>
-          <button onClick={exportCSV} disabled={loading || partnerResults.size === 0}
-            className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50'>
+          <MyButton onClick={exportCSV} disabled={loading || partnerResults.size === 0}
+            overrideClass='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
             Export CSV
-          </button>
+          </MyButton>
         </div>
       </div>
 
@@ -319,8 +322,18 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
             LineGraphData={graphData}
             GridDisplayY={true}
             xMaxTicksLimit={24}
-            onPointClick={key => { if (key) router.push(`/session/${key}`) }}
-            onLegendClick={idx => { const vis = ordered.filter(e => selectedIds.has(e.id)); const p = vis[idx]; if (p) router.push(`/player/${p.id}`) }}
+            onPointClick={key => {
+              if (!key) return
+              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              router.push(`/session/${key}`)
+            }}
+            onLegendClick={idx => {
+              const vis = ordered.filter(e => selectedIds.has(e.id))
+              const p = vis[idx]
+              if (!p) return
+              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              router.push(`/player/${p.id}`)
+            }}
           />
         </div>
       )}

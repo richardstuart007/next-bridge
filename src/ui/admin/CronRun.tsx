@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MyButton } from 'nextjs-shared/MyButton'
 
 interface CronSummary {
   from_date:       string
@@ -49,13 +50,13 @@ export default function CronRun() {
           Discover new sessions, scrape results, build production tables, and recompute stats —
           equivalent to steps 1 → 2 → 3 in sequence.
         </p>
-        <button
+        <MyButton
           onClick={handleRun}
           disabled={running}
-          className='rounded border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50'
+          overrideClass='rounded border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50 h-auto md:h-auto'
         >
           {running ? 'Running…' : 'Run Full Pipeline'}
-        </button>
+        </MyButton>
         {running && (
           <p className='mt-3 text-xs text-gray-500'>This may take a minute or two — scraping all new sessions…</p>
         )}

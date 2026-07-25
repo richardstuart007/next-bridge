@@ -1,13 +1,12 @@
 {
   "name": "next-bridge",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "private": true,
   "scripts": {
     "build": "next build",
-    "locallocal": "copy /Y .env.locallocal .env && next dev --turbopack --port 3030",
-    "localdev": "copy /Y .env.localdev .env && next dev --turbopack --port 3031",
-    "localprod": "copy /Y .env.localprod .env && next dev --turbopack --port 3032",
+    "locallocal": "copy /Y .env.locallocal .env && next dev --turbopack --port 4040",
+    "localprod": "copy /Y .env.localprod .env && next dev --turbopack --port 4042",
     "schema:compare": "tsx scripts/schema_compare.ts",
     "copy:prod": "tsx scripts/copy_to_prod.ts"
   },

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MyButton } from 'nextjs-shared/MyButton'
 
 interface Result {
   run_ids_total: number
@@ -60,10 +61,10 @@ export default function PopulateTs2({ ts1Count, source, onDone }: { ts1Count: nu
       <h3 className='text-xs font-semibold text-amber-600 uppercase tracking-wide mb-3'>
         Scrape results → ts2
       </h3>
-      <button onClick={run} disabled={busy || done}
-        className='rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50'>
+      <MyButton onClick={run} disabled={busy || done}
+        overrideClass='rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50 h-auto md:h-auto'>
         {busy ? 'Populating ts2…' : `Step 2: Populate ts2_results for ${ts1Count} sessions in ts1`}
-      </button>
+      </MyButton>
       {progress && <p className='mt-2 text-sm text-amber-700 font-mono'>{progress}</p>}
       {error   && <p className='mt-2 text-sm text-red-600'>{error}</p>}
       {result  && (

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import StagingBar  from '@/src/ui/admin/StagingBar'
 import PopulateTs2 from '@/src/ui/admin/PopulateTs2'
+import { MyButton } from 'nextjs-shared/MyButton'
+import { MyInput } from 'nextjs-shared/MyInput'
 
 interface Staging { ts0: number; ts1: number; ts2: number }
 
@@ -191,27 +193,27 @@ export default function RawScrape() {
           <div className='flex gap-3 items-end flex-wrap'>
             <div>
               <label className='text-xs text-gray-500 block mb-1'>Date from</label>
-              <input type='date' value={dateFrom} min='2021-01-01' max={today}
+              <MyInput type='date' value={dateFrom} min='2021-01-01' max={today}
                 onChange={e => setDateFrom(e.target.value)}
-                className='rounded border border-gray-300 bg-white px-2 py-1 text-sm' />
+                overrideClass='rounded border border-gray-300 bg-white px-2 py-1 text-sm h-auto md:h-auto' />
             </div>
             <div>
               <label className='text-xs text-gray-500 block mb-1'>Date to</label>
-              <input type='date' value={dateTo} min='2021-01-01' max={today}
+              <MyInput type='date' value={dateTo} min='2021-01-01' max={today}
                 onChange={e => setDateTo(e.target.value)}
-                className='rounded border border-gray-300 bg-white px-2 py-1 text-sm' />
+                overrideClass='rounded border border-gray-300 bg-white px-2 py-1 text-sm h-auto md:h-auto' />
             </div>
           </div>
 
           {/* Source action buttons */}
           <div className='flex gap-2 flex-wrap'>
             {(['club', 'tracked', 'both'] as Source[]).map(s => (
-              <button key={s}
+              <MyButton key={s}
                 onClick={() => { setSource(s); handleDiscoverWith(s) }}
                 disabled={busy || !dateFrom || !dateTo || !stagingEmpty}
-                className='rounded bg-amber-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50'>
+                overrideClass='rounded bg-amber-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50 h-auto md:h-auto'>
                 {busy && source === s ? 'Discovering…' : sourceLabel(s)}
-              </button>
+              </MyButton>
             ))}
           </div>
 

@@ -5,6 +5,10 @@ import { getAllPlayers } from '@/src/lib/actions/players'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { getResultsBySeid, getResultsByPlid, getAllPartners } from '@/src/lib/actions/build-viewer'
 import { EventTypeSelect } from '@/src/ui/shared/LookupSelects'
+import { MyButton } from 'nextjs-shared/MyButton'
+import { MyInput } from 'nextjs-shared/MyInput'
+import MySelect from 'nextjs-shared/MySelect'
+import MySelectMulti from 'nextjs-shared/MySelectMulti'
 
 type Row = Record<string, unknown>
 
@@ -20,28 +24,28 @@ function renderCell(val: unknown): React.ReactNode {
 
 function FText({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (v: string) => void }) {
   return (
-    <input type='text' placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)}
-      className='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400' />
+    <MyInput type='text' placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)}
+      overrideClass='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 h-auto md:h-auto' />
   )
 }
 
 function FSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
-    <select value={value} onChange={e => onChange(e.target.value)}
-      className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs focus:outline-none'>
+    <MySelect value={value} onChange={e => onChange(e.target.value)}
+      overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs focus:outline-none h-auto md:h-auto'>
       {children}
-    </select>
+    </MySelect>
   )
 }
 
 function FMultiSelect({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
   return (
-    <select multiple value={value}
-      onChange={e => onChange(Array.from(e.target.selectedOptions, o => o.value))}
-      className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs focus:outline-none'
-      size={4}>
-      {options.map(o => <option key={o} value={o}>{o}</option>)}
-    </select>
+    <MySelectMulti
+      options={options}
+      selected={value}
+      onChange={onChange}
+      overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs focus:outline-none h-auto md:h-auto'
+    />
   )
 }
 
@@ -203,7 +207,7 @@ export default function BuildDataViewer() {
     if (sessScoringFilter   !== 'all' && r.se_scoring    !== sessScoringFilter)   return false
     if (sessEventTypeFilter.size > 0 && !sessEventTypeFilter.has(String(r.se_event_type ?? ''))) return false
     if (sessDayFilter       !== 'all' && r.se_day_of_week !== sessDayFilter)       return false
-    if (sessTournamentFilter.length > 0 && !sessTournamentFilter.includes(String(r.se_tournament ?? '')[1] ?? '')) return false
+    if (sessTournamentFilter.length > 0 && !sessTournamentFilter.includes(String(r.se_tournament ?? '').slice(-1).toUpperCase())) return false
     return true
   })
 
@@ -258,10 +262,10 @@ export default function BuildDataViewer() {
       {/* tpl_players */}
       <div className='rounded border border-gray-200 p-3'>
         <SectionHeader label='tpl_players — players' shown={filteredPlayers.length} total={players.length} loading={playersLoading}>
-          <button onClick={loadPlayers} disabled={playersLoading}
-            className='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50'>
+          <MyButton onClick={loadPlayers} disabled={playersLoading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
             Load
-          </button>
+          </MyButton>
         </SectionHeader>
         {players.length > 0 && (
           <DataTable rows={filteredPlayers} allRows={players} onRowClick={handlePlayerClick}
@@ -283,10 +287,10 @@ export default function BuildDataViewer() {
           <FSelect value={String(sessYear)} onChange={v => setSessYear(parseInt(v, 10))}>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </FSelect>
-          <button onClick={() => loadSessions(sessYear)} disabled={sessLoading}
-            className='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50'>
+          <MyButton onClick={() => loadSessions(sessYear)} disabled={sessLoading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
             Load
-          </button>
+          </MyButton>
         </SectionHeader>
         {sessions.length > 0 && (
           <DataTable rows={filteredSessions} allRows={sessions} onRowClick={handleSessClick}
@@ -305,10 +309,10 @@ export default function BuildDataViewer() {
       {/* tpa_partners */}
       <div className='rounded border border-gray-200 p-3'>
         <SectionHeader label='tpa_partners — partnerships' shown={filteredPartners.length} total={partners.length} loading={partnersLoading}>
-          <button onClick={loadPartners} disabled={partnersLoading}
-            className='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50'>
+          <MyButton onClick={loadPartners} disabled={partnersLoading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
             Load
-          </button>
+          </MyButton>
         </SectionHeader>
         {partners.length > 0 && (
           <DataTable rows={filteredPartners} allRows={partners} filters={paFilters} />

@@ -4,6 +4,9 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MyLineChart } from '@/src/ui/graphs/graph_charts'
 import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
+import { MyButton } from 'nextjs-shared/MyButton'
+import MySelect from 'nextjs-shared/MySelect'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 
 interface ResultRow {
   session_id:   number
@@ -176,19 +179,19 @@ export default function PerformanceChart({ results, scoring }: Props) {
           <span className='text-sm text-gray-500'>avg <span className='font-medium text-gray-700'>{overallAvg}{scoring === 'VP' ? 'pts' : '%'}</span></span>
         )}
         <div className='flex items-center gap-1.5 ml-auto'>
-          <button onClick={exportCSV} disabled={sorted.length === 0 || selectedIds.size === 0}
-            className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50'>
+          <MyButton onClick={exportCSV} disabled={sorted.length === 0 || selectedIds.size === 0}
+            overrideClass='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
             Export CSV
-          </button>
+          </MyButton>
           <label className='text-xs text-gray-500'>Smooth</label>
-          <select value={smoothing} onChange={e => setSmoothing(parseInt(e.target.value, 10))}
-            className='rounded border border-gray-300 px-2 py-0.5 text-xs'>
+          <MySelect value={smoothing} onChange={e => setSmoothing(parseInt(e.target.value, 10))}
+            overrideClass='rounded border border-gray-300 px-2 py-0.5 text-xs h-auto md:h-auto w-auto'>
             <option value={0}>Off</option>
             <option value={5}>5 sessions</option>
             <option value={10}>10 sessions</option>
             <option value={20}>20 sessions</option>
             <option value={50}>50 sessions</option>
-          </select>
+          </MySelect>
         </div>
       </div>
 
@@ -220,8 +223,16 @@ export default function PerformanceChart({ results, scoring }: Props) {
             LineGraphData={graphData}
             GridDisplayY={true}
             xMaxTicksLimit={24}
-            onPointClick={key => router.push(`/session/${key}`)}
-            onLegendClick={idx => { const id = visibleOrder[idx]; if (id) router.push(`/player/${id}`) }}
+            onPointClick={key => {
+              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              router.push(`/session/${key}`)
+            }}
+            onLegendClick={idx => {
+              const id = visibleOrder[idx]
+              if (!id) return
+              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              router.push(`/player/${id}`)
+            }}
           />
         </div>
       )}

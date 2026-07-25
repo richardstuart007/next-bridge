@@ -3,7 +3,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
+import { MyButton } from 'nextjs-shared/MyButton'
+import { MyInput } from 'nextjs-shared/MyInput'
+import MySelect from 'nextjs-shared/MySelect'
+import { MyTab } from 'nextjs-shared/MyTab'
 import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 import PerformanceChart from './PerformanceChart'
 
@@ -74,10 +79,10 @@ function PlayerSelect({
 
   return (
     <div ref={ref} className='relative'>
-      <button type='button' onClick={() => setOpen(v => !v)}
-        className='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate'>
+      <MyButton type='button' onClick={() => setOpen(v => !v)}
+        overrideClass='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate text-gray-700 justify-start h-auto md:h-auto'>
         {label}
-      </button>
+      </MyButton>
       {open && (
         <div className='absolute left-0 top-full z-20 bg-white border border-gray-200 rounded shadow-lg min-w-max max-h-56 overflow-y-auto'>
           <label className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs border-b border-gray-100 font-medium whitespace-nowrap'>
@@ -237,18 +242,19 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
           {/* Data / Graph sub-tabs */}
           <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
             {(['data', 'graph'] as const).map(v => (
-              <button key={v} onClick={() => setView(v)}
-                className={`px-2 py-0.5 capitalize ${view === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+              <MyTab key={v} variant='pill' active={view === v} onClick={() => setView(v)}
+                pillActiveClass='px-2 py-0.5 capitalize rounded-none border-0 bg-blue-600 text-white'
+                pillInactiveClass='px-2 py-0.5 capitalize rounded-none border-0 bg-white text-gray-700 hover:bg-gray-50'>
                 {v}
-              </button>
+              </MyTab>
             ))}
           </div>
         </div>
         <div className='flex items-center gap-2'>
-          <button onClick={exportCSV} disabled={loading || filtered.length === 0}
-            className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50'>
+          <MyButton onClick={exportCSV} disabled={loading || filtered.length === 0}
+            overrideClass='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
             Export CSV
-          </button>
+          </MyButton>
         </div>
       </div>
 
@@ -294,25 +300,25 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
               <td className='py-1' />
               <td className='py-1 pr-1'>
                 <div className='flex flex-col gap-0.5'>
-                  <input type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)}
-                    className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' title='From' />
-                  <input type='date' value={dateTo} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}
-                    className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' title='To' />
+                  <MyInput type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)}
+                    overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='From' />
+                  <MyInput type='date' value={dateTo} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}
+                    overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='To' />
                 </div>
               </td>
               <td className='py-1 pr-1'>
-                <select value={dayFilter} onChange={e => setDayFilter(e.target.value)}
-                  className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
+                <MySelect value={dayFilter} onChange={e => setDayFilter(e.target.value)}
+                  overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
                   <option value=''>All</option>
                   {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d =>
                     <option key={d}>{d}</option>)}
-                </select>
+                </MySelect>
               </td>
               <td className='py-1' />
               <td className='py-1 pr-1'>
-                <input type='text' value={sessionNameFilter} onChange={e => setSessionNameFilter(e.target.value)}
+                <MyInput type='text' value={sessionNameFilter} onChange={e => setSessionNameFilter(e.target.value)}
                   placeholder='Search…'
-                  className='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal' />
+                  overrideClass='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal h-auto md:h-auto' />
               </td>
               <td className='py-1 pr-1'>
                 <ClubSelect mode='all' selected={selectedClubs} onChange={setSelectedClubs}
@@ -326,20 +332,20 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
                   onOptionsLoaded={opts => { setEventTypeOptions(opts); setSelectedEventTypes(new Set(opts)) }} />
               </td>
               <td className='py-1 pr-1'>
-                <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value as 'all' | 'MP' | 'VP')}
-                  className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
+                <MySelect value={scoringFilter} onChange={e => setScoringFilter(e.target.value as 'all' | 'MP' | 'VP')}
+                  overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
                   <option value='all'>All</option>
                   <option value='MP'>MP</option>
                   <option value='VP'>VP</option>
-                </select>
+                </MySelect>
               </td>
               <td className='py-1 pr-1'>
-                <select value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')}
-                  className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
+                <MySelect value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')}
+                  overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
                   <option value='all'>All</option>
                   <option value='summary'>Summary</option>
                   <option value='session'>Session</option>
-                </select>
+                </MySelect>
               </td>
               <td className='py-1' />
               <td className='py-1' />
@@ -349,12 +355,15 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
             {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => (
               <tr key={i}
                 className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
-                onClick={() => window.location.href = `/session/${r.session_id}`}
+                onClick={() => {
+                  sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                  window.location.href = `/session/${r.session_id}`
+                }}
               >
                 <td className='py-1.5'>
                   <Link href={`/player/${r.player_id}`}
                     className='text-blue-600 hover:underline font-medium'
-                    onClick={e => e.stopPropagation()}>
+                    onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
                     {r.player_name}
                   </Link>
                 </td>
@@ -363,7 +372,10 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
                 <td className='py-1.5 text-gray-500'>{r.day_of_week}</td>
                 <td className='py-1.5'>
                   {r.partner_name
-                    ? <Link href={`/player/${r.partner_id}`} className='text-blue-600 hover:underline' onClick={e => e.stopPropagation()}>{r.partner_name}</Link>
+                    ? <Link href={`/player/${r.partner_id}`} className='text-blue-600 hover:underline'
+                        onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
+                        {r.partner_name}
+                      </Link>
                     : '—'}
                 </td>
                 <td className='py-1.5 text-gray-500 text-xs'>{r.session_name}</td>
@@ -391,10 +403,10 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
 
       {view === 'data' && filtered.length > itemsPerPage && (
         <div className='mt-3 flex items-center gap-3'>
-          <select value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
-            className='rounded border border-gray-300 px-1.5 py-0.5 text-xs'>
+          <MySelect value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
+            overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'>
             {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-          </select>
+          </MySelect>
           <span className='text-xs text-gray-400'>p.{currentPage}/{Math.ceil(filtered.length / itemsPerPage)}</span>
           <MyPagination
             totalPages={Math.ceil(filtered.length / itemsPerPage)}

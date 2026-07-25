@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { getAllClubs, getAllGrades, getAllRanks, getAllEventTypes } from '@/src/lib/actions/lookup'
+import { MyButton } from 'nextjs-shared/MyButton'
 
 // ── Shared dropdown panel ─────────────────────────────────────────────────────
 
@@ -21,10 +22,10 @@ function DropdownPanel({ label, children }: { label: string; children: React.Rea
 
   return (
     <div ref={ref} className='relative'>
-      <button type='button' onClick={() => setOpen(v => !v)}
-        className='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate'>
+      <MyButton type='button' onClick={() => setOpen(v => !v)}
+        overrideClass='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate text-gray-700 justify-start h-auto md:h-auto'>
         {label}
-      </button>
+      </MyButton>
       {open && (
         <div className='absolute left-0 top-full z-20 bg-white border border-gray-200 rounded shadow-lg min-w-max max-h-56 overflow-y-auto'>
           {children}

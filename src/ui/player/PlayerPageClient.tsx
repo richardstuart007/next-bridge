@@ -1,14 +1,20 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getPlayerById, getPartnerStats, getPlayerAllGroupStats } from '@/src/lib/actions/players'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 import PerformanceChart from './PerformanceChart'
 import PartnersTable from './PartnersTable'
 import MyPagination from 'nextjs-shared/MyPagination'
+import { MyButton } from 'nextjs-shared/MyButton'
+import { MyInput } from 'nextjs-shared/MyInput'
+import MySelect from 'nextjs-shared/MySelect'
+import { MyTab } from 'nextjs-shared/MyTab'
+import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
 import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
+import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
 
 interface ResultRow {
   session_id:      number
@@ -93,10 +99,10 @@ function PartnerSelect({
 
   return (
     <div ref={ref} className='relative'>
-      <button type='button' onClick={() => setOpen(v => !v)}
-        className='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate'>
+      <MyButton type='button' onClick={() => setOpen(v => !v)}
+        overrideClass='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate text-gray-700 justify-start h-auto md:h-auto'>
         {label}
-      </button>
+      </MyButton>
       {open && (
         <div className='absolute left-0 top-full z-20 bg-white border border-gray-200 rounded shadow-lg min-w-max max-h-56 overflow-y-auto'>
           <label className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs border-b border-gray-100 font-medium whitespace-nowrap'>
@@ -104,10 +110,10 @@ function PartnerSelect({
             All
           </label>
           {trackedIds.length > 0 && (
-            <button type='button' onClick={selectTracked}
-              className='w-full text-left px-3 py-1 hover:bg-green-50 text-xs text-green-700 font-medium border-b border-gray-100 whitespace-nowrap'>
+            <MyButton type='button' onClick={selectTracked}
+              overrideClass='w-full text-left px-3 py-1 hover:bg-green-50 text-xs text-green-700 font-medium border-b border-gray-100 whitespace-nowrap bg-white justify-start h-auto md:h-auto rounded-none'>
               ● Select tracked ({trackedIds.length})
-            </button>
+            </MyButton>
           )}
           {partners.map(p => (
             <label key={p.id} className={`flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap ${p.tracked ? 'text-green-700' : ''}`}>
@@ -123,12 +129,17 @@ function PartnerSelect({
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function PlayerPageClient({ playerId }: { playerId: number }) {
-  const router       = useRouter()
   const searchParams = useSearchParams()
   const partnerParam = searchParams.get('partner')
   const filterPartnerId = partnerParam ? parseInt(partnerParam, 10) : null
   const restoredRef  = useRef(false)
   const savedRef     = useRef<Record<string, unknown> | null>(null)
+
+  const [backPath, setBackPath] = useState<string | null>(null)
+  useEffect(() => {
+    setBackPath(sessionStorage.getItem(NB_BACK_FROM_KEY))
+    sessionStorage.removeItem(NB_BACK_FROM_KEY)
+  }, [])
 
   const [player,       setPlayer]       = useState<Player | null>(null)
   const [results,      setResults]      = useState<ResultRow[]>([])
@@ -351,7 +362,7 @@ useEffect(() => { setCurrentPage(1) },
     return (
       <div className='space-y-6'>
         <div className='rounded border border-gray-200 p-4'>
-          <button onClick={() => router.back()} className='text-xs text-blue-600 hover:underline'>← {player.pl_name}</button>
+          <MyBackHomeNav backPath={backPath} backLabel={player.pl_name} linkClass='text-xs text-blue-600 hover:underline' />
           <h1 className='text-xl font-bold text-gray-900 mt-1'>
             {player.pl_name} <span className='text-gray-400 font-normal'>with</span> {partnerName}
           </h1>
@@ -380,7 +391,7 @@ useEffect(() => { setCurrentPage(1) },
       {/* Player info */}
       <div className='rounded border border-gray-200 p-4'>
         <div className='mb-1'>
-          <button onClick={() => router.back()} className='text-xs text-blue-600 hover:underline'>← Back</button>
+          <MyBackHomeNav backPath={backPath} linkClass='text-xs text-blue-600 hover:underline' />
         </div>
         <div className='flex items-baseline gap-3 mb-2'>
           <h1 className='text-xl font-bold text-gray-900'>{player.pl_name}</h1>
@@ -467,10 +478,11 @@ useEffect(() => { setCurrentPage(1) },
       {/* Tabs */}
       <div className='flex gap-1 border-b border-gray-200'>
         {(['history', 'partners'] as const).map(tab => (
-          <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 ${activeTab === tab ? 'bg-white border-gray-200 text-gray-900' : 'bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'}`}>
+          <MyTab key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}
+            underlineActiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-white border-gray-200 text-gray-900'
+            underlineInactiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'>
             {tab === 'history' ? 'Player History' : 'All Partners History'}
-          </button>
+          </MyTab>
         ))}
       </div>
 
@@ -486,20 +498,21 @@ useEffect(() => { setCurrentPage(1) },
               {/* Data / Graph sub-tabs */}
               <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
                 {(['data', 'graph'] as const).map(v => (
-                  <button key={v} onClick={() => setHistoryView(v)}
-                    className={`px-2 py-0.5 capitalize ${historyView === v ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
+                  <MyTab key={v} variant='pill' active={historyView === v} onClick={() => setHistoryView(v)}
+                    pillActiveClass='px-2 py-0.5 capitalize rounded-none border-0 bg-blue-600 text-white'
+                    pillInactiveClass='px-2 py-0.5 capitalize rounded-none border-0 bg-white text-gray-700 hover:bg-gray-50'>
                     {v}
-                  </button>
+                  </MyTab>
                 ))}
               </div>
             </div>
             <div className='flex items-center gap-2'>
               {historyView === 'data' && hasFilter && (
-                <button onClick={clearFilters} className='text-xs text-blue-600 hover:underline'>Clear filters</button>
+                <MyButton onClick={clearFilters} overrideClass='text-xs text-blue-600 hover:underline bg-transparent hover:bg-transparent h-auto md:h-auto px-0'>Clear filters</MyButton>
               )}
               {historyView === 'data'
-                ? <button onClick={exportCSV} className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50'>Export CSV</button>
-                : <button onClick={exportGraphCSV} className='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50'>Export Graph CSV</button>
+                ? <MyButton onClick={exportCSV} overrideClass='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 text-gray-700 h-auto md:h-auto'>Export CSV</MyButton>
+                : <MyButton onClick={exportGraphCSV} overrideClass='text-xs rounded border border-gray-300 bg-white px-2 py-0.5 hover:bg-gray-50 text-gray-700 h-auto md:h-auto'>Export Graph CSV</MyButton>
               }
             </div>
           </div>
@@ -543,20 +556,20 @@ useEffect(() => { setCurrentPage(1) },
                     {/* Date: from on top, to below */}
                     <td className='py-1 pr-1'>
                       <div className='flex flex-col gap-0.5'>
-                        <input type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)}
-                          className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' title='From' />
-                        <input type='date' value={dateTo} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}
-                          className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal' title='To' />
+                        <MyInput type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)}
+                          overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='From' />
+                        <MyInput type='date' value={dateTo} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}
+                          overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='To' />
                       </div>
                     </td>
                     {/* Day */}
                     <td className='py-1 pr-1'>
-                      <select value={dayFilter} onChange={e => setDayFilter(e.target.value)}
-                        className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
+                      <MySelect value={dayFilter} onChange={e => setDayFilter(e.target.value)}
+                        overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
                         <option value=''>All</option>
                         {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d =>
                           <option key={d}>{d}</option>)}
-                      </select>
+                      </MySelect>
                     </td>
                     {/* Partner multi-select */}
                     <td className='py-1 pr-1'>
@@ -564,9 +577,9 @@ useEffect(() => { setCurrentPage(1) },
                     </td>
                     {/* Session name */}
                     <td className='py-1 pr-1'>
-                      <input type='text' value={sessionNameFilter} onChange={e => setSessionNameFilter(e.target.value)}
+                      <MyInput type='text' value={sessionNameFilter} onChange={e => setSessionNameFilter(e.target.value)}
                         placeholder='Search…'
-                        className='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal' />
+                        overrideClass='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal h-auto md:h-auto' />
                     </td>
                     {/* Club */}
                     <td className='py-1 pr-1'>
@@ -602,21 +615,21 @@ useEffect(() => { setCurrentPage(1) },
                     </td>
                     {/* Scoring filter */}
                     <td className='py-1 pr-1'>
-                      <select value={scoringFilter} onChange={e => setScoringFilter(e.target.value as 'all' | 'MP' | 'VP')}
-                        className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
+                      <MySelect value={scoringFilter} onChange={e => setScoringFilter(e.target.value as 'all' | 'MP' | 'VP')}
+                        overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
                         <option value='all'>All</option>
                         <option value='MP'>MP</option>
                         <option value='VP'>VP</option>
-                      </select>
+                      </MySelect>
                     </td>
                     {/* Summary filter */}
                     <td className='py-1 pr-1'>
-                      <select value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')}
-                        className='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'>
+                      <MySelect value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')}
+                        overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
                         <option value='all'>All</option>
                         <option value='summary'>Summary</option>
                         <option value='session'>Session</option>
-                      </select>
+                      </MySelect>
                     </td>
                     {/* % and VP — no filter */}
                     <td className='py-1' />
@@ -627,7 +640,10 @@ useEffect(() => { setCurrentPage(1) },
                   {sessionsSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => (
                     <tr key={i}
                       className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
-                      onClick={() => window.location.href = `/session/${r.session_id}`}
+                      onClick={() => {
+                        sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                        window.location.href = `/session/${r.session_id}`
+                      }}
                     >
                       <td className='py-1.5 text-gray-400 text-xs font-mono'>{r.run_id}</td>
                       <td className='py-1.5'>{r.date.slice(0, 10)}</td>
@@ -635,7 +651,7 @@ useEffect(() => { setCurrentPage(1) },
                       <td className='py-1.5'>
                         <Link href={`/player/${playerId}?partner=${r.partner_id}`}
                           className='text-blue-600 hover:underline'
-                          onClick={e => e.stopPropagation()}>
+                          onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
                           {r.partner_name}
                         </Link>
                       </td>
@@ -663,10 +679,10 @@ useEffect(() => { setCurrentPage(1) },
           )}
           {historyView === 'data' && sessionsSorted.length > itemsPerPage && (
             <div className='mt-3 flex items-center gap-3'>
-              <select value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
-                className='rounded border border-gray-300 px-1.5 py-0.5 text-xs'>
+              <MySelect value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
+                overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'>
                 {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-              </select>
+              </MySelect>
               <span className='text-xs text-gray-400'>p.{currentPage}/{Math.ceil(sessionsSorted.length / itemsPerPage)}</span>
               <MyPagination
                 totalPages={Math.ceil(sessionsSorted.length / itemsPerPage)}

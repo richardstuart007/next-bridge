@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { MyButton } from 'nextjs-shared/MyButton'
 
 interface RecalcProgress { step?: string; processed: number; total: number; failed: number }
 interface RecalcDone     { done: true; updated: number; failed: number }
@@ -71,17 +72,17 @@ export default function PlayerRefresh() {
     const result     = opResults[key]
     return (
       <div key={key} className='flex items-center gap-1.5'>
-        <button
+        <MyButton
           onClick={() => handleOp(key, isTruncate ? `${prefix}_truncate` : `${prefix}_grp`, isTruncate ? undefined : grp)}
           disabled={running !== null}
-          className={`rounded border px-3 py-1.5 text-sm disabled:opacity-50 ${
+          overrideClass={`rounded border px-3 py-1.5 text-sm disabled:opacity-50 h-auto md:h-auto ${
             isTruncate
-              ? 'border-red-300 bg-red-50 hover:bg-red-100'
-              : 'border-gray-300 bg-gray-100 hover:bg-gray-200'
+              ? 'border-red-300 bg-red-50 hover:bg-red-100 text-red-700'
+              : 'border-gray-300 bg-gray-100 hover:bg-gray-200 text-gray-700'
           }`}
         >
           {isRunning ? '…' : isTruncate ? 'Truncate' : grp === 'all' ? 'All' : `Group ${grp}`}
-        </button>
+        </MyButton>
         {result?.updated !== undefined && (
           <span className='text-xs text-green-700'>
             {isTruncate ? 'cleared' : `${result.updated} rows`}

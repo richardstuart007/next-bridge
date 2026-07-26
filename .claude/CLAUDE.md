@@ -44,21 +44,28 @@ The selected env is copied to `.env` before `next dev` starts.
 
 ## Pipeline
 
+All pipeline steps run from the single `/owner/pipeline` page (`PipelineTable.tsx`), one row per
+step, each with its own Run button plus a "Run All" that client-sequences every step. Every
+completed step logs a row to `tpip_pipelinelog` (run_id, duration, input/output record counts).
+
 ```
-Scrape (admin/scrape)
-  → ts1_sessions (discover)
-  → ts2_results  (raw scrape via nzb-from-ts1sessions)
-
-Build (admin/build)
-  → tse_sessions  (from ts2_results DISTINCT ON s2_run_id, ordered by date)
-  → tre_results   (from ts2_results JOIN tse_sessions)
-  → tpa_partners  (from tre_results)
-
-Stats (admin/stats)
-  → ta1_player_stats, ta2_partner_stats, re_paid linkage
+1. Scrape        /api/build/scrape        → ts1_sessions, ts2_results (auto date range: last built session → today)
+2. Build Sessions /api/build/sessions-nzb → tse_sessions (from ts1_sessions)
+3. Build Results  /api/build/results-nzb  → tre_results, tpa_partners (from ts2_results)
+4. Build Partners /api/build/partners     → tpa_partners row count (status only, no new writes)
+5. Update Stats   /api/build/stats        → ta1_player_stats, ta2_partner_stats (all groups)
 ```
 
-Stats page only recalculates from existing prod data — it does not re-import or re-build.
+The underlying logic lives in `src/lib/actions/pipelineScrape.ts` (`scrapeNewSessions`),
+`src/lib/actions/buildSteps.ts` (`buildSessionsFromStaging`, `buildResultsFromStaging`), and
+`src/lib/actions/stats.ts` (`rebuildAllStats`) — shared between the manual per-step API routes and
+`/api/cron/update-sessions` (the scheduled full-pipeline run), so both paths log identically.
+
+The Update Stats step only recalculates from existing prod data — it does not re-import or re-build.
+
+The older parameterized routes (`scrape/discover/nzb-by-date`, `scrape/discover/nzb-by-flagged`,
+`scrape/raw/nzb-from-ts1sessions`, etc. — manual date-range/source selection) are no longer linked
+from any page but still work if called directly; see "Scrape API routes" below.
 
 ## Key field notes
 
@@ -90,22 +97,22 @@ Other projects reuse them the same way. The route files in nextjs-shared are at:
 
 **After editing nextjs-shared source** (in node_modules for local testing): commit and push the nextjs-shared GitHub repo, then run `npm install` in consuming projects to pick up the changes.
 
-## Admin routes
+## Owner routes
 
 | Route | Purpose |
 |---|---|
-| `/admin/scrape` | Scrape NZB by date/run_id/flagged players |
-| `/admin/build` | Build prod tables from staging |
-| `/admin/builddata` | Inspect build output |
-| `/admin/stats` | Recalculate stats |
-| `/admin/db-tools` | Compare schemas, copy tables between local and prod |
+| `/owner` | Tools / Logging / Cache tabs |
+| `/owner/pipeline` | Run pipeline steps individually or all at once (see Pipeline above) |
+| `/owner/players` | Manage tracked players |
+| `/owner/builddata` | Inspect staging (ts0/ts1/ts2) and production tables — tabbed |
 
-## Scrape API routes
+## Scrape API routes (unlinked from any page — manual/curl use only)
 
 | Route | Purpose |
 |---|---|
-| `scrape/discover/nzb-by-date` | Finds missing run_ids → ts1_sessions |
-| `scrape/raw/nzb-from-ts1sessions` | Fetches ts1_sessions → ts2_results (main flow) |
+| `scrape/discover/nzb-by-date` | Finds missing run_ids → ts1_sessions (manual date range) |
+| `scrape/discover/nzb-by-flagged` | Finds missing run_ids for tracked players (manual date range) |
+| `scrape/raw/nzb-from-ts1sessions` | Fetches ts1_sessions → ts2_results |
 | `scrape/raw/nzb-by-date` | Direct date-range scrape → ts2_results |
 | `scrape/raw/nzb-by-runid` | Direct run_id scrape → ts2_results |
 | `scrape/raw/nzb-by-flagged` | Flagged players → ts2_results |

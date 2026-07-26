@@ -3,6 +3,13 @@
     "deploymentEnabled": true
   },
   "crons": [
-    { "path": "/api/cron/update-sessions", "schedule": "0 14 * * *" }
+    { "path": "/api/build/scrape",                       "schedule": "0 14 * * *" },
+    { "path": "/api/build/sessions-nzb?group=akbc",      "schedule": "20 14 * * *" },
+    { "path": "/api/build/results-nzb?group=akbc",       "schedule": "40 14 * * *" },
+    { "path": "/api/build/scrape-tracked",                "schedule": "0 15 * * *" },
+    { "path": "/api/build/sessions-nzb?group=tracked",   "schedule": "20 15 * * *" },
+    { "path": "/api/build/results-nzb?group=tracked",    "schedule": "40 15 * * *" },
+    { "path": "/api/build/partners",       "schedule": "0 16 * * *" },
+    { "path": "/api/build/stats",          "schedule": "20 16 * * *" }
   ]
 }

@@ -139,7 +139,6 @@ export async function POST(request: NextRequest) {
 
       try {
         if (!skip_truncate) {
-          await table_query({ caller: 'scrape/discover/nzb-by-flagged/truncate-ts0', query: `TRUNCATE ts0_scraped`,  params: [] })
           await table_query({ caller: 'scrape/discover/nzb-by-flagged/truncate-ts1', query: `TRUNCATE ts1_sessions`, params: [] })
           await table_query({ caller: 'scrape/discover/nzb-by-flagged/truncate-ts2', query: `TRUNCATE ts2_results`,  params: [] })
         }
@@ -164,11 +163,6 @@ export async function POST(request: NextRequest) {
           send({ player: player.pl_name })
 
           const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nz_bridge_number}`
-          await table_query({
-            caller: 'scrape/discover/nzb-by-flagged/insert-ts0-player',
-            query: `INSERT INTO ts0_scraped (s0_run_id, s0_source, s0_url) VALUES (0, 'player', $1)`,
-            params: [url]
-          })
 
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
@@ -200,11 +194,6 @@ export async function POST(request: NextRequest) {
         // Fetch each missing result page to extract date, then write to ts1
         for (const run_id of allMissingIds) {
           const url = `${NZB_BASE}/results.html?run_id=${run_id}`
-          await table_query({
-            caller: 'scrape/discover/nzb-by-flagged/insert-ts0',
-            query: `INSERT INTO ts0_scraped (s0_run_id, s0_source, s0_url) VALUES ($1, 'player', $2)`,
-            params: [run_id, url]
-          })
           send({ run_id })
 
           const response = await fetch(url, {

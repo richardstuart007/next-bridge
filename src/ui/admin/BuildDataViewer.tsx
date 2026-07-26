@@ -9,6 +9,20 @@ import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import MySelectMulti from 'nextjs-shared/MySelectMulti'
+import { MyTab } from 'nextjs-shared/MyTab'
+import Ts1Table from '@/src/ui/admin/Ts1Table'
+import Ts2Table from '@/src/ui/admin/Ts2Table'
+
+type Tab = 'production' | 'ts1' | 'ts2'
+
+const TAB_ACTIVE  = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors border-blue-600 text-blue-600'
+const TAB_PASSIVE = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors border-transparent text-gray-500 hover:text-gray-700'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'production', label: 'Production' },
+  { id: 'ts1',         label: 'ts1' },
+  { id: 'ts2',         label: 'ts2' },
+]
 
 type Row = Record<string, unknown>
 
@@ -122,7 +136,7 @@ function SectionHeader({ label, shown, total, loading, children }: {
   )
 }
 
-export default function BuildDataViewer() {
+function ProductionTables() {
   const [error, setError] = useState<string | null>(null)
 
   // tpl_players
@@ -319,6 +333,27 @@ export default function BuildDataViewer() {
         )}
       </div>
 
+    </div>
+  )
+}
+
+export default function BuildDataViewer() {
+  const [active, setActive] = useState<Tab>('production')
+
+  return (
+    <div>
+      <div className='flex gap-0 border-b border-gray-200 mb-6'>
+        {TABS.map(t => (
+          <MyTab key={t.id} active={active === t.id} onClick={() => setActive(t.id)}
+            underlineActiveClass={TAB_ACTIVE} underlineInactiveClass={TAB_PASSIVE}>
+            {t.label}
+          </MyTab>
+        ))}
+      </div>
+
+      {active === 'production' && <ProductionTables />}
+      {active === 'ts1'        && <Ts1Table />}
+      {active === 'ts2'        && <Ts2Table />}
     </div>
   )
 }

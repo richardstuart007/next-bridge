@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
       const missing: { date: string; run_id: number }[] = []
 
       try {
-        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts0', query: `TRUNCATE ts0_scraped`,  params: [] })
         await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts1', query: `TRUNCATE ts1_sessions`, params: [] })
         await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts2', query: `TRUNCATE ts2_results`,  params: [] })
 
@@ -51,12 +50,6 @@ export async function POST(request: NextRequest) {
           const url =
             `${NZB_BASE}/results.html?mp_filter_club=${club_id}` +
             `&date_start=${day}&date_end=${day}&mp_results=Search`
-
-          await table_query({
-            caller: 'scrape/discover/nzb-by-date/insert-ts0',
-            query: `INSERT INTO ts0_scraped (s0_run_id, s0_source, s0_url) VALUES (0, 'club', $1)`,
-            params: [url]
-          })
 
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }

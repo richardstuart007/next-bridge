@@ -155,10 +155,7 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
   return { plid: reselect[0].pl_plid, created: false }
 }
 
-export async function POST(request: Request) {
-  let source = 'club'
-  try { const b = await request.json(); source = b.source ?? 'club' } catch { /* no body */ }
-
+export async function POST() {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
@@ -189,11 +186,6 @@ export async function POST(request: Request) {
           send({ run_id })
 
           const url = `${NZB_BASE}/results.html?run_id=${run_id}`
-          await table_query({
-            caller: 'scrape/nzb-from-ts1sessions/insert-ts0',
-            query: `INSERT INTO ts0_scraped (s0_run_id, s0_source, s0_url) VALUES ($1, $2, $3)`,
-            params: [run_id, source, url]
-          })
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
           })

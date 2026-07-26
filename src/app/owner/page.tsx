@@ -5,12 +5,9 @@ import OwnerTableCache from 'nextjs-shared/OwnerTableCache'
 import OwnerTableLogging from 'nextjs-shared/OwnerTableLogging'
 
 const TOOLS = [
-  { href: '/owner/cron', label: 'Full Pipeline Run', description: 'Discover, scrape, build, and recompute stats in one click — runs steps 1 → 2 → 3 in sequence.', step: '▶' },
+  { href: '/owner/pipeline', label: 'Pipeline', description: 'Discover, scrape, build, and recompute stats — run each step individually or all in sequence.', step: '▶' },
   { href: '/owner/players', label: 'Players', description: 'Manage which players are tracked (all results scraped automatically).', step: '✦' },
-  { href: '/owner/scrape', label: 'Raw Data Scraping', description: 'Import NZ Bridge results by date range into ts1/ts2 staging tables.', step: '1' },
-  { href: '/owner/build', label: 'Build Tables', description: 'Populate production tables (tse_sessions, tre_results, tpa_partners) from ts1/ts2.', step: '2' },
-  { href: '/owner/stats', label: 'Update Stats', description: 'Recompute averages and partnership stats from stored results.', step: '3' },
-  { href: '/owner/builddata', label: 'Build Data Viewer', description: 'Inspect and validate the production tables populated by the build steps.', step: '4' },
+  { href: '/owner/builddata', label: 'Build Data Viewer', description: 'Inspect and validate the staging and production tables populated by the pipeline.', step: '1' },
 ]
 
 function ToolsPanel() {

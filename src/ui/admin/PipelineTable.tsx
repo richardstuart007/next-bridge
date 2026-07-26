@@ -14,16 +14,17 @@ import {
   refreshSessionsStatus, refreshResultsStatus, refreshPartnersStatus,
   type StepStatus
 } from '@/src/lib/actions/pipelineStatus'
-import { SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS } from '@/src/lib/constants'
+import { SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS, TOURNAMENT_GROUP_SQL_EXPR } from '@/src/lib/constants'
 
 type StepResult = { data: Record<string, unknown> | null; error: string | null }
 
-type Tab = 'akbc' | 'tracked' | 'finish'
+type Tab = 'overview' | 'akbc' | 'tracked' | 'finish'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'akbc',    label: 'AKBC' },
-  { id: 'tracked', label: 'Tracked Players' },
-  { id: 'finish',  label: 'Finish' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'akbc',     label: 'AKBC' },
+  { id: 'tracked',  label: 'Tracked Players' },
+  { id: 'finish',   label: 'Finish' },
 ]
 
 type SubStep = { subStep: string; label: string }
@@ -61,15 +62,47 @@ const STEP_SUBSTEPS: Record<number, SubStep[] | null> = {
   ],
 }
 
-const STATS_SUB_ROWS: { key: string; label: string; url: string }[] = [
-  { key: 'player-a',    label: 'Player Stats — Group A',  url: '/api/players/recalculate?mode=player_grp&grp=A' },
-  { key: 'player-b',    label: 'Player Stats — Group B',  url: '/api/players/recalculate?mode=player_grp&grp=B' },
-  { key: 'player-c',    label: 'Player Stats — Group C',  url: '/api/players/recalculate?mode=player_grp&grp=C' },
-  { key: 'player-all',  label: 'Player Stats — All',      url: '/api/players/recalculate?mode=player_grp&grp=all' },
-  { key: 'partner-a',   label: 'Partner Stats — Group A', url: '/api/players/recalculate?mode=partner_grp&grp=A' },
-  { key: 'partner-b',   label: 'Partner Stats — Group B', url: '/api/players/recalculate?mode=partner_grp&grp=B' },
-  { key: 'partner-c',   label: 'Partner Stats — Group C', url: '/api/players/recalculate?mode=partner_grp&grp=C' },
-  { key: 'partner-all', label: 'Partner Stats — All',     url: '/api/players/recalculate?mode=partner_grp&grp=all' },
+const GRP_EXPR_SQL = TOURNAMENT_GROUP_SQL_EXPR
+
+function playerStatsSql(grp: string): string {
+  const isAll = grp === 'all'
+  return `INSERT INTO ta1_player_stats
+  (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
+   a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev)
+SELECT u.plid, ${isAll ? "'all'" : `'${grp}'`}, ...
+FROM tre_results
+JOIN tse_sessions ON se_seid = re_seid
+JOIN tpa_partners ON pa_paid = re_paid
+CROSS JOIN LATERAL unnest(ARRAY[pa_plid1, pa_plid2]) AS u(plid)
+WHERE se_is_summary IS NOT TRUE
+${isAll ? '' : `AND ${GRP_EXPR_SQL} = '${grp}'`}
+GROUP BY u.plid
+ON CONFLICT (a1_plid, a1_group) DO UPDATE SET ...;`
+}
+
+function partnerStatsSql(grp: string): string {
+  const isAll = grp === 'all'
+  return `INSERT INTO ta2_partner_stats
+  (a2_paid, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_mp_stddev,
+   a2_vp_sessions, a2_vp_avg_vp, a2_vp_stddev)
+SELECT re_paid, ${isAll ? "'all'" : `'${grp}'`}, ...
+FROM tre_results
+JOIN tse_sessions ON se_seid = re_seid
+WHERE se_is_summary IS NOT TRUE
+${isAll ? '' : `AND ${GRP_EXPR_SQL} = '${grp}'`}
+GROUP BY re_paid
+ON CONFLICT (a2_paid, a2_group) DO UPDATE SET ...;`
+}
+
+const STATS_SUB_ROWS: { key: string; label: string; url: string; sql: string }[] = [
+  { key: 'player-a',    label: 'Player Stats — Group A',  url: '/api/players/recalculate?mode=player_grp&grp=A',   sql: playerStatsSql('A') },
+  { key: 'player-b',    label: 'Player Stats — Group B',  url: '/api/players/recalculate?mode=player_grp&grp=B',   sql: playerStatsSql('B') },
+  { key: 'player-c',    label: 'Player Stats — Group C',  url: '/api/players/recalculate?mode=player_grp&grp=C',   sql: playerStatsSql('C') },
+  { key: 'player-all',  label: 'Player Stats — All',      url: '/api/players/recalculate?mode=player_grp&grp=all', sql: playerStatsSql('all') },
+  { key: 'partner-a',   label: 'Partner Stats — Group A', url: '/api/players/recalculate?mode=partner_grp&grp=A',   sql: partnerStatsSql('A') },
+  { key: 'partner-b',   label: 'Partner Stats — Group B', url: '/api/players/recalculate?mode=partner_grp&grp=B',   sql: partnerStatsSql('B') },
+  { key: 'partner-c',   label: 'Partner Stats — Group C', url: '/api/players/recalculate?mode=partner_grp&grp=C',   sql: partnerStatsSql('C') },
+  { key: 'partner-all', label: 'Partner Stats — All',     url: '/api/players/recalculate?mode=partner_grp&grp=all', sql: partnerStatsSql('all') },
 ]
 
 const SQL_STATUS_SESSIONS =
@@ -121,57 +154,14 @@ function StatusBadge({ complete }: { complete: boolean | null }) {
 }
 
 //----------------------------------------------------------------------------------------------
-//  PipelineJobsSummary — one row per step in `steps` (steps with sub-steps expand into
-//  them), joined against a selected run_id. Scoped to just the step(s) this panel covers.
+//  JobsTable — the table body for one or more steps, joined against already-fetched `runs`.
+//  Pure presentational, no run-id fetching of its own — shared by PipelineJobsSummary (its own
+//  self-managed run-id picker) and OverviewSummary (one shared picker for all 3 groups).
 //----------------------------------------------------------------------------------------------
-function PipelineJobsSummary({ refreshKey, steps, title }: { refreshKey: number; steps: number[]; title: string }) {
-  const [recentRunIds, setRecentRunIds] = useState<number[]>([])
-  const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
-  const [runs, setRuns] = useState<PipelineStatus[]>([])
-  const [runsLoading, setRunsLoading] = useState(false)
+function JobsTable({ steps, runs }: { steps: number[]; runs: PipelineStatus[] }) {
   const [playersExpanded, setPlayersExpanded] = useState(false)
 
-  async function loadRunStatus(runId: number) {
-    setRuns(await getPipelineRunStatus(runId))
-  }
-
-  async function doRefreshRuns() {
-    setRunsLoading(true)
-    const ids = await getRecentRunIds()
-    setRecentRunIds(ids)
-    const stillPresent = selectedRunId !== null && ids.includes(selectedRunId)
-    const idToShow = stillPresent ? selectedRunId : (ids[0] ?? null)
-    setSelectedRunId(idToShow)
-    if (idToShow !== null) await loadRunStatus(idToShow)
-    setRunsLoading(false)
-  }
-
-  useEffect(() => { doRefreshRuns() }, [refreshKey])
-
-  async function handleSelectRunId(runId: number) {
-    setSelectedRunId(runId)
-    setRunsLoading(true)
-    await loadRunStatus(runId)
-    setRunsLoading(false)
-  }
-
-  if (recentRunIds.length === 0) return null
-
   return (
-    <MyBox>
-      <div className='flex items-center gap-2 mb-2'>
-        <h3 className='text-xs font-bold'>Pipeline Jobs — {title}</h3>
-        <MySelect
-          options={recentRunIds.map(id => `Run #${id}`)}
-          value={selectedRunId != null ? `Run #${selectedRunId}` : ''}
-          onChange={e => handleSelectRunId(parseInt(e.target.value.replace('Run #', ''), 10))}
-          overrideClass='w-28'
-        />
-        <MyButton onClick={doRefreshRuns} disabled={runsLoading}
-          overrideClass='h-auto md:h-auto bg-transparent hover:bg-transparent text-blue-600 hover:text-blue-800 border border-blue-300 px-1.5 py-0.5 leading-none'>
-          {runsLoading ? '…' : '↻'}
-        </MyButton>
-      </div>
       <table className='w-full text-xs'>
         <thead>
           <tr className='text-left text-gray-400'>
@@ -262,12 +252,127 @@ function PipelineJobsSummary({ refreshKey, steps, title }: { refreshKey: number;
           })}
         </tbody>
       </table>
+  )
+}
+
+//----------------------------------------------------------------------------------------------
+//  PipelineJobsSummary — self-managed run-id picker (own recentRunIds/selectedRunId/runs state),
+//  scoped to just the step(s) this panel covers. Used by the AKBC/Tracked Players/Finish tabs,
+//  each with their own independent picker.
+//----------------------------------------------------------------------------------------------
+function PipelineJobsSummary({ refreshKey, steps }: { refreshKey: number; steps: number[] }) {
+  const [recentRunIds, setRecentRunIds] = useState<number[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
+  const [runs, setRuns] = useState<PipelineStatus[]>([])
+  const [runsLoading, setRunsLoading] = useState(false)
+
+  async function loadRunStatus(runId: number) {
+    setRuns(await getPipelineRunStatus(runId))
+  }
+
+  async function doRefreshRuns() {
+    setRunsLoading(true)
+    const ids = await getRecentRunIds()
+    const isNewRun = ids[0] !== undefined && !recentRunIds.includes(ids[0])
+    setRecentRunIds(ids)
+    const stillPresent = selectedRunId !== null && ids.includes(selectedRunId)
+    const idToShow = isNewRun ? ids[0] : (stillPresent ? selectedRunId : (ids[0] ?? null))
+    setSelectedRunId(idToShow)
+    if (idToShow !== null) await loadRunStatus(idToShow)
+    setRunsLoading(false)
+  }
+
+  useEffect(() => { doRefreshRuns() }, [refreshKey])
+
+  async function handleSelectRunId(runId: number) {
+    setSelectedRunId(runId)
+    setRunsLoading(true)
+    await loadRunStatus(runId)
+    setRunsLoading(false)
+  }
+
+  if (recentRunIds.length === 0) return null
+
+  return (
+    <MyBox>
+      <div className='flex items-center gap-2 mb-2'>
+        <h3 className='text-xs font-bold'>Summary</h3>
+        <MySelect
+          options={recentRunIds.map(id => `Run # (${id})`)}
+          value={selectedRunId != null ? `Run # (${selectedRunId})` : ''}
+          onChange={e => handleSelectRunId(parseInt(e.target.value.replace(/\D/g, ''), 10))}
+          overrideClass='w-20'
+        />
+        <MyButton onClick={doRefreshRuns} disabled={runsLoading}
+          overrideClass='h-auto md:h-auto bg-transparent hover:bg-transparent text-blue-600 hover:text-blue-800 border border-blue-300 px-1.5 py-0.5 leading-none'>
+          {runsLoading ? '…' : '↻'}
+        </MyButton>
+      </div>
+      <JobsTable steps={steps} runs={runs} />
     </MyBox>
   )
 }
 
+//----------------------------------------------------------------------------------------------
+//  OverviewSummary — one shared run-id picker and one combined table covering all 4 steps
+//  (AKBC/Tracked Players/Finish), fetched once via getPipelineRunStatus (already returns every
+//  step for the selected run_id in one query).
+//----------------------------------------------------------------------------------------------
+function OverviewSummary({ refreshKey }: { refreshKey: number }) {
+  const [recentRunIds, setRecentRunIds] = useState<number[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
+  const [runs, setRuns] = useState<PipelineStatus[]>([])
+  const [runsLoading, setRunsLoading] = useState(false)
+
+  async function loadRunStatus(runId: number) {
+    setRuns(await getPipelineRunStatus(runId))
+  }
+
+  async function doRefreshRuns() {
+    setRunsLoading(true)
+    const ids = await getRecentRunIds()
+    const isNewRun = ids[0] !== undefined && !recentRunIds.includes(ids[0])
+    setRecentRunIds(ids)
+    const stillPresent = selectedRunId !== null && ids.includes(selectedRunId)
+    const idToShow = isNewRun ? ids[0] : (stillPresent ? selectedRunId : (ids[0] ?? null))
+    setSelectedRunId(idToShow)
+    if (idToShow !== null) await loadRunStatus(idToShow)
+    setRunsLoading(false)
+  }
+
+  useEffect(() => { doRefreshRuns() }, [refreshKey])
+
+  async function handleSelectRunId(runId: number) {
+    setSelectedRunId(runId)
+    setRunsLoading(true)
+    await loadRunStatus(runId)
+    setRunsLoading(false)
+  }
+
+  if (recentRunIds.length === 0) return null
+
+  return (
+    <>
+      <div className='flex items-center gap-2'>
+        <MySelect
+          options={recentRunIds.map(id => `Run # (${id})`)}
+          value={selectedRunId != null ? `Run # (${selectedRunId})` : ''}
+          onChange={e => handleSelectRunId(parseInt(e.target.value.replace(/\D/g, ''), 10))}
+          overrideClass='w-20'
+        />
+        <MyButton onClick={doRefreshRuns} disabled={runsLoading}
+          overrideClass='h-auto md:h-auto bg-transparent hover:bg-transparent text-blue-600 hover:text-blue-800 border border-blue-300 px-1.5 py-0.5 leading-none'>
+          {runsLoading ? '…' : '↻'}
+        </MyButton>
+      </div>
+
+      <JobsTable steps={[1, 2, 3, 4]} runs={runs} />
+    </>
+  )
+}
+
 export default function PipelineTable() {
-  const [activeTab, setActiveTab] = useState<Tab>('akbc')
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [refreshKey, setRefreshKey] = useState(0)
   const [results, setResults] = useState<Record<string, StepResult>>({})
   const [running, setRunning] = useState<string | null>(null)
@@ -351,7 +456,23 @@ export default function PipelineTable() {
   const handleResultsTracked  = () => run('results-tracked',  '/api/build/results-nzb?group=tracked',    doRefreshResults)
 
   const handlePartners = () => run('partners', '/api/build/partners', doRefreshPartners)
-  const handleStats    = () => run('stats',    '/api/build/stats',    async () => {})
+  const handleRunFullCron = () => run('full-cron', '/api/cron/update-sessions', async () => {})
+
+  async function handleStats() {
+    const data = await run('stats', '/api/build/stats', async () => {})
+    const groups = data?.groups as Record<string, number> | undefined
+    if (groups) {
+      setResults(prev => {
+        const next = { ...prev }
+        for (const row of STATS_SUB_ROWS) {
+          const updated = groups[row.key]
+          if (updated !== undefined) next[row.key] = { data: { updated }, error: null }
+        }
+        return next
+      })
+    }
+    return data
+  }
 
   async function runAllAkbc() {
     setRunningAll('akbc')
@@ -388,13 +509,25 @@ export default function PipelineTable() {
         ))}
       </div>
 
+      {activeTab === 'overview' && (
+      <>
+      <div className='flex items-center gap-2'>
+        <MyButton onClick={handleRunFullCron} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${running === 'full-cron' ? 'bg-red-700 hover:bg-red-700 animate-pulse' : 'bg-red-500 hover:bg-red-600'}`}>
+          {running === 'full-cron' ? 'Running…' : 'Run All Cron'}
+        </MyButton>
+        {results['full-cron']?.error && <p className='text-xs text-red-600'>{results['full-cron'].error}</p>}
+      </div>
+      <OverviewSummary refreshKey={refreshKey} />
+      </>
+      )}
+
       {activeTab === 'akbc' && (
       <>
-      <PipelineJobsSummary refreshKey={refreshKey} steps={[1]} title='AKBC' />
+      <PipelineJobsSummary refreshKey={refreshKey} steps={[1]} />
 
       <MyBox>
         <div className='flex items-center gap-4 mb-2'>
-          <h3 className='text-xs font-bold'>Run Pipeline — AKBC</h3>
+          <h3 className='text-xs font-bold'>Pipeline</h3>
           <div className='flex items-center gap-1'>
             <span className='text-xs text-gray-500'>From:</span>
             <MyInput type='date' value={scrapeFromDate} onChange={e => setScrapeFromDate(e.target.value)}
@@ -423,8 +556,8 @@ export default function PipelineTable() {
               <th className='font-medium py-1 pr-2'>Status</th>
               <th className='font-medium py-1 pr-2'>Result</th>
               <th className='font-medium py-1'>
-                <MyButton onClick={runAllAkbc} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${runningAll === 'akbc' ? 'bg-red-300 hover:bg-red-300' : 'bg-red-500 hover:bg-red-600'}`}>
-                  {runningAll === 'akbc' ? 'Running…' : 'Run All (AKBC)'}
+                <MyButton onClick={runAllAkbc} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${runningAll === 'akbc' ? 'bg-red-700 hover:bg-red-700 animate-pulse' : 'bg-red-500 hover:bg-red-600'}`}>
+                  {runningAll === 'akbc' ? 'Running…' : 'Run All'}
                 </MyButton>
               </th>
             </tr>
@@ -552,11 +685,11 @@ export default function PipelineTable() {
 
       {activeTab === 'tracked' && (
       <>
-      <PipelineJobsSummary refreshKey={refreshKey} steps={[2]} title='Tracked Players' />
+      <PipelineJobsSummary refreshKey={refreshKey} steps={[2]} />
 
       <MyBox>
         <div className='flex items-center gap-4 mb-2'>
-          <h3 className='text-xs font-bold'>Run Pipeline — Tracked Players</h3>
+          <h3 className='text-xs font-bold'>Pipeline</h3>
         </div>
         <table className='w-full text-xs'>
           <thead>
@@ -575,8 +708,8 @@ export default function PipelineTable() {
               <th className='font-medium py-1 pr-2'>Status</th>
               <th className='font-medium py-1 pr-2'>Result</th>
               <th className='font-medium py-1'>
-                <MyButton onClick={runAllTracked} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${runningAll === 'tracked' ? 'bg-red-300 hover:bg-red-300' : 'bg-red-500 hover:bg-red-600'}`}>
-                  {runningAll === 'tracked' ? 'Running…' : 'Run All (Tracked)'}
+                <MyButton onClick={runAllTracked} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${runningAll === 'tracked' ? 'bg-red-700 hover:bg-red-700 animate-pulse' : 'bg-red-500 hover:bg-red-600'}`}>
+                  {runningAll === 'tracked' ? 'Running…' : 'Run All'}
                 </MyButton>
               </th>
             </tr>
@@ -700,11 +833,11 @@ export default function PipelineTable() {
 
       {activeTab === 'finish' && (
       <>
-      <PipelineJobsSummary refreshKey={refreshKey} steps={[3, 4]} title='Finish' />
+      <PipelineJobsSummary refreshKey={refreshKey} steps={[3, 4]} />
 
       <MyBox>
         <div className='flex items-center gap-4 mb-2'>
-          <h3 className='text-xs font-bold'>Finish Pipeline</h3>
+          <h3 className='text-xs font-bold'>Pipeline</h3>
         </div>
         <table className='w-full text-xs'>
           <thead>
@@ -723,8 +856,8 @@ export default function PipelineTable() {
               <th className='font-medium py-1 pr-2'>Status</th>
               <th className='font-medium py-1 pr-2'>Result</th>
               <th className='font-medium py-1'>
-                <MyButton onClick={runFinishPipeline} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${runningAll === 'finish' ? 'bg-red-300 hover:bg-red-300' : 'bg-red-500 hover:bg-red-600'}`}>
-                  {runningAll === 'finish' ? 'Running…' : 'Finish Pipeline'}
+                <MyButton onClick={runFinishPipeline} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${runningAll === 'finish' ? 'bg-red-700 hover:bg-red-700 animate-pulse' : 'bg-red-500 hover:bg-red-600'}`}>
+                  {runningAll === 'finish' ? 'Running…' : 'Run All'}
                 </MyButton>
               </th>
             </tr>
@@ -771,7 +904,7 @@ export default function PipelineTable() {
                 <MyHelpStep
                   title='4. Update Stats'
                   input={['tre_results joined to tse_sessions/tpa_partners']}
-                  processing="Truncates ta1_player_stats and ta2_partner_stats, then recomputes MP/VP session counts, averages and standard deviations per player and per partnership, for each tournament group (A/B/C, derived from the last character of se_tournament) plus a combined 'all' group — 8 inserts total, each logged as its own sub-step (see Pipeline Jobs above). Full rebuild every run, not incremental — there is no incremental backlog to show as a Remaining count."
+                  processing="Upserts ta1_player_stats and ta2_partner_stats (no truncate — each group can be re-run independently), recomputing MP/VP session counts, averages and standard deviations per player and per partnership, for each tournament group (A/B/C, derived from the last character of se_tournament) plus a combined 'all' group — 8 upserts total, each logged as its own sub-step (see Pipeline Jobs above) with its own Input Recs (tre_results rows matched) and Output Recs (rows upserted). Full recompute every run, not incremental — there is no incremental backlog to show as a Remaining count."
                   output={[
                     'ta1_player_stats — one row per player per group',
                     'ta2_partner_stats — one row per partnership per group',
@@ -808,10 +941,10 @@ export default function PipelineTable() {
                 <td className='py-1 pr-2 text-gray-600'>
                   {results[row.key]?.data && <span>{n(results[row.key].data!.updated as number)} rows</span>}
                 </td>
+                <td className='py-1 pr-2'><MyHelp label='SQL' text={row.sql} /></td>
                 <td className='py-1 pr-2 text-gray-300'>—</td>
                 <td className='py-1 pr-2 text-gray-300'>—</td>
-                <td className='py-1 pr-2 text-gray-300'>—</td>
-                <td className='py-1 pr-2 text-gray-300'>—</td>
+                <td className='py-1 pr-2'><StatusBadge complete={results[row.key]?.data ? true : null} /></td>
                 <td className='py-1 pr-2'>
                   {results[row.key]?.error && <p className='text-xs text-red-600'>{results[row.key].error}</p>}
                 </td>

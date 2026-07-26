@@ -16,20 +16,20 @@ export async function POST(request: NextRequest) {
     const run_id = await resolvePipRunId(4, false)
 
     if (mode === 'player_grp') {
-      const updated = await computePlayerGroupStats(grp)
+      const { inserted, inputRecs } = await computePlayerGroupStats(grp)
       await logPipelineStep({
         run_id, step: 4, sub_step: PLAYER_SUB_STEP[grp], step_name: `Player Stats — Group ${grp === 'all' ? 'All' : grp}`,
-        input_table: 'tre_results', output_table: 'ta1_player_stats', output_recs: updated, duration_ms: Date.now() - t0
+        input_table: 'tre_results', input_recs: inputRecs, output_table: 'ta1_player_stats', output_recs: inserted, duration_ms: Date.now() - t0
       })
-      return NextResponse.json({ updated })
+      return NextResponse.json({ updated: inserted })
 
     } else if (mode === 'partner_grp') {
-      const updated = await computePartnerGroupStats(grp)
+      const { inserted, inputRecs } = await computePartnerGroupStats(grp)
       await logPipelineStep({
         run_id, step: 4, sub_step: PARTNER_SUB_STEP[grp], step_name: `Partner Stats — Group ${grp === 'all' ? 'All' : grp}`,
-        input_table: 'tre_results', output_table: 'ta2_partner_stats', output_recs: updated, duration_ms: Date.now() - t0
+        input_table: 'tre_results', input_recs: inputRecs, output_table: 'ta2_partner_stats', output_recs: inserted, duration_ms: Date.now() - t0
       })
-      return NextResponse.json({ updated })
+      return NextResponse.json({ updated: inserted })
     }
 
     return NextResponse.json({ error: `Unknown mode: ${mode}` }, { status: 400 })

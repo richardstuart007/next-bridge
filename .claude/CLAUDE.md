@@ -106,6 +106,32 @@ Other projects reuse them the same way. The route files in nextjs-shared are at:
 | `/owner/players` | Manage tracked players |
 | `/owner/builddata` | Inspect staging (ts0/ts1/ts2) and production tables — tabbed |
 
+### Build Data Viewer — design principle
+
+`/owner/builddata` exists to investigate data errors directly against the raw tables — a faster
+alternative to pgAdmin/SQL for the common case of "click through player → sessions → results →
+stats to see what's actually stored." Two things follow from that purpose:
+
+- **Each tab shows one table's raw, unmodified columns** — no joins that combine an independently-
+  computed table (e.g. `ta1_player_stats`, `ta2_partner_stats`) into the same row as the table
+  being inspected. If two tables are joined and one of them has its own faulty logic, that logic
+  gets baked into every row of the combined view — making the exact kind of bug this page exists to
+  catch harder to spot, not easier. `tpl`/`tpa` used to join in `ta1`/`ta2` stats directly and hit
+  this: `ta2_partner_stats` has up to 4 rows per partnership (one per tournament group), so joining
+  it onto `tpa_partners` forced picking one group to collapse the duplication back to one row per
+  partnership — silently hardcoded to `'C'` with no record that a decision had even been made.
+  Fixed by un-joining: `tpl`/`tpa` show only their own table's columns, with a click-to-expand
+  panel (keyed by `pl_plid`/`pa_paid`) showing the related `ta1`/`ta2` rows separately instead.
+- **1:1 lookups are fine, row-multiplying joins are not** — resolving `pa_plid1`/`pa_plid2` to
+  player names via `tpl_players` (as `getAllPartners()`/`getResultsBySeid()`/`getResultsByPlid()`
+  already do) doesn't multiply rows or combine two independently-computed datasets, so it doesn't
+  have this problem. The distinction is whether the join could make one row represent more than
+  one underlying fact.
+- **Click-through over retyping IDs, filters over scrolling** — every tab's rows are clickable
+  where a natural next table exists (player → results, session → results, partnership → stats),
+  and every displayed column gets its own filter — both exist specifically so investigating an
+  error is a few clicks instead of writing SQL by hand.
+
 ## Scrape API routes (unlinked from any page — manual/curl use only)
 
 | Route | Purpose |

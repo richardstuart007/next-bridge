@@ -4,17 +4,21 @@ import { scrapeClubSessions, scrapeTrackedPlayerSessions } from '@/src/lib/actio
 import { buildSessionsFromStaging, buildResultsFromStaging } from '@/src/lib/actions/buildSteps'
 import { buildAllPartnerStats } from '@/src/lib/actions/players'
 import { rebuildAllStats } from '@/src/lib/actions/stats'
+import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
 
-export async function GET(request: NextRequest) {
+function checkCronAuth(request: NextRequest): NextResponse | null {
   const isDev  = process.env.NEXT_PUBLIC_APPENV_ISDEV === 'true'
   const secret = process.env.CRON_SECRET
   if (secret && !isDev) {
     const auth = request.headers.get('authorization')
     if (auth !== `Bearer ${secret}`) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+  return null
+}
 
+async function run(): Promise<NextResponse> {
   const log = (msg: string, severity = 'I') =>
-    write_logging({ lg_functionname: 'GET', lg_caller: 'cron/update-sessions', lg_msg: msg, lg_severity: severity })
+    write_logging({ lg_functionname: 'run', lg_caller: 'cron/update-sessions', lg_msg: msg, lg_severity: severity })
 
   try {
     await log('START full pipeline run')
@@ -33,7 +37,13 @@ export async function GET(request: NextRequest) {
     const trackedResultsResult  = await buildResultsFromStaging(false, undefined, undefined, 'tracked')
     await log(`Build (Tracked): ${trackedSessionsResult.inserted} sessions, ${trackedResultsResult.inserted} results`)
 
+    const t0Partners = Date.now()
     const { pairs: partner_pairs } = await buildAllPartnerStats()
+    await logPipelineStep({
+      run_id: await resolvePipRunId(3, false), step: 3, sub_step: 'a', step_name: 'Build Partners',
+      output_table: 'tpa_partners', output_recs: partner_pairs,
+      duration_ms: Date.now() - t0Partners
+    })
     await log(`Build Partners: ${partner_pairs} pairs`)
 
     await rebuildAllStats()
@@ -55,4 +65,16 @@ export async function GET(request: NextRequest) {
     await log(String(err), 'E')
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
+}
+
+export async function GET(request: NextRequest) {
+  const unauthorized = checkCronAuth(request)
+  if (unauthorized) return unauthorized
+  return run()
+}
+
+export async function POST(request: NextRequest) {
+  const unauthorized = checkCronAuth(request)
+  if (unauthorized) return unauthorized
+  return run()
 }

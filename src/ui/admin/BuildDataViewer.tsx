@@ -1,188 +1,133 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { getAllPlayers } from '@/src/lib/actions/players'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
-import { getResultsBySeid, getResultsByPlid, getAllPartners } from '@/src/lib/actions/build-viewer'
+import { getResultsBySeid, getAllPartners, getAllResults, getAllPlayerStats, getAllPartnerStats } from '@/src/lib/actions/build-viewer'
 import { EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 import { MyButton } from 'nextjs-shared/MyButton'
-import { MyInput } from 'nextjs-shared/MyInput'
-import MySelect from 'nextjs-shared/MySelect'
-import MySelectMulti from 'nextjs-shared/MySelectMulti'
 import { MyTab } from 'nextjs-shared/MyTab'
 import Ts1Table from '@/src/ui/admin/Ts1Table'
 import Ts2Table from '@/src/ui/admin/Ts2Table'
+import {
+  DataTable, SectionHeader, FText, FDate, FSelect, FMultiSelect, rowKey, dateKey, numMatch,
+  type Row, type SharedKey, type SharedFilters, SHARED_KEYS
+} from '@/src/ui/admin/DataTableShared'
+import { TOURNAMENT_GROUPS } from '@/src/lib/constants'
 
-type Tab = 'production' | 'ts1' | 'ts2'
+type Tab = 'ts1' | 'ts2' | 'tse' | 'tre' | 'tpl' | 'tpa' | 'ta1' | 'ta2' | 'filters'
 
 const TAB_ACTIVE  = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors border-blue-600 text-blue-600'
 const TAB_PASSIVE = 'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors border-transparent text-gray-500 hover:text-gray-700'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'production', label: 'Production' },
-  { id: 'ts1',         label: 'ts1' },
-  { id: 'ts2',         label: 'ts2' },
+  { id: 'ts1', label: 'ts1' },
+  { id: 'ts2', label: 'ts2' },
+  { id: 'tse', label: 'tse' },
+  { id: 'tre', label: 'tre' },
+  { id: 'tpl', label: 'tpl' },
+  { id: 'tpa', label: 'tpa' },
+  { id: 'ta1', label: 'ta1' },
+  { id: 'ta2', label: 'ta2' },
+  { id: 'filters', label: 'Filters' },
 ]
-
-type Row = Record<string, unknown>
 
 const YEARS = [2026, 2025, 2024, 2023, 2022, 2021]
 
-function rowKey(row: Row): unknown { return row[Object.keys(row)[0]] }
+type TabProps = { sharedFilters: SharedFilters; onKeyClick: (patch: SharedFilters) => void }
 
-function renderCell(val: unknown): React.ReactNode {
-  if (val === null || val === undefined) return <span className='text-gray-300'>—</span>
-  if (Array.isArray(val)) return val.join(', ')
-  return String(val)
-}
-
-function FText({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <MyInput type='text' placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)}
-      overrideClass='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400 h-auto md:h-auto' />
-  )
-}
-
-function FSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
-  return (
-    <MySelect value={value} onChange={e => onChange(e.target.value)}
-      overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs focus:outline-none h-auto md:h-auto'>
-      {children}
-    </MySelect>
-  )
-}
-
-function FMultiSelect({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
-  return (
-    <MySelectMulti
-      options={options}
-      selected={value}
-      onChange={onChange}
-      overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs focus:outline-none h-auto md:h-auto'
-    />
-  )
-}
-
-function DataTable({ rows, allRows, onRowClick, isClickable, selected, filters, cellRenderers }: {
-  rows: Row[]
-  allRows?: Row[]
-  onRowClick?: (row: Row) => void
-  isClickable?: boolean
-  selected?: Row | null
-  filters?: Record<string, React.ReactNode>
-  cellRenderers?: Record<string, (val: unknown, row: Row) => React.ReactNode>
-}) {
-  const source = allRows ?? rows
-  if (source.length === 0) return <p className='text-xs text-gray-400 py-2'>No rows</p>
-  const cols = Object.keys(source[0])
-  return (
-    <div className='overflow-x-auto border border-gray-200 rounded max-h-80 overflow-y-auto'>
-      <table className='w-full text-xs whitespace-nowrap'>
-        <thead className='bg-gray-50 sticky top-0'>
-          {filters && (
-            <tr>
-              {cols.map(col => (
-                <th key={`f-${col}`} className='px-1 py-1 bg-gray-50 border-b border-gray-100'>
-                  {filters[col] ?? null}
-                </th>
-              ))}
-            </tr>
-          )}
-          <tr>
-            {cols.map(col => (
-              <th key={col} className='px-2 py-1.5 text-left text-gray-500 font-medium border-b border-gray-200'>{col}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0
-            ? <tr><td colSpan={cols.length} className='px-2 py-2 text-xs text-gray-400 text-center'>No rows match filter</td></tr>
-            : rows.map((row, i) => {
-                const clickable = isClickable && !!onRowClick
-                const isSelected = selected != null && rowKey(selected) === rowKey(row)
-                return (
-                  <tr key={i}
-                    className={`border-t border-gray-100 ${isSelected ? 'bg-blue-100' : clickable ? 'cursor-pointer hover:bg-blue-50' : 'hover:bg-gray-50'}`}
-                    onClick={() => clickable && onRowClick?.(row)}>
-                    {cols.map(col => (
-                      <td key={col} className='px-2 py-1 text-gray-700'>
-                        {cellRenderers?.[col] ? cellRenderers[col](row[col], row) : renderCell(row[col])}
-                      </td>
-                    ))}
-                  </tr>
-                )
-              })
-          }
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function SectionHeader({ label, shown, total, loading, children }: {
-  label: string; shown?: number; total?: number; loading?: boolean; children?: React.ReactNode
-}) {
-  return (
-    <div className='flex items-center gap-2 mb-1'>
-      <p className='text-xs font-semibold text-gray-500 uppercase tracking-wide'>{label}</p>
-      {loading && <span className='text-xs text-blue-500'>Loading…</span>}
-      {!loading && total !== undefined && total > 0 && (
-        <span className='text-xs text-gray-400'>
-          {shown !== undefined && shown !== total ? `${shown} / ${total}` : total} rows
-        </span>
-      )}
-      {children && <div className='ml-auto flex items-center gap-2'>{children}</div>}
-    </div>
-  )
-}
-
-function ProductionTables() {
-  const [error, setError] = useState<string | null>(null)
-
-  // tpl_players
+function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
+  const [error,          setError]          = useState<string | null>(null)
   const [players,        setPlayers]        = useState<Row[]>([])
   const [playersLoading, setPlayersLoading] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Row | null>(null)
-  const [playerResults,  setPlayerResults]  = useState<Row[]>([])
-  const [plNameFilter,   setPlNameFilter]   = useState('')
-  const [plNzFilter,     setPlNzFilter]     = useState('')
-  const [plClubFilter,   setPlClubFilter]   = useState('')
-  const [plRankFilter,   setPlRankFilter]   = useState('')
-
-  // tse_sessions
-  const [sessYear,           setSessYear]           = useState(new Date().getFullYear())
-  const [sessions,           setSessions]           = useState<Row[]>([])
-  const [sessLoading,        setSessLoading]        = useState(false)
-  const [selectedSess,       setSelectedSess]       = useState<Row | null>(null)
-  const [sessResults,        setSessResults]        = useState<Row[]>([])
-  const [sessNameFilter,     setSessNameFilter]     = useState('')
-  const [sessScoringFilter,  setSessScoringFilter]  = useState('all')
-  const [sessClubFilter,     setSessClubFilter]     = useState('')
-  const [sessTournamentFilter, setSessTournamentFilter] = useState<string[]>([])
-  const [sessEventTypeFilter, setSessEventTypeFilter] = useState<Set<string>>(new Set())
-  const [sessDayFilter,      setSessDayFilter]      = useState('all')
-  const [sessSourceFilter,   setSessSourceFilter]   = useState('')
-  const tournamentTypes = ['A', 'B', 'C']
-
-  // tpa_partners
-  const [partners,        setPartners]        = useState<Row[]>([])
-  const [partnersLoading, setPartnersLoading] = useState(false)
-  const [paNameFilter,    setPaNameFilter]    = useState('')
-
+  const [filter_plid,         setFilter_plid]         = useState(() => sharedFilters.plid?.value ?? '')
+  const [filter_name,         setFilter_name]         = useState('')
+  const [filter_nz_bridge_number, setFilter_nz_bridge_number] = useState('')
+  const [filter_club,         setFilter_club]         = useState<string[]>([])
+  const [filter_rank,         setFilter_rank]         = useState('')
+  const [filter_grade,        setFilter_grade]        = useState<string[]>([])
+  const [filter_all_results,  setFilter_all_results]  = useState('all')
 
   async function loadPlayers() {
-    setPlayersLoading(true); setError(null); setSelectedPlayer(null); setPlayerResults([])
+    setPlayersLoading(true); setError(null); setSelectedPlayer(null)
     try { setPlayers((await getAllPlayers()) as Row[]) }
     catch (err) { setError(String(err)) }
     finally { setPlayersLoading(false) }
   }
 
-  async function handlePlayerClick(row: Row) {
-    if (selectedPlayer && rowKey(selectedPlayer) === rowKey(row)) { setSelectedPlayer(null); setPlayerResults([]); return }
-    setSelectedPlayer(row); setPlayerResults([])
-    try { setPlayerResults((await getResultsByPlid(row.pl_plid as number)) as Row[]) }
-    catch (err) { setError(String(err)) }
+  function handlePlayerClick(row: Row) {
+    if (selectedPlayer && rowKey(selectedPlayer) === rowKey(row)) { setSelectedPlayer(null); return }
+    setSelectedPlayer(row)
+    onKeyClick({ plid: { value: String(row.pl_plid), label: String(row.pl_name ?? '') } })
   }
+
+  const clubOptions  = Array.from(new Set(players.map(r => String(r.pl_club  ?? '')))).filter(Boolean).sort()
+  const gradeOptions = Array.from(new Set(players.map(r => String(r.pl_grade ?? '')))).filter(Boolean).sort()
+
+  const filteredPlayers = players.filter(r => {
+    if (filter_plid && !String(r.pl_plid ?? '').includes(filter_plid)) return false
+    if (filter_name && !String(r.pl_name ?? '').toLowerCase().includes(filter_name.toLowerCase())) return false
+    if (filter_nz_bridge_number && !String(r.pl_nz_bridge_number ?? '').includes(filter_nz_bridge_number)) return false
+    if (filter_club.length > 0 && !filter_club.includes(String(r.pl_club ?? ''))) return false
+    if (filter_rank && !String(r.pl_rank ?? '').toLowerCase().includes(filter_rank.toLowerCase())) return false
+    if (filter_grade.length > 0 && !filter_grade.includes(String(r.pl_grade ?? ''))) return false
+    if (filter_all_results !== 'all') {
+      const want = filter_all_results === 'yes'
+      if (Boolean(r.pl_all_results) !== want) return false
+    }
+    return true
+  })
+
+  const playerFilters: Record<string, React.ReactNode> = {
+    pl_plid:             <FText placeholder='id…'    value={filter_plid} onChange={setFilter_plid} />,
+    pl_name:             <FText placeholder='name…'  value={filter_name} onChange={setFilter_name} />,
+    pl_nz_bridge_number: <FText placeholder='nz#…'   value={filter_nz_bridge_number} onChange={setFilter_nz_bridge_number} />,
+    pl_club:             <FMultiSelect options={clubOptions} value={filter_club} onChange={setFilter_club} />,
+    pl_rank:             <FText placeholder='rank…'  value={filter_rank} onChange={setFilter_rank} />,
+    pl_grade:            <FMultiSelect options={gradeOptions} value={filter_grade} onChange={setFilter_grade} />,
+    pl_all_results:      <FSelect value={filter_all_results} onChange={setFilter_all_results}>
+                            <option value='all'>all</option><option value='yes'>Yes</option><option value='no'>No</option>
+                          </FSelect>,
+  }
+
+  return (
+    <div className='space-y-4'>
+      {error && <p className='text-sm text-red-600'>{error}</p>}
+      <div className='rounded border border-gray-200 p-3'>
+        <SectionHeader label='tpl_players — players' shown={filteredPlayers.length} total={players.length} loading={playersLoading}>
+          <MyButton onClick={loadPlayers} disabled={playersLoading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
+            Load
+          </MyButton>
+        </SectionHeader>
+        {players.length > 0 && (
+          <DataTable rows={filteredPlayers} allRows={players} onRowClick={handlePlayerClick}
+            isClickable selected={selectedPlayer} filters={playerFilters} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
+  const [error,              setError]              = useState<string | null>(null)
+  const [sessYear,           setSessYear]           = useState(new Date().getFullYear())
+  const [sessions,           setSessions]           = useState<Row[]>([])
+  const [sessLoading,        setSessLoading]        = useState(false)
+  const [selectedSess,       setSelectedSess]       = useState<Row | null>(null)
+  const [sessResults,        setSessResults]        = useState<Row[]>([])
+  const [filter_run_id,      setFilter_run_id]      = useState(() => sharedFilters.run_id?.value ?? '')
+  const [filter_date,        setFilter_date]        = useState('')
+  const [filter_scoring,     setFilter_scoring]     = useState<string[]>([])
+  const [filter_club,        setFilter_club]        = useState<string[]>([])
+  const [filter_name,        setFilter_name]        = useState('')
+  const [filter_tournament,  setFilter_tournament]  = useState<string[]>([])
+  const [filter_event_type,  setFilter_event_type]  = useState<Set<string>>(new Set())
+  const [filter_day_of_week, setFilter_day_of_week] = useState<string[]>([])
+  const [filter_is_summary,  setFilter_is_summary]  = useState('all')
+  const tournamentTypes: string[] = [...TOURNAMENT_GROUPS]
+  const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
   async function loadSessions(y: number) {
     setSessLoading(true); setError(null); setSelectedSess(null); setSessResults([])
@@ -194,63 +139,44 @@ function ProductionTables() {
   async function handleSessClick(row: Row) {
     if (selectedSess && rowKey(selectedSess) === rowKey(row)) { setSelectedSess(null); setSessResults([]); return }
     setSelectedSess(row); setSessResults([])
+    onKeyClick({
+      seid:   { value: String(row.se_seid), label: String(row.se_name ?? '') },
+      run_id: { value: String(row.se_run_id) },
+    })
     try { setSessResults((await getResultsBySeid(row.se_seid as number)) as Row[]) }
     catch (err) { setError(String(err)) }
   }
 
-  async function loadPartners() {
-    setPartnersLoading(true); setError(null)
-    try { setPartners((await getAllPartners()) as Row[]) }
-    catch (err) { setError(String(err)) }
-    finally { setPartnersLoading(false) }
-  }
-
-  // Filtered rows
-  const filteredPlayers = players.filter(r => {
-    if (plNameFilter && !String(r.pl_name ?? '').toLowerCase().includes(plNameFilter.toLowerCase())) return false
-    if (plNzFilter   && !String(r.pl_nz_bridge_number ?? '').includes(plNzFilter)) return false
-    if (plClubFilter && !String(r.pl_club ?? '').toLowerCase().includes(plClubFilter.toLowerCase())) return false
-    if (plRankFilter && !String(r.pl_rank ?? '').toLowerCase().includes(plRankFilter.toLowerCase())) return false
-    return true
-  })
+  const clubOptions = Array.from(new Set(sessions.map(r => String(r.se_club ?? '')))).filter(Boolean).sort()
 
   const filteredSessions = sessions.filter(r => {
-    if (sessNameFilter      && !String(r.se_name       ?? '').toLowerCase().includes(sessNameFilter.toLowerCase()))  return false
-    if (sessClubFilter      && !String(r.se_club       ?? '').toLowerCase().includes(sessClubFilter.toLowerCase()))  return false
-    if (sessSourceFilter    && !String(r.se_run_id  ?? '').includes(sessSourceFilter))                            return false
-    if (sessScoringFilter   !== 'all' && r.se_scoring    !== sessScoringFilter)   return false
-    if (sessEventTypeFilter.size > 0 && !sessEventTypeFilter.has(String(r.se_event_type ?? ''))) return false
-    if (sessDayFilter       !== 'all' && r.se_day_of_week !== sessDayFilter)       return false
-    if (sessTournamentFilter.length > 0 && !sessTournamentFilter.includes(String(r.se_tournament ?? '').slice(-1).toUpperCase())) return false
+    if (filter_name      && !String(r.se_name       ?? '').toLowerCase().includes(filter_name.toLowerCase()))  return false
+    if (filter_date      && dateKey(r.se_date) !== filter_date) return false
+    if (filter_club.length > 0 && !filter_club.includes(String(r.se_club ?? ''))) return false
+    if (filter_run_id    && !String(r.se_run_id  ?? '').includes(filter_run_id))                            return false
+    if (filter_scoring.length > 0 && !filter_scoring.includes(String(r.se_scoring ?? '')))   return false
+    if (filter_event_type.size > 0 && !filter_event_type.has(String(r.se_event_type ?? ''))) return false
+    if (filter_day_of_week.length > 0 && !filter_day_of_week.includes(String(r.se_day_of_week ?? '')))       return false
+    if (filter_is_summary !== 'all') {
+      const want = filter_is_summary === 'yes'
+      if (Boolean(r.se_is_summary) !== want) return false
+    }
+    if (filter_tournament.length > 0 && !filter_tournament.includes(String(r.se_tournament ?? '').slice(-1).toUpperCase())) return false
     return true
   })
 
-  const filteredPartners = partners.filter(r =>
-    !paNameFilter ||
-    String(r.player1 ?? '').toLowerCase().includes(paNameFilter.toLowerCase()) ||
-    String(r.player2 ?? '').toLowerCase().includes(paNameFilter.toLowerCase())
-  )
-
-  const playerFilters: Record<string, React.ReactNode> = {
-    pl_name:             <FText placeholder='name…'  value={plNameFilter}  onChange={setPlNameFilter} />,
-    pl_nz_bridge_number: <FText placeholder='nz#…'   value={plNzFilter}    onChange={setPlNzFilter} />,
-    pl_club:             <FText placeholder='club…'  value={plClubFilter}  onChange={setPlClubFilter} />,
-    pl_rank:             <FText placeholder='rank…'  value={plRankFilter}  onChange={setPlRankFilter} />,
-  }
-
   const sessFilters: Record<string, React.ReactNode> = {
-    se_run_id:    <FText placeholder='id…'   value={sessSourceFilter}   onChange={setSessSourceFilter} />,
-    se_day_of_week:  <FSelect value={sessDayFilter} onChange={setSessDayFilter}>
-                       <option value='all'>all</option>
-                       {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
-                     </FSelect>,
-    se_scoring:      <FSelect value={sessScoringFilter} onChange={setSessScoringFilter}>
-                       <option value='all'>all</option><option value='MP'>MP</option><option value='VP'>VP</option>
-                     </FSelect>,
-    se_name:         <FText placeholder='name…' value={sessNameFilter} onChange={setSessNameFilter} />,
-    se_club:         <FText placeholder='club…' value={sessClubFilter} onChange={setSessClubFilter} />,
-    se_tournament:   <FMultiSelect options={tournamentTypes} value={sessTournamentFilter} onChange={setSessTournamentFilter} />,
-    se_event_type:   <EventTypeSelect mode='any' selected={sessEventTypeFilter} onChange={setSessEventTypeFilter} placeholder='all' />,
+    se_run_id:    <FText placeholder='id…'   value={filter_run_id}   onChange={setFilter_run_id} />,
+    se_date:      <FDate value={filter_date} onChange={setFilter_date} />,
+    se_day_of_week:  <FMultiSelect options={dayNames} value={filter_day_of_week} onChange={setFilter_day_of_week} />,
+    se_scoring:      <FMultiSelect options={['MP', 'VP']} value={filter_scoring} onChange={setFilter_scoring} />,
+    se_name:         <FText placeholder='name…' value={filter_name} onChange={setFilter_name} />,
+    se_club:         <FMultiSelect options={clubOptions} value={filter_club} onChange={setFilter_club} />,
+    se_tournament:   <FMultiSelect options={tournamentTypes} value={filter_tournament} onChange={setFilter_tournament} />,
+    se_event_type:   <EventTypeSelect mode='any' selected={filter_event_type} onChange={setFilter_event_type} placeholder='all' />,
+    se_is_summary:   <FSelect value={filter_is_summary} onChange={setFilter_is_summary}>
+                        <option value='all'>all</option><option value='yes'>Yes</option><option value='no'>No</option>
+                      </FSelect>,
   }
 
   const sessCellRenderers: Record<string, (val: unknown) => React.ReactNode> = {
@@ -264,38 +190,9 @@ function ProductionTables() {
     ),
   }
 
-  const paFilters: Record<string, React.ReactNode> = {
-    player1: <FText placeholder='name…' value={paNameFilter} onChange={setPaNameFilter} />,
-  }
-
   return (
     <div className='space-y-4'>
-      <h2 className='text-base font-semibold text-gray-800'>Build Data Viewer</h2>
       {error && <p className='text-sm text-red-600'>{error}</p>}
-
-      {/* tpl_players */}
-      <div className='rounded border border-gray-200 p-3'>
-        <SectionHeader label='tpl_players — players' shown={filteredPlayers.length} total={players.length} loading={playersLoading}>
-          <MyButton onClick={loadPlayers} disabled={playersLoading}
-            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
-            Load
-          </MyButton>
-        </SectionHeader>
-        {players.length > 0 && (
-          <DataTable rows={filteredPlayers} allRows={players} onRowClick={handlePlayerClick}
-            isClickable selected={selectedPlayer} filters={playerFilters} />
-        )}
-        {selectedPlayer && (
-          <div className='mt-3 pt-3 border-t border-gray-100'>
-            <p className='text-xs font-semibold text-gray-400 mb-1'>
-              tre_results — {String(selectedPlayer.pl_name)} ({playerResults.length} sessions)
-            </p>
-            <DataTable rows={playerResults} />
-          </div>
-        )}
-      </div>
-
-      {/* tse_sessions */}
       <div className='rounded border border-gray-200 p-3'>
         <SectionHeader label='tse_sessions — sessions' shown={filteredSessions.length} total={sessions.length} loading={sessLoading}>
           <FSelect value={String(sessYear)} onChange={v => setSessYear(parseInt(v, 10))}>
@@ -313,32 +210,375 @@ function ProductionTables() {
         {selectedSess && (
           <div className='mt-3 pt-3 border-t border-gray-100'>
             <p className='text-xs font-semibold text-gray-400 mb-1'>
-              tre_results — {String(selectedSess.se_name)} {String(selectedSess.se_date).slice(0, 10)} ({sessResults.length} pairs)
+              tre_results — {String(selectedSess.se_name)} {dateKey(selectedSess.se_date) ?? ''} ({sessResults.length} pairs)
             </p>
             <DataTable rows={sessResults} />
           </div>
         )}
       </div>
+    </div>
+  )
+}
 
-      {/* tpa_partners */}
+function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
+  const [error,    setError]    = useState<string | null>(null)
+  const [results,  setResults]  = useState<Row[]>([])
+  const [loading,  setLoading]  = useState(false)
+  const [selected, setSelected] = useState<Row | null>(null)
+
+  const [filter_reid,       setFilter_reid]       = useState('')
+  const [filter_seid,       setFilter_seid]       = useState(() => sharedFilters.seid?.value ?? '')
+  const [filter_player1,    setFilter_player1]    = useState('')
+  const [filter_player2,    setFilter_player2]    = useState('')
+  const [filter_paid,       setFilter_paid]       = useState(() => sharedFilters.paid?.value ?? '')
+  const [filter_percentage, setFilter_percentage] = useState('')
+  const [filter_vp,         setFilter_vp]         = useState('')
+
+  async function load() {
+    setLoading(true); setError(null)
+    try { setResults((await getAllResults()) as Row[]) }
+    catch (err) { setError(String(err)) }
+    finally { setLoading(false) }
+  }
+
+  function handleClick(row: Row) {
+    if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
+    setSelected(row)
+    onKeyClick({
+      seid: { value: String(row.re_seid) },
+      paid: { value: String(row.re_paid) },
+    })
+  }
+
+  const filteredResults = results.filter(r => {
+    if (filter_reid       && !String(r.re_reid ?? '').includes(filter_reid)) return false
+    if (filter_seid       && !String(r.re_seid ?? '').includes(filter_seid)) return false
+    if (filter_player1    && !String(r.player1 ?? '').toLowerCase().includes(filter_player1.toLowerCase())) return false
+    if (filter_player2    && !String(r.player2 ?? '').toLowerCase().includes(filter_player2.toLowerCase())) return false
+    if (filter_paid       && !String(r.re_paid ?? '').includes(filter_paid)) return false
+    if (filter_percentage && !String(r.re_percentage ?? '').includes(filter_percentage)) return false
+    if (filter_vp         && !String(r.re_vp ?? '').includes(filter_vp)) return false
+    return true
+  })
+
+  const filters: Record<string, React.ReactNode> = {
+    re_reid:       <FText placeholder='id…'    value={filter_reid}       onChange={setFilter_reid} />,
+    re_seid:       <FText placeholder='seid…'  value={filter_seid}       onChange={setFilter_seid} />,
+    player1:       <FText placeholder='name…'  value={filter_player1}    onChange={setFilter_player1} />,
+    player2:       <FText placeholder='name…'  value={filter_player2}    onChange={setFilter_player2} />,
+    re_paid:       <FText placeholder='paid…'  value={filter_paid}       onChange={setFilter_paid} />,
+    re_percentage: <FText placeholder='pct…'   value={filter_percentage} onChange={setFilter_percentage} />,
+    re_vp:         <FText placeholder='vp…'    value={filter_vp}         onChange={setFilter_vp} />,
+  }
+
+  return (
+    <div className='space-y-4'>
+      {error && <p className='text-sm text-red-600'>{error}</p>}
+      <div className='rounded border border-gray-200 p-3'>
+        <SectionHeader label='tre_results — results' shown={filteredResults.length} total={results.length} loading={loading}>
+          <MyButton onClick={load} disabled={loading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
+            Load
+          </MyButton>
+        </SectionHeader>
+        {results.length > 0 && (
+          <DataTable rows={filteredResults} allRows={results} onRowClick={handleClick}
+            isClickable selected={selected} filters={filters} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PartnersTab({ sharedFilters, onKeyClick }: TabProps) {
+  const [error,           setError]           = useState<string | null>(null)
+  const [partners,        setPartners]        = useState<Row[]>([])
+  const [partnersLoading, setPartnersLoading] = useState(false)
+  const [selectedPartner, setSelectedPartner] = useState<Row | null>(null)
+  const [filter_player1,      setFilter_player1]      = useState('')
+  const [filter_plid1,        setFilter_plid1]        = useState(() => sharedFilters.plid1?.value ?? '')
+  const [filter_player2,      setFilter_player2]      = useState('')
+  const [filter_plid2,        setFilter_plid2]        = useState(() => sharedFilters.plid2?.value ?? '')
+  const [filter_paid,         setFilter_paid]         = useState(() => sharedFilters.paid?.value ?? '')
+  const [filter_involves_plid, setFilter_involves_plid] = useState(() => sharedFilters.plid?.value ?? '')
+
+  async function loadPartners() {
+    setPartnersLoading(true); setError(null); setSelectedPartner(null)
+    try { setPartners((await getAllPartners()) as Row[]) }
+    catch (err) { setError(String(err)) }
+    finally { setPartnersLoading(false) }
+  }
+
+  function handlePartnerClick(row: Row) {
+    if (selectedPartner && rowKey(selectedPartner) === rowKey(row)) { setSelectedPartner(null); return }
+    setSelectedPartner(row)
+    onKeyClick({
+      paid:  { value: String(row.pa_paid) },
+      plid1: { value: String(row.plid1), label: String(row.player1 ?? '') },
+      plid2: { value: String(row.plid2), label: String(row.player2 ?? '') },
+    })
+  }
+
+  const filteredPartners = partners.filter(r => {
+    if (filter_player1 && !String(r.player1 ?? '').toLowerCase().includes(filter_player1.toLowerCase())) return false
+    if (filter_plid1   && !String(r.plid1   ?? '').includes(filter_plid1)) return false
+    if (filter_player2 && !String(r.player2 ?? '').toLowerCase().includes(filter_player2.toLowerCase())) return false
+    if (filter_plid2   && !String(r.plid2   ?? '').includes(filter_plid2)) return false
+    if (filter_paid && !String(r.pa_paid ?? '').includes(filter_paid)) return false
+    if (filter_involves_plid && String(r.plid1 ?? '') !== filter_involves_plid && String(r.plid2 ?? '') !== filter_involves_plid) return false
+    return true
+  })
+
+  const paFilters: Record<string, React.ReactNode> = {
+    pa_paid:        <FText placeholder='paid…'  value={filter_paid}       onChange={setFilter_paid} />,
+    player1:        <FText placeholder='name…'  value={filter_player1}    onChange={setFilter_player1} />,
+    plid1:          <FText placeholder='id…'    value={filter_plid1}      onChange={setFilter_plid1} />,
+    player2:        <FText placeholder='name…'  value={filter_player2}    onChange={setFilter_player2} />,
+    plid2:          <FText placeholder='id…'    value={filter_plid2}      onChange={setFilter_plid2} />,
+  }
+
+  return (
+    <div className='space-y-4'>
+      {error && <p className='text-sm text-red-600'>{error}</p>}
       <div className='rounded border border-gray-200 p-3'>
         <SectionHeader label='tpa_partners — partnerships' shown={filteredPartners.length} total={partners.length} loading={partnersLoading}>
+          <span className='text-xs text-gray-400'>Player (either side):</span>
+          <FText placeholder='plid…' value={filter_involves_plid} onChange={setFilter_involves_plid} />
           <MyButton onClick={loadPartners} disabled={partnersLoading}
             overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
             Load
           </MyButton>
         </SectionHeader>
         {partners.length > 0 && (
-          <DataTable rows={filteredPartners} allRows={partners} filters={paFilters} />
+          <DataTable rows={filteredPartners} allRows={partners} onRowClick={handlePartnerClick}
+            isClickable selected={selectedPartner} filters={paFilters} />
         )}
       </div>
+    </div>
+  )
+}
 
+function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
+  const [error,    setError]    = useState<string | null>(null)
+  const [stats,    setStats]    = useState<Row[]>([])
+  const [loading,  setLoading]  = useState(false)
+  const [selected, setSelected] = useState<Row | null>(null)
+
+  const [filter_player,      setFilter_player]      = useState('')
+  const [filter_plid,        setFilter_plid]        = useState(() => sharedFilters.plid?.value ?? '')
+  const [filter_group,       setFilter_group]       = useState<string[]>([])
+  const [filter_mp_sessions, setFilter_mp_sessions] = useState('')
+  const [filter_mp_avg_pct,  setFilter_mp_avg_pct]  = useState('')
+  const [filter_mp_stddev,   setFilter_mp_stddev]   = useState('')
+  const [filter_vp_sessions, setFilter_vp_sessions] = useState('')
+  const [filter_vp_avg_vp,   setFilter_vp_avg_vp]   = useState('')
+  const [filter_vp_stddev,   setFilter_vp_stddev]   = useState('')
+
+  async function load() {
+    setLoading(true); setError(null)
+    try { setStats((await getAllPlayerStats()) as Row[]) }
+    catch (err) { setError(String(err)) }
+    finally { setLoading(false) }
+  }
+
+  function handleClick(row: Row) {
+    if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
+    setSelected(row)
+    onKeyClick({ plid: { value: String(row.a1_plid), label: String(row.player ?? '') } })
+  }
+
+  const groupOptions = Array.from(new Set(stats.map(r => String(r.a1_group ?? '')))).filter(Boolean).sort()
+
+  const filteredStats = stats.filter(r => {
+    if (filter_player      && !String(r.player ?? '').toLowerCase().includes(filter_player.toLowerCase())) return false
+    if (filter_plid        && !String(r.a1_plid ?? '').includes(filter_plid)) return false
+    if (filter_group.length > 0 && !filter_group.includes(String(r.a1_group ?? ''))) return false
+    if (!numMatch(filter_mp_sessions, r.a1_mp_sessions)) return false
+    if (!numMatch(filter_mp_avg_pct,  r.a1_mp_avg_pct))  return false
+    if (!numMatch(filter_mp_stddev,   r.a1_mp_stddev))   return false
+    if (!numMatch(filter_vp_sessions, r.a1_vp_sessions)) return false
+    if (!numMatch(filter_vp_avg_vp,   r.a1_vp_avg_vp))   return false
+    if (!numMatch(filter_vp_stddev,   r.a1_vp_stddev))   return false
+    return true
+  })
+
+  const filters: Record<string, React.ReactNode> = {
+    player:         <FText placeholder='name…'        value={filter_player}      onChange={setFilter_player} />,
+    a1_plid:        <FText placeholder='id…'          value={filter_plid}        onChange={setFilter_plid} />,
+    a1_group:       <FMultiSelect options={groupOptions} value={filter_group} onChange={setFilter_group} />,
+    a1_mp_sessions: <FText placeholder='mp sessions…' value={filter_mp_sessions} onChange={setFilter_mp_sessions} />,
+    a1_mp_avg_pct:  <FText placeholder='mp avg%…'     value={filter_mp_avg_pct}  onChange={setFilter_mp_avg_pct} />,
+    a1_mp_stddev:   <FText placeholder='mp stddev…'   value={filter_mp_stddev}   onChange={setFilter_mp_stddev} />,
+    a1_vp_sessions: <FText placeholder='vp sessions…' value={filter_vp_sessions} onChange={setFilter_vp_sessions} />,
+    a1_vp_avg_vp:   <FText placeholder='vp avg…'      value={filter_vp_avg_vp}   onChange={setFilter_vp_avg_vp} />,
+    a1_vp_stddev:   <FText placeholder='vp stddev…'   value={filter_vp_stddev}   onChange={setFilter_vp_stddev} />,
+  }
+
+  return (
+    <div className='space-y-4'>
+      {error && <p className='text-sm text-red-600'>{error}</p>}
+      <div className='rounded border border-gray-200 p-3'>
+        <SectionHeader label='ta1_player_stats' shown={filteredStats.length} total={stats.length} loading={loading}>
+          <MyButton onClick={load} disabled={loading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
+            Load
+          </MyButton>
+        </SectionHeader>
+        {stats.length > 0 && (
+          <DataTable rows={filteredStats} allRows={stats} onRowClick={handleClick}
+            isClickable selected={selected} filters={filters} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PartnerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
+  const [error,    setError]    = useState<string | null>(null)
+  const [stats,    setStats]    = useState<Row[]>([])
+  const [loading,  setLoading]  = useState(false)
+  const [selected, setSelected] = useState<Row | null>(null)
+
+  const [filter_paid,        setFilter_paid]        = useState(() => sharedFilters.paid?.value ?? '')
+  const [filter_group,       setFilter_group]       = useState<string[]>([])
+  const [filter_mp_sessions, setFilter_mp_sessions] = useState('')
+  const [filter_mp_avg_pct,  setFilter_mp_avg_pct]  = useState('')
+  const [filter_mp_stddev,   setFilter_mp_stddev]   = useState('')
+  const [filter_vp_sessions, setFilter_vp_sessions] = useState('')
+  const [filter_vp_avg_vp,   setFilter_vp_avg_vp]   = useState('')
+  const [filter_vp_stddev,   setFilter_vp_stddev]   = useState('')
+
+  async function load() {
+    setLoading(true); setError(null)
+    try { setStats((await getAllPartnerStats()) as Row[]) }
+    catch (err) { setError(String(err)) }
+    finally { setLoading(false) }
+  }
+
+  function handleClick(row: Row) {
+    if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
+    setSelected(row)
+    onKeyClick({ paid: { value: String(row.a2_paid) } })
+  }
+
+  const groupOptions = Array.from(new Set(stats.map(r => String(r.a2_group ?? '')))).filter(Boolean).sort()
+
+  const filteredStats = stats.filter(r => {
+    if (filter_paid        && !String(r.a2_paid ?? '').includes(filter_paid)) return false
+    if (filter_group.length > 0 && !filter_group.includes(String(r.a2_group ?? ''))) return false
+    if (!numMatch(filter_mp_sessions, r.a2_mp_sessions)) return false
+    if (!numMatch(filter_mp_avg_pct,  r.a2_mp_avg_pct))  return false
+    if (!numMatch(filter_mp_stddev,   r.a2_mp_stddev))   return false
+    if (!numMatch(filter_vp_sessions, r.a2_vp_sessions)) return false
+    if (!numMatch(filter_vp_avg_vp,   r.a2_vp_avg_vp))   return false
+    if (!numMatch(filter_vp_stddev,   r.a2_vp_stddev))   return false
+    return true
+  })
+
+  const filters: Record<string, React.ReactNode> = {
+    a2_paid:        <FText placeholder='id…'          value={filter_paid}        onChange={setFilter_paid} />,
+    a2_group:       <FMultiSelect options={groupOptions} value={filter_group} onChange={setFilter_group} />,
+    a2_mp_sessions: <FText placeholder='mp sessions…' value={filter_mp_sessions} onChange={setFilter_mp_sessions} />,
+    a2_mp_avg_pct:  <FText placeholder='mp avg%…'     value={filter_mp_avg_pct}  onChange={setFilter_mp_avg_pct} />,
+    a2_mp_stddev:   <FText placeholder='mp stddev…'   value={filter_mp_stddev}   onChange={setFilter_mp_stddev} />,
+    a2_vp_sessions: <FText placeholder='vp sessions…' value={filter_vp_sessions} onChange={setFilter_vp_sessions} />,
+    a2_vp_avg_vp:   <FText placeholder='vp avg…'      value={filter_vp_avg_vp}   onChange={setFilter_vp_avg_vp} />,
+    a2_vp_stddev:   <FText placeholder='vp stddev…'   value={filter_vp_stddev}   onChange={setFilter_vp_stddev} />,
+  }
+
+  return (
+    <div className='space-y-4'>
+      {error && <p className='text-sm text-red-600'>{error}</p>}
+      <div className='rounded border border-gray-200 p-3'>
+        <SectionHeader label='ta2_partner_stats' shown={filteredStats.length} total={stats.length} loading={loading}>
+          <MyButton onClick={load} disabled={loading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
+            Load
+          </MyButton>
+        </SectionHeader>
+        {stats.length > 0 && (
+          <DataTable rows={filteredStats} allRows={stats} onRowClick={handleClick}
+            isClickable selected={selected} filters={filters} />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FiltersTab({ sharedFilters, onRemove, onAdd }: {
+  sharedFilters: SharedFilters
+  onRemove: (key: SharedKey) => void
+  onAdd: (patch: SharedFilters) => void
+}) {
+  const [addKey,   setAddKey]   = useState<SharedKey>('plid')
+  const [addValue, setAddValue] = useState('')
+
+  function handleAdd() {
+    if (!addValue.trim()) return
+    onAdd({ [addKey]: { value: addValue.trim() } })
+    setAddValue('')
+  }
+
+  const activeKeys = SHARED_KEYS.filter(k => sharedFilters[k] !== undefined)
+
+  return (
+    <div className='space-y-4'>
+      <div className='rounded border border-gray-200 p-3'>
+        <SectionHeader label='Active key filters' />
+        {activeKeys.length === 0 && (
+          <p className='text-xs text-gray-400 py-2'>No key filters set — click a row on any tab to set one.</p>
+        )}
+        {activeKeys.length > 0 && (
+          <ul className='space-y-1'>
+            {activeKeys.map(key => {
+              const entry = sharedFilters[key]!
+              return (
+                <li key={key} className='flex items-center gap-2 text-xs py-1'>
+                  <span className='font-medium text-gray-500 w-16'>{key}</span>
+                  <span className='text-gray-700'>{entry.label ? `${entry.label} (${entry.value})` : entry.value}</span>
+                  <MyButton onClick={() => onRemove(key)}
+                    overrideClass='rounded bg-gray-100 border border-gray-300 px-1.5 py-0 text-xs hover:bg-gray-200 text-gray-500 h-auto md:h-auto'>
+                    ×
+                  </MyButton>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <div className='mt-3 pt-3 border-t border-gray-100 flex items-center gap-2'>
+          <div className='w-24'>
+            <FSelect value={addKey} onChange={v => setAddKey(v as SharedKey)}>
+              {SHARED_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
+            </FSelect>
+          </div>
+          <div className='w-32'>
+            <FText placeholder='value…' value={addValue} onChange={setAddValue} />
+          </div>
+          <MyButton onClick={handleAdd}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 text-gray-700 h-auto md:h-auto'>
+            Add
+          </MyButton>
+        </div>
+      </div>
     </div>
   )
 }
 
 export default function BuildDataViewer() {
-  const [active, setActive] = useState<Tab>('production')
+  const [active, setActive] = useState<Tab>('ts1')
+  const [sharedFilters, setSharedFilters] = useState<SharedFilters>({})
+
+  function mergeSharedFilters(patch: SharedFilters) {
+    setSharedFilters(prev => ({ ...prev, ...patch }))
+  }
+
+  function removeSharedFilter(key: SharedKey) {
+    setSharedFilters(prev => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
 
   return (
     <div>
@@ -351,9 +591,15 @@ export default function BuildDataViewer() {
         ))}
       </div>
 
-      {active === 'production' && <ProductionTables />}
-      {active === 'ts1'        && <Ts1Table />}
-      {active === 'ts2'        && <Ts2Table />}
+      {active === 'ts1' && <Ts1Table sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'ts2' && <Ts2Table sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tse' && <SessionsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tre' && <ResultsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tpl' && <PlayersTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tpa' && <PartnersTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'ta1' && <PlayerStatsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'ta2' && <PartnerStatsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'filters' && <FiltersTab sharedFilters={sharedFilters} onRemove={removeSharedFilter} onAdd={mergeSharedFilters} />}
     </div>
   )
 }

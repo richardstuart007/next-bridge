@@ -1,8 +1,9 @@
 'use server'
 
 import { table_query } from 'nextjs-shared/table_query'
+import { TOURNAMENT_GROUP_SQL_EXPR } from '@/src/lib/constants'
 
-const GRP_EXPR = `CASE WHEN RIGHT(se_tournament,1)='A' THEN 'A' WHEN RIGHT(se_tournament,1)='B' THEN 'B' ELSE 'C' END`
+const GRP_EXPR = TOURNAMENT_GROUP_SQL_EXPR
 
 //----------------------------------------------------------------------------------
 //  computePlayerGroupStats — (re)computes ta1_player_stats for one tournament group
@@ -10,8 +11,20 @@ const GRP_EXPR = `CASE WHEN RIGHT(se_tournament,1)='A' THEN 'A' WHEN RIGHT(se_to
 //  independently with no truncate needed first. Shared by /api/players/recalculate
 //  (one group per call) and rebuildAllStats() (all groups in one batch).
 //----------------------------------------------------------------------------------
-export async function computePlayerGroupStats(grp: string): Promise<number> {
+export async function computePlayerGroupStats(grp: string): Promise<{ inserted: number; inputRecs: number }> {
   const isAll = grp === 'all'
+  const inputRows = await table_query({
+    caller: `statsCompute/player-${grp}-input`,
+    query: `SELECT COUNT(*)::int AS n
+            FROM tre_results
+            JOIN tse_sessions ON se_seid = re_seid
+            JOIN tpa_partners ON pa_paid = re_paid
+            WHERE se_is_summary IS NOT TRUE
+            ${isAll ? '' : `AND ${GRP_EXPR} = $1`}`,
+    params: isAll ? [] : [grp]
+  }) as { n: number }[]
+  const inputRecs = inputRows[0]?.n ?? 0
+
   const rows = await table_query({
     caller: `statsCompute/player-${grp}`,
     query: `INSERT INTO ta1_player_stats
@@ -43,15 +56,26 @@ export async function computePlayerGroupStats(grp: string): Promise<number> {
     params: isAll ? [] : [grp],
     isupdate: true
   })
-  return rows.length
+  return { inserted: rows.length, inputRecs }
 }
 
 //----------------------------------------------------------------------------------
 //  computePartnerGroupStats — (re)computes ta2_partner_stats for one tournament group
 //  ('A'/'B'/'C') or 'all'. Upsert on (a2_paid, a2_group), same reasoning as above.
 //----------------------------------------------------------------------------------
-export async function computePartnerGroupStats(grp: string): Promise<number> {
+export async function computePartnerGroupStats(grp: string): Promise<{ inserted: number; inputRecs: number }> {
   const isAll = grp === 'all'
+  const inputRows = await table_query({
+    caller: `statsCompute/partner-${grp}-input`,
+    query: `SELECT COUNT(*)::int AS n
+            FROM tre_results
+            JOIN tse_sessions ON se_seid = re_seid
+            WHERE se_is_summary IS NOT TRUE
+            ${isAll ? '' : `AND ${GRP_EXPR} = $1`}`,
+    params: isAll ? [] : [grp]
+  }) as { n: number }[]
+  const inputRecs = inputRows[0]?.n ?? 0
+
   const rows = await table_query({
     caller: `statsCompute/partner-${grp}`,
     query: `INSERT INTO ta2_partner_stats
@@ -81,5 +105,5 @@ export async function computePartnerGroupStats(grp: string): Promise<number> {
     params: isAll ? [] : [grp],
     isupdate: true
   })
-  return rows.length
+  return { inserted: rows.length, inputRecs }
 }

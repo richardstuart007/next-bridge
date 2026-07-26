@@ -2,26 +2,32 @@
 
 import { useState, useEffect } from 'react'
 import { MyButton } from 'nextjs-shared/MyButton'
+import { DataTable, SectionHeader, FText, FDate, FMultiSelect, rowKey, dateKey, type Row, type SharedFilters } from '@/src/ui/admin/DataTableShared'
 
-interface Ts1Row {
-  s1_run_id: number
-  s1_date: string
-  s1_club: string
-  s1_event_name: string
-  s1_score_type: string
-  s1_event_type: string
-}
+export default function Ts1Table({ sharedFilters, onKeyClick }: {
+  sharedFilters: SharedFilters
+  onKeyClick: (patch: SharedFilters) => void
+}) {
+  const [error,    setError]    = useState<string | null>(null)
+  const [sessions, setSessions] = useState<Row[]>([])
+  const [loading,  setLoading]  = useState(false)
+  const [selected, setSelected] = useState<Row | null>(null)
 
-export default function Ts1Table() {
-  const [rows,    setRows]    = useState<Ts1Row[]>([])
-  const [loading, setLoading] = useState(false)
+  const [filter_run_id,     setFilter_run_id]     = useState(() => sharedFilters.run_id?.value ?? '')
+  const [filter_date,       setFilter_date]       = useState('')
+  const [filter_club,       setFilter_club]       = useState<string[]>([])
+  const [filter_event_name, setFilter_event_name] = useState('')
+  const [filter_score_type, setFilter_score_type] = useState<string[]>([])
+  const [filter_event_type, setFilter_event_type] = useState<string[]>([])
 
   async function load() {
-    setLoading(true)
+    setLoading(true); setError(null)
     try {
       const res  = await fetch('/api/scrape/ts1')
       const data = await res.json()
-      setRows(Array.isArray(data) ? data : [])
+      setSessions(Array.isArray(data) ? data : [])
+    } catch (err) {
+      setError(String(err))
     } finally {
       setLoading(false)
     }
@@ -29,48 +35,50 @@ export default function Ts1Table() {
 
   useEffect(() => { load() }, [])
 
+  function handleClick(row: Row) {
+    if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
+    setSelected(row)
+    onKeyClick({ run_id: { value: String(row.s1_run_id) } })
+  }
+
+  const clubOptions      = Array.from(new Set(sessions.map(r => String(r.s1_club ?? '')))).filter(Boolean).sort()
+  const scoreTypeOptions = Array.from(new Set(sessions.map(r => String(r.s1_score_type ?? '')))).filter(Boolean).sort()
+  const eventTypeOptions = Array.from(new Set(sessions.map(r => String(r.s1_event_type ?? '')))).filter(Boolean).sort()
+
+  const filteredRows = sessions.filter(r => {
+    if (filter_run_id && !String(r.s1_run_id ?? '').includes(filter_run_id)) return false
+    if (filter_date && dateKey(r.s1_date) !== filter_date) return false
+    if (filter_club.length > 0 && !filter_club.includes(String(r.s1_club ?? ''))) return false
+    if (filter_event_name && !String(r.s1_event_name ?? '').toLowerCase().includes(filter_event_name.toLowerCase())) return false
+    if (filter_score_type.length > 0 && !filter_score_type.includes(String(r.s1_score_type ?? ''))) return false
+    if (filter_event_type.length > 0 && !filter_event_type.includes(String(r.s1_event_type ?? ''))) return false
+    return true
+  })
+
+  const filters: Record<string, React.ReactNode> = {
+    s1_run_id:     <FText placeholder='id…'    value={filter_run_id}     onChange={setFilter_run_id} />,
+    s1_date:       <FDate value={filter_date} onChange={setFilter_date} />,
+    s1_club:       <FMultiSelect options={clubOptions} value={filter_club} onChange={setFilter_club} />,
+    s1_event_name: <FText placeholder='event…' value={filter_event_name} onChange={setFilter_event_name} />,
+    s1_score_type: <FMultiSelect options={scoreTypeOptions} value={filter_score_type} onChange={setFilter_score_type} />,
+    s1_event_type: <FMultiSelect options={eventTypeOptions} value={filter_event_type} onChange={setFilter_event_type} />,
+  }
+
   return (
-    <section className='rounded border border-gray-200 bg-gray-50 p-4'>
-      <div className='flex items-center justify-between mb-3'>
-        <span className='text-xs font-semibold text-gray-600 uppercase tracking-wide'>
-          ts1_sessions — {rows.length} rows
-        </span>
-        <MyButton onClick={load} disabled={loading}
-          overrideClass='rounded bg-gray-200 px-2 py-1 text-xs text-gray-700 hover:bg-gray-300 disabled:opacity-50 h-auto md:h-auto'>
-          {loading ? 'Loading…' : 'Refresh'}
-        </MyButton>
+    <div className='space-y-4'>
+      {error && <p className='text-sm text-red-600'>{error}</p>}
+      <div className='rounded border border-gray-200 p-3'>
+        <SectionHeader label='ts1_sessions' shown={filteredRows.length} total={sessions.length} loading={loading}>
+          <MyButton onClick={load} disabled={loading}
+            overrideClass='rounded bg-gray-100 border border-gray-300 px-2 py-0.5 text-xs hover:bg-gray-200 disabled:opacity-50 text-gray-700 h-auto md:h-auto'>
+            {loading ? 'Loading…' : 'Refresh'}
+          </MyButton>
+        </SectionHeader>
+        {sessions.length > 0 && (
+          <DataTable rows={filteredRows} allRows={sessions} onRowClick={handleClick}
+            isClickable selected={selected} filters={filters} />
+        )}
       </div>
-      {rows.length === 0
-        ? <p className='text-xs text-gray-400'>Empty</p>
-        : (
-          <div className='overflow-x-auto'>
-            <table className='w-full text-xs font-mono'>
-              <thead>
-                <tr className='border-b border-gray-200 text-left text-gray-500'>
-                  <th className='pb-1 pr-4'>run_id</th>
-                  <th className='pb-1 pr-4'>date</th>
-                  <th className='pb-1 pr-4'>club</th>
-                  <th className='pb-1 pr-4'>event</th>
-                  <th className='pb-1 pr-4'>score</th>
-                  <th className='pb-1'>type</th>
-                </tr>
-              </thead>
-              <tbody className='divide-y divide-gray-100'>
-                {rows.map(r => (
-                  <tr key={r.s1_run_id} className='hover:bg-gray-100'>
-                    <td className='py-0.5 pr-4 text-blue-600'>{r.s1_run_id}</td>
-                    <td className='py-0.5 pr-4'>{r.s1_date}</td>
-                    <td className='py-0.5 pr-4 truncate max-w-32'>{r.s1_club}</td>
-                    <td className='py-0.5 pr-4 truncate max-w-48'>{r.s1_event_name}</td>
-                    <td className='py-0.5 pr-4'>{r.s1_score_type}</td>
-                    <td className='py-0.5'>{r.s1_event_type}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
-    </section>
+    </div>
   )
 }

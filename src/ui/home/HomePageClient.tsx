@@ -11,6 +11,8 @@ import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
+import { useTabQueryState } from 'nextjs-shared/useTabQueryState'
+import RankingsPageClient from '@/src/ui/rankings/RankingsPageClient'
 
 interface PlayerRow {
   pl_plid: number
@@ -63,7 +65,7 @@ export default function HomePageClient() {
   const router = useRouter()
   const restoredRef    = useRef(false)
 
-  const [activeTab, setActiveTab] = useState<'players' | 'sessions'>('players')
+  const [activeTab, setActiveTab] = useTabQueryState('tab', 'players')
 
   // ── Option counts for filter comparisons (populated via onOptionsLoaded callbacks) ──
   const [fTournamentTypes, setFTournamentTypes] = useState<Set<string>>(new Set(TOURNAMENT_TYPES))
@@ -103,7 +105,6 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
   useEffect(() => {
     const s = loadSaved()
     if (s) {
-      if (s.activeTab)          setActiveTab(s.activeTab)
       if (s.fName)              setFName(s.fName)
       if (s.fNz)                setFNz(s.fNz)
       if (s.fRanks?.length)     setFRanks(new Set(s.fRanks))
@@ -134,7 +135,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
     if (!restoredRef.current) return
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-        activeTab, fName, fNz, fTracked, fExcludeNz0,
+        fName, fNz, fTracked, fExcludeNz0,
         fRanks: [...fRanks], fGrades: [...fGrades], fClubs: [...fClubs],
         fRatingMin, fAMin, fSessMin,
         playerPage, playerItemsPerPage,
@@ -142,7 +143,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
         sessionPage, sessionItemsPerPage,
       }))
     } catch {}
-  }, [activeTab, fName, fNz, fTracked, fExcludeNz0, fRanks, fGrades, fClubs,
+  }, [fName, fNz, fTracked, fExcludeNz0, fRanks, fGrades, fClubs,
       fRatingMin, fAMin, fSessMin,
       playerPage, playerItemsPerPage,
       dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, summaryFilter,
@@ -239,6 +240,10 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
           underlineActiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-white border-gray-200 text-gray-900'
           underlineInactiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'
         >Sessions</MyTab>
+        <MyTab active={activeTab === 'rankings'} onClick={() => setActiveTab('rankings')}
+          underlineActiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-white border-gray-200 text-gray-900'
+          underlineInactiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'
+        >Rankings</MyTab>
       </div>
 
       {/* ── Players tab ───────────────────────────────────────────────────── */}
@@ -489,6 +494,11 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
               />
             </div>
           )}
+      </section>
+
+      {/* ── Rankings tab ──────────────────────────────────────────────────── */}
+      <section className={`rounded border border-gray-200 p-4${activeTab !== 'rankings' ? ' hidden' : ''}`}>
+        <RankingsPageClient />
       </section>
     </div>
   )

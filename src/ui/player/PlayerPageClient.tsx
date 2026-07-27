@@ -13,6 +13,7 @@ import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
+import { useBackNav } from 'nextjs-shared/useBackNav'
 import { NB_BACK_FROM_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
 
 interface ResultRow {
@@ -134,11 +135,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const restoredRef  = useRef(false)
   const savedRef     = useRef<Record<string, unknown> | null>(null)
 
-  const [backPath, setBackPath] = useState<string | null>(null)
-  useEffect(() => {
-    setBackPath(sessionStorage.getItem(NB_BACK_FROM_KEY))
-    sessionStorage.removeItem(NB_BACK_FROM_KEY)
-  }, [])
+  const backPath = useBackNav(NB_BACK_FROM_KEY)
 
   const [player,       setPlayer]       = useState<Player | null>(null)
   const [results,      setResults]      = useState<ResultRow[]>([])

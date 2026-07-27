@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
+import { NuqsAdapter } from 'nuqs/adapters/next/app'
 import { DevLayoutHeader } from 'nextjs-shared/DevLayoutHeader'
 
 const geistSans = Geist({
@@ -31,10 +32,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className='min-h-full flex flex-col bg-background text-foreground'>
-        {IS_DEV && <DevLayoutHeader dbLocation={DB_LOCATION} />}
-        <main className='w-full flex-1'>
-          {children}
-        </main>
+        <NuqsAdapter>
+          {IS_DEV && <DevLayoutHeader dbLocation={DB_LOCATION} />}
+          <main className='w-full flex-1'>
+            {children}
+          </main>
+        </NuqsAdapter>
       </body>
     </html>
   )

@@ -6,6 +6,7 @@ import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
+import { useBackNav } from 'nextjs-shared/useBackNav'
 import { NB_BACK_FROM_KEY, ROWS_PER_PAGE } from '@/src/lib/constants'
 
 interface SessionRow {
@@ -35,12 +36,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(ROWS_PER_PAGE)
-  const [backPath, setBackPath] = useState<string | null>(null)
-
-  useEffect(() => {
-    setBackPath(sessionStorage.getItem(NB_BACK_FROM_KEY))
-    sessionStorage.removeItem(NB_BACK_FROM_KEY)
-  }, [])
+  const backPath = useBackNav(NB_BACK_FROM_KEY)
 
   useEffect(() => {
     if (isNaN(sessionId)) {

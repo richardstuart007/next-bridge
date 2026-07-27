@@ -2,6 +2,7 @@
 
 import { table_query } from 'nextjs-shared/table_query'
 import { table_write } from 'nextjs-shared/table_write'
+import { PIPELINE_RECENT_RUN_IDS_LIMIT } from '@/src/lib/constants'
 
 export type PipelineStatus = {
   pip_pipid:        number
@@ -85,7 +86,7 @@ export async function logPipelineStep(args: {
 export async function getRecentRunIds(): Promise<number[]> {
   const rows = await table_query({
     caller: 'pipelineLog/getRecentRunIds',
-    query:  `SELECT DISTINCT pip_run_id FROM tpip_pipelinelog ORDER BY pip_run_id DESC LIMIT 5`,
+    query:  `SELECT DISTINCT pip_run_id FROM tpip_pipelinelog ORDER BY pip_run_id DESC LIMIT ${PIPELINE_RECENT_RUN_IDS_LIMIT}`,
     params: [],
     skipCache: true
   }) as { pip_run_id: number }[]

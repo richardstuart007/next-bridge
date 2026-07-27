@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { ClubSelect, GradeSelect, RankSelect, StringMultiSelect } from '@/src/ui/shared/LookupSelects'
-import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
-import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
+import { NB_BACK_FROM_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
 import MyPagination from 'nextjs-shared/MyPagination'
 import { MyHelpField } from 'nextjs-shared/MyHelpField'
 import { MyButton } from 'nextjs-shared/MyButton'
@@ -401,8 +400,8 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                   <td className='py-1 pr-2' />
                   <td className='py-1 pr-2'>
                     <div className='flex flex-col gap-0.5'>
-                      <MyInput type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)} overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
-                      <MyInput type='date' value={dateTo}   min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}   overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
+                      <MyInput type='date' value={dateFrom} min={EARLIEST_DATA_DATE} max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)} overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
+                      <MyInput type='date' value={dateTo}   min={EARLIEST_DATA_DATE} max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}   overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
                     </div>
                   </td>
                   <td className='py-1 pr-2'>

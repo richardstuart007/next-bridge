@@ -2,6 +2,13 @@
 import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
+import {
+  BRIDGE_CLUB_ID,
+  MP_PERCENTAGE_MIN,
+  MP_PERCENTAGE_MAX,
+  VP_SCORE_SANITY_MAX,
+  VP_SCORE_SANITY_RESET
+} from '@/src/lib/constants'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
 
@@ -28,8 +35,8 @@ function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
 
 function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {
   if (isSummary) return value
-  if (type === 'PCT' && (value < 25 || value > 75)) return 50
-  if (type === 'VP' && value > 20) return 10
+  if (type === 'PCT' && (value < MP_PERCENTAGE_MIN || value > MP_PERCENTAGE_MAX)) return 50
+  if (type === 'VP' && value > VP_SCORE_SANITY_MAX) return VP_SCORE_SANITY_RESET
   return value
 }
 
@@ -162,7 +169,7 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
   }
 
-  const { date_from, date_end, club_id = 106 } = body
+  const { date_from, date_end, club_id = BRIDGE_CLUB_ID } = body
   if (!date_from || !date_end) {
     return new Response(JSON.stringify({ error: 'date_from and date_end are required' }), { status: 400 })
   }

@@ -14,7 +14,7 @@ import {
   refreshSessionsStatus, refreshResultsStatus, refreshPartnersStatus,
   type StepStatus
 } from '@/src/lib/actions/pipelineStatus'
-import { SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS, TOURNAMENT_GROUP_SQL_EXPR } from '@/src/lib/constants'
+import { SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS, TOURNAMENT_GROUP_SQL_EXPR, BRIDGE_CLUB_ID } from '@/src/lib/constants'
 
 type StepResult = { data: Record<string, unknown> | null; error: string | null }
 
@@ -571,7 +571,7 @@ export default function PipelineTable() {
               <td className='py-1 pr-2'>
                 <MyHelpStep
                   title='1a. Scrape AKBC'
-                  input={['nzbridge.co.nz — club results search (club 106) for each day from the last built session date to today (or the To date, if set)']}
+                  input={[`nzbridge.co.nz — club results search (club ${BRIDGE_CLUB_ID}) for each day from the last built session date to today (or the To date, if set)`]}
                   processing="Truncates ts1_sessions and ts2_results (start of a new coordinated run), then finds every AKBC run_id not yet in tse_sessions or ts1_sessions via the club-by-date search. For each missing run_id, fetches its results page and writes the session header to ts1_sessions and each pair's score to ts2_results, creating any new player by name as needed."
                   output={[
                     'ts1_sessions — one row per discovered session: date, club, event name, score type, tournament code',

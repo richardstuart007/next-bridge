@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
+import { BRIDGE_CLUB_ID } from '@/src/lib/constants'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
 
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest) {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
   }
 
-  const { date_from, date_end, club_id = 106 } = body
+  const { date_from, date_end, club_id = BRIDGE_CLUB_ID } = body
   if (!date_from || !date_end) {
     return new Response(JSON.stringify({ error: 'date_from and date_end are required' }), { status: 400 })
   }

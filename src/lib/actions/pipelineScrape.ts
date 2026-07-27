@@ -7,9 +7,16 @@ import { table_upsert } from 'nextjs-shared/table_upsert'
 import { table_truncate } from 'nextjs-shared/table_truncate'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
 import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
+import {
+  BRIDGE_CLUB_ID,
+  SCRAPE_FALLBACK_LOOKBACK_DAYS,
+  MP_PERCENTAGE_MIN,
+  MP_PERCENTAGE_MAX,
+  VP_SCORE_SANITY_MAX,
+  VP_SCORE_SANITY_RESET
+} from '@/src/lib/constants'
 
-const NZB_BASE       = 'https://www.nzbridge.co.nz'
-const BRIDGE_CLUB_ID = 106
+const NZB_BASE = 'https://www.nzbridge.co.nz'
 const UA = { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
 
 const MONTH: Record<string, string> = {
@@ -55,8 +62,8 @@ function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
 }
 
 function normaliseScore(value: number, type: 'PCT' | 'VP'): number {
-  if (type === 'PCT' && (value < 25 || value > 75)) return 50
-  if (type === 'VP' && value > 20) return 10
+  if (type === 'PCT' && (value < MP_PERCENTAGE_MIN || value > MP_PERCENTAGE_MAX)) return 50
+  if (type === 'VP' && value > VP_SCORE_SANITY_MAX) return VP_SCORE_SANITY_RESET
   return value
 }
 
@@ -274,7 +281,7 @@ async function getMaxSessionDate(): Promise<string | null> {
 async function getDateRange(fromDateOverride?: string, toDateOverride?: string): Promise<{ from_date: string; to_date: string }> {
   const from_date = fromDateOverride
     ?? (await getMaxSessionDate())
-    ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    ?? new Date(Date.now() - SCRAPE_FALLBACK_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
   const to_date = toDateOverride ?? new Date().toISOString().slice(0, 10)
   return { from_date, to_date }
 }

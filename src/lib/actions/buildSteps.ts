@@ -2,6 +2,7 @@
 
 import { table_query } from 'nextjs-shared/table_query'
 import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
+import { MP_PERCENTAGE_MIN, MP_PERCENTAGE_MAX, VP_SCORE_HARD_CAP } from '@/src/lib/constants'
 
 export type BuildSessionsResult = { inserted: number; skipped: number; total: number }
 export type BuildResultsResult  = { inserted: number }
@@ -92,8 +93,8 @@ export async function buildResultsFromStaging(forceNewRun = false, fromDate?: st
     caller: 'buildSteps/results/insert',
     query: `INSERT INTO tre_results (re_seid, re_paid, re_percentage, re_vp)
             SELECT DISTINCT ON (se_seid, pa_paid) se_seid, pa_paid,
-              CASE WHEN s1_score_type = 'VP' THEN NULL ELSE LEAST(999.0, GREATEST(25.0, LEAST(75.0, s2_score_value))) END,
-              CASE WHEN s1_score_type = 'VP' THEN LEAST(999.0, s2_score_value) ELSE NULL END
+              CASE WHEN s1_score_type = 'VP' THEN NULL ELSE LEAST(${VP_SCORE_HARD_CAP}.0, GREATEST(${MP_PERCENTAGE_MIN}.0, LEAST(${MP_PERCENTAGE_MAX}.0, s2_score_value))) END,
+              CASE WHEN s1_score_type = 'VP' THEN LEAST(${VP_SCORE_HARD_CAP}.0, s2_score_value) ELSE NULL END
             FROM ts2_results
             JOIN tse_sessions ON se_run_id  = s2_run_id
             JOIN ts1_sessions ON s1_run_id  = s2_run_id

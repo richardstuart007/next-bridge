@@ -6,7 +6,7 @@ import { MyLineChart } from '@/src/ui/graphs/graph_charts'
 import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
 import { MyButton } from 'nextjs-shared/MyButton'
 import MySelect from 'nextjs-shared/MySelect'
-import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
+import { NB_BACK_FROM_KEY, CHART_TOP_N_PRESELECTED } from '@/src/lib/constants'
 
 interface PartnerRef {
   id: number
@@ -147,7 +147,7 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
   useEffect(() => {
     if (ordered.length === 0) return
     if (!initialised.current) {
-      setSelectedIds(new Set(ordered.slice(0, 5).map(e => e.id)))
+      setSelectedIds(new Set(ordered.slice(0, CHART_TOP_N_PRESELECTED).map(e => e.id)))
       initialised.current = true
     } else {
       const available = new Set(ordered.map(e => e.id))

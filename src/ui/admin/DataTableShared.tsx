@@ -5,7 +5,7 @@ import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import MySelectMulti from 'nextjs-shared/MySelectMulti'
 import MyPagination from 'nextjs-shared/MyPagination'
-import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
+import { ROWS_PER_PAGE } from '@/src/lib/constants'
 
 export type Row = Record<string, unknown>
 

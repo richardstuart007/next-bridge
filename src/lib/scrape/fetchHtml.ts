@@ -1,3 +1,5 @@
+import { FETCH_TIMEOUT_MS } from '@/src/lib/constants'
+
 // ── Web cache ─────────────────────────────────────────────────────────────────
 const _webCache = new Map<string, string>()
 
@@ -9,8 +11,6 @@ const FETCH_HEADERS = {
   'Accept': 'text/html',
   'Accept-Language': 'en-NZ,en-GB;q=0.9,en;q=0.8',
 }
-
-const FETCH_TIMEOUT_MS = 15_000
 
 async function fetchWithTimeout(url: string): Promise<Response> {
   const controller = new AbortController()

@@ -6,8 +6,7 @@ import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
-import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
-import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
+import { NB_BACK_FROM_KEY, ROWS_PER_PAGE } from '@/src/lib/constants'
 
 interface SessionRow {
   se_seid: number

@@ -13,8 +13,7 @@ import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
-import { ROWS_PER_PAGE } from '@/src/lib/tableUtils'
-import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
+import { NB_BACK_FROM_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
 
 interface ResultRow {
   session_id:      number
@@ -556,9 +555,9 @@ useEffect(() => { setCurrentPage(1) },
                     {/* Date: from on top, to below */}
                     <td className='py-1 pr-1'>
                       <div className='flex flex-col gap-0.5'>
-                        <MyInput type='date' value={dateFrom} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)}
+                        <MyInput type='date' value={dateFrom} min={EARLIEST_DATA_DATE} max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)}
                           overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='From' />
-                        <MyInput type='date' value={dateTo} min='2024-01-01' max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}
+                        <MyInput type='date' value={dateTo} min={EARLIEST_DATA_DATE} max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}
                           overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='To' />
                       </div>
                     </td>

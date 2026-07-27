@@ -6,6 +6,7 @@ import { table_update } from 'nextjs-shared/table_update'
 import { table_count } from 'nextjs-shared/table_count'
 import { table_upsert } from 'nextjs-shared/table_upsert'
 import { table_query } from 'nextjs-shared/table_query'
+import { PLAYER_SEARCH_LIMIT, PLAYER_SEARCH_ALL_LIMIT } from '@/src/lib/constants'
 
 const PLAYERS_TABLE = 'tpl_players'
 
@@ -52,7 +53,7 @@ export async function searchPlayers(query: string) {
       { column: 'pl_nz_bridge_number', value: 0, operator: '>' }
     ],
     orderBy: 'pl_name ASC',
-    limit: 20
+    limit: PLAYER_SEARCH_LIMIT
   })
 }
 
@@ -63,7 +64,7 @@ export async function searchAllPlayers(query: string) {
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [{ column: 'pl_name', value: `%${titleCased}%`, operator: 'LIKE' }],
     orderBy: 'pl_name ASC',
-    limit: 30
+    limit: PLAYER_SEARCH_ALL_LIMIT
   })
 }
 

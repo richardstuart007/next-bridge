@@ -1,8 +1,8 @@
-'use client'
 import Link from 'next/link'
 import OwnerPage from 'nextjs-shared/OwnerPage'
 import OwnerTableCache from 'nextjs-shared/OwnerTableCache'
 import OwnerTableLogging from 'nextjs-shared/OwnerTableLogging'
+import DataflowTabs from '@/src/ui/dataflow/DataflowTabs'
 
 const TOOLS = [
   { href: '/owner/pipeline', label: 'Pipeline', description: 'Discover, scrape, build, and recompute stats — run each step individually or all in sequence.', step: '▶' },
@@ -38,6 +38,7 @@ export default function Page() {
         { label: 'Tools', content: <ToolsPanel /> },
         { label: 'Logging', content: <OwnerTableLogging /> },
         { label: 'Cache', content: <OwnerTableCache /> },
+        { label: 'Dataflow', content: <div className='p-6 md:p-8'><DataflowTabs /></div> },
       ]}
     />
   )

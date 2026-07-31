@@ -105,36 +105,30 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
   return { withNumber, withoutNumber: total - withNumber }
 }
 
-/** Fetch all group stats (A/B/C/all) for a player from ta1_player_stats. */
+/** Fetch all group/scoring stats (A/B/C/all × MP/VP/XIMP) for a player from ta1_player_stats. */
 export async function getPlayerAllGroupStats(plid: number) {
   const rows = await table_query({
     caller: 'getPlayerAllGroupStats',
     query: `
       WITH all_ranked AS (
-        SELECT a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
-               a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev,
-               PERCENT_RANK() OVER (PARTITION BY a1_group ORDER BY a1_mp_stddev NULLS LAST) AS mp_pct_rank,
-               PERCENT_RANK() OVER (PARTITION BY a1_group ORDER BY a1_vp_stddev NULLS LAST) AS vp_pct_rank
+        SELECT a1_plid, a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev,
+               PERCENT_RANK() OVER (PARTITION BY a1_group, a1_scoring ORDER BY a1_stddev NULLS LAST) AS pct_rank
         FROM ta1_player_stats
       )
-      SELECT a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev, mp_pct_rank,
-             a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev, vp_pct_rank
+      SELECT a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev, pct_rank
       FROM all_ranked
       WHERE a1_plid = $1
-      ORDER BY a1_group
+      ORDER BY a1_group, a1_scoring
     `,
     params: [plid]
   })
   return rows as {
-    a1_group:       string
-    a1_mp_sessions: number
-    a1_mp_avg_pct:  number
-    a1_mp_stddev:   number | null
-    mp_pct_rank:    number | null
-    a1_vp_sessions: number
-    a1_vp_avg_vp:   number
-    a1_vp_stddev:   number | null
-    vp_pct_rank:    number | null
+    a1_group:    string
+    a1_scoring:  string
+    a1_sessions: number
+    a1_avg:      number
+    a1_stddev:   number | null
+    pct_rank:    number | null
   }[]
 }
 
@@ -229,11 +223,11 @@ export async function getOrCreatePartnerRow(
   return rows[0]?.pa_paid ?? null
 }
 
-/** Fetch C-group partnership stats for a pair from ta2_partner_stats (order of IDs does not matter). */
+/** Fetch C-group partnership stats (one row per scoring type) for a pair from ta2_partner_stats (order of IDs does not matter). */
 export async function getPartnerStats(plid1: number, plid2: number) {
   const rows = await table_query({
     caller: 'getPartnerStats',
-    query: `SELECT * FROM ta2_partner_stats
+    query: `SELECT a2_scoring, a2_sessions, a2_avg, a2_stddev FROM ta2_partner_stats
             WHERE a2_paid IN (
               SELECT pa_paid FROM tpa_partners
               WHERE (pa_plid1 = $1 AND pa_plid2 = $2)
@@ -242,5 +236,10 @@ export async function getPartnerStats(plid1: number, plid2: number) {
             AND a2_group = 'C'`,
     params: [plid1, plid2]
   })
-  return rows[0] ?? null
+  return rows as {
+    a2_scoring:  string
+    a2_sessions: number
+    a2_avg:      number
+    a2_stddev:   number | null
+  }[]
 }

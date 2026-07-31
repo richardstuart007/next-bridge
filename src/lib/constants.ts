@@ -8,11 +8,11 @@ export const ROBOT_PLAYER_NAME = 'Robot'
 export const SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS = 7
 
 //
-//  sessionStorage key: captures the page the user navigated from, right before
-//  entering /session/[id] or /player/[id], so those pages can render a real
-//  "back to where you came from" link via MyBackHomeNav
+//  sessionStorage key (via nextjs-shared's saveBackNav/useBackNav): captures the page the user
+//  navigated from, right before entering /session/[id] or /player/[id], so those pages can
+//  render a real "back to where you came from" link via MyBackHomeNav
 //
-export const NB_BACK_FROM_KEY = 'nbBackFrom'
+export const BACK_KEY = 'back_key_next_bridge'
 
 //
 //  Tournament group classification — derived from the last character of se_tournament: 'A' or
@@ -46,7 +46,7 @@ export const SCRAPE_FALLBACK_LOOKBACK_DAYS = 30
 //
 //  MP percentage clamp bounds — a raw scraped score outside this range is treated as
 //  unreliable and clamped/reset. Used both at scrape time (normaliseScore) and again at
-//  build time (buildSteps.ts's SQL clamp on re_percentage)
+//  build time (buildSteps.ts's SQL clamp on re_score)
 //
 export const MP_PERCENTAGE_MIN = 25
 export const MP_PERCENTAGE_MAX = 75
@@ -63,6 +63,20 @@ export const VP_SCORE_SANITY_RESET = 10
 //  the scrape-stage sanity check above
 //
 export const VP_SCORE_HARD_CAP = 999
+
+//
+//  Sentinel s1_score_type/se_scoring value for a scraped score whose suffix isn't a recognized
+//  type (PCT/VP/XIMP). Used instead of silently dropping the row (pipelineScrape.ts's
+//  parseScore), so a session with an unhandled scoring format still lands in
+//  ts1_sessions/tse_sessions as visible, queryable data rather than vanishing with no trace.
+//
+export const UNKNOWN_SCORE_TYPE = 'UNK'
+
+//
+//  Hard ceiling applied to any XIMP (cross-IMPs) score at build time (buildSteps.ts's SQL) — a
+//  single clamp only, no separate scrape-stage sanity-reset step (unlike VP's two-stage check)
+//
+export const XIMP_SCORE_HARD_CAP = 200
 
 //
 //  Row caps for the two player-search server actions (players.ts)
@@ -89,6 +103,19 @@ export const CHART_TOP_N_PRESELECTED = 5
 //  Default page size for client-side paginated tables across the app
 //
 export const ROWS_PER_PAGE = 20
+
+//
+//  Standard rows-per-page dropdown choices (RowsPerPageSelect) — the default `options` list;
+//  overrideable per call site via its own `options` prop
+//
+export const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100]
+
+//
+//  Recognized scoring types shown in scoring-type UI (ScoringTypeSelect/ScoringTypeToggle, and
+//  BuildDataViewer's se_scoring filter) — single source of truth so adding a new type is a
+//  one-line change here instead of hunting down every duplicate
+//
+export const SCORING_TYPES = ['MP', 'VP', 'XIMP'] as const
 
 //
 //  Value strings longer than this (or any object/array) render behind the Constants page's

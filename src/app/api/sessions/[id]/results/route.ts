@@ -19,8 +19,7 @@ export async function GET(
       query: `
         WITH ranked AS (
           SELECT
-            re_percentage,
-            re_vp,
+            re_score,
             pa_plid1         AS plid1,
             pa_plid2         AS plid2,
             p1.pl_name       AS name1,
@@ -38,8 +37,7 @@ export async function GET(
           WHERE re_seid = $1
         )
         SELECT
-          re_percentage      AS percentage,
-          re_vp,
+          re_score           AS score,
           CASE WHEN sort1 <= sort2 THEN plid1 ELSE plid2 END AS pl_id,
           CASE WHEN sort1 <= sort2 THEN name1 ELSE name2 END AS player_name,
           CASE WHEN sort1 <= sort2 THEN nz1   ELSE nz2   END AS player_nz_number,
@@ -47,7 +45,7 @@ export async function GET(
           CASE WHEN sort1 <= sort2 THEN name2 ELSE name1 END AS partner_name,
           CASE WHEN sort1 <= sort2 THEN nz2   ELSE nz1   END AS partner_nz_number
         FROM ranked
-        ORDER BY COALESCE(re_percentage, re_vp) DESC NULLS LAST
+        ORDER BY re_score DESC NULLS LAST
       `,
       params: [seId]
     })

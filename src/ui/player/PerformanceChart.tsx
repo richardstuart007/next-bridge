@@ -6,7 +6,8 @@ import { MyLineChart } from '@/src/ui/graphs/graph_charts'
 import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
 import { MyButton } from 'nextjs-shared/MyButton'
 import MySelect from 'nextjs-shared/MySelect'
-import { NB_BACK_FROM_KEY, CHART_TOP_N_PRESELECTED } from '@/src/lib/constants'
+import { saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY, CHART_TOP_N_PRESELECTED, SCORING_TYPES } from '@/src/lib/constants'
 
 interface ResultRow {
   session_id:   number
@@ -14,6 +15,7 @@ interface ResultRow {
   day_of_week:  string
   percentage:   number | null
   vp:           number | null
+  ximp:         number | null
   scoring:      string
   tournament:   string
   partner_id:   number
@@ -23,7 +25,7 @@ interface ResultRow {
 
 interface Props {
   results: ResultRow[]
-  scoring: 'MP' | 'VP'
+  scoring: (typeof SCORING_TYPES)[number]
 }
 
 const PARTNER_COLORS = [
@@ -62,7 +64,9 @@ export default function PerformanceChart({ results, scoring }: Props) {
   , [results, scoring])
 
   const valueOf = (r: ResultRow) =>
-    scoring === 'VP' ? parseFloat(String(r.vp ?? 0)) : parseFloat(String(r.percentage))
+    scoring === 'VP'   ? parseFloat(String(r.vp   ?? 0)) :
+    scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)) :
+    parseFloat(String(r.percentage))
 
   const { partnerOrder, partnerMeta } = useMemo(() => {
     const groups = new Map<number, { name: string; vals: number[] }>()
@@ -96,7 +100,7 @@ export default function PerformanceChart({ results, scoring }: Props) {
   }, [partnerOrder])
 
   const dp   = 2
-  const unit = scoring === 'VP' ? '' : '%'
+  const unit = scoring === 'MP' ? '%' : ''
 
   const graphData: GraphStructure = useMemo(() => {
     if (sorted.length === 0 || selectedIds.size === 0) return { labels: [], datasets: [] }
@@ -176,7 +180,7 @@ export default function PerformanceChart({ results, scoring }: Props) {
       <div className='flex items-center gap-4 flex-wrap'>
         <h2 className='text-base font-semibold text-gray-800'>Performance Over Time</h2>
         {overallAvg !== null && (
-          <span className='text-sm text-gray-500'>avg <span className='font-medium text-gray-700'>{overallAvg}{scoring === 'VP' ? 'pts' : '%'}</span></span>
+          <span className='text-sm text-gray-500'>avg <span className='font-medium text-gray-700'>{overallAvg}{scoring === 'MP' ? '%' : 'pts'}</span></span>
         )}
         <div className='flex items-center gap-1.5 ml-auto'>
           <MyButton onClick={exportCSV} disabled={sorted.length === 0 || selectedIds.size === 0}
@@ -224,13 +228,13 @@ export default function PerformanceChart({ results, scoring }: Props) {
             GridDisplayY={true}
             xMaxTicksLimit={24}
             onPointClick={key => {
-              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              saveBackNav(BACK_KEY)
               router.push(`/session/${key}`)
             }}
             onLegendClick={idx => {
               const id = visibleOrder[idx]
               if (!id) return
-              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              saveBackNav(BACK_KEY)
               router.push(`/player/${id}`)
             }}
           />

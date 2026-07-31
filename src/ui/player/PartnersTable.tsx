@@ -7,8 +7,11 @@ import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
-import { NB_BACK_FROM_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
+import { saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, SCORING_TYPES } from '@/src/lib/constants'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
+import { ScoringTypeSelect, ScoringTypeToggle } from '@/src/ui/shared/ScoringTypeSelects'
+import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
 import PerformanceChart from './PerformanceChart'
 
 interface PartnerEntry {
@@ -32,6 +35,7 @@ interface ResultRow {
   is_summary:        boolean | null
   percentage:        number
   vp:                number | null
+  ximp:              number | null
   partner_id:        number
   partner_name:      string | null
   partner_nz_number: number | null
@@ -104,12 +108,12 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
   const [partnerResults,    setPartnerResults]    = useState<Map<number, ResultRow[]>>(new Map())
   const [loading,           setLoading]           = useState(false)
   const [view,         setView]         = useState<'data' | 'graph'>('data')
-  const [graphScoring, setGraphScoring] = useState<'MP' | 'VP'>('MP')
+  const [graphScoring, setGraphScoring] = useState<(typeof SCORING_TYPES)[number]>('MP')
 
   const [dateFrom,           setDateFrom]           = useState('')
   const [dateTo,             setDateTo]             = useState('')
   const [dayFilter,          setDayFilter]          = useState('')
-  const [scoringFilter,      setScoringFilter]      = useState<'all' | 'MP' | 'VP'>('all')
+  const [scoringFilter,      setScoringFilter]      = useState<'all' | (typeof SCORING_TYPES)[number]>('all')
   const [summaryFilter,      setSummaryFilter]      = useState<'all' | 'summary' | 'session'>('all')
   const [selectedPlayerIds,  setSelectedPlayerIds]  = useState<Set<number>>(new Set())
   const [sessionNameFilter,  setSessionNameFilter]  = useState('')
@@ -188,6 +192,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
     day_of_week:  r.day_of_week,
     percentage:   r.percentage ?? 0,
     vp:           r.vp,
+    ximp:         r.ximp,
     scoring:      r.scoring,
     tournament:   r.tournament,
     partner_id:   r.player_id,
@@ -201,7 +206,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
   }
 
   function exportCSV() {
-    const header = ['Player','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP']
+    const header = ['Player','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP','XIMP']
     const dataRows = filtered.map(r => [
       r.player_name,
       r.run_id,
@@ -217,6 +222,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
       r.is_summary === true ? 'Summary' : r.is_summary === null ? '?' : 'Session',
       r.scoring === 'MP' ? parseFloat(String(r.percentage)).toFixed(2) : '',
       r.scoring === 'VP' ? parseFloat(String(r.vp ?? 0)).toFixed(2) : '',
+      r.scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)).toFixed(2) : '',
     ].map(escCsv).join(','))
     const csv = [header.join(','), ...dataRows].join('\n')
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -260,14 +266,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
       {view === 'graph' ? (
         <div>
           <div className='flex items-center gap-2 mb-3'>
-            <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
-              {(['MP', 'VP'] as const).map(s => (
-                <button key={s} onClick={() => setGraphScoring(s)}
-                  className={`px-2 py-0.5 ${graphScoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                  {s}
-                </button>
-              ))}
-            </div>
+            <ScoringTypeToggle value={graphScoring} onChange={setGraphScoring} />
           </div>
           {graphRows.length > 0
             ? <PerformanceChart results={graphRows} scoring={graphScoring} />
@@ -291,6 +290,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
               <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Summary</th>
               <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>%</th>
               <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>VP</th>
+              <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>XIMP</th>
             </tr>
             <tr className='border-b border-gray-100 bg-gray-50 align-top'>
               <td className='py-1 pr-1'>
@@ -331,12 +331,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
                   onOptionsLoaded={opts => { setEventTypeOptions(opts); setSelectedEventTypes(new Set(opts)) }} />
               </td>
               <td className='py-1 pr-1'>
-                <MySelect value={scoringFilter} onChange={e => setScoringFilter(e.target.value as 'all' | 'MP' | 'VP')}
-                  overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
-                  <option value='all'>All</option>
-                  <option value='MP'>MP</option>
-                  <option value='VP'>VP</option>
-                </MySelect>
+                <ScoringTypeSelect value={scoringFilter} onChange={v => setScoringFilter(v as 'all' | (typeof SCORING_TYPES)[number])} includeAll />
               </td>
               <td className='py-1 pr-1'>
                 <MySelect value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')}
@@ -348,6 +343,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
               </td>
               <td className='py-1' />
               <td className='py-1' />
+              <td className='py-1' />
             </tr>
           </thead>
           <tbody>
@@ -355,14 +351,14 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
               <tr key={i}
                 className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                 onClick={() => {
-                  sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                  saveBackNav(BACK_KEY)
                   window.location.href = `/session/${r.session_id}`
                 }}
               >
                 <td className='py-1.5'>
                   <Link href={`/player/${r.player_id}`}
                     className='text-blue-600 hover:underline font-medium'
-                    onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
+                    onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
                     {r.player_name}
                   </Link>
                 </td>
@@ -372,7 +368,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
                 <td className='py-1.5'>
                   {r.partner_name
                     ? <Link href={`/player/${r.partner_id}`} className='text-blue-600 hover:underline'
-                        onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
+                        onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
                         {r.partner_name}
                       </Link>
                     : '—'}
@@ -393,6 +389,9 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
                 <td className='py-1.5 text-right font-medium text-xs'>
                   {r.scoring === 'VP' ? parseFloat(String(r.vp ?? 0)).toFixed(2) : ''}
                 </td>
+                <td className='py-1.5 text-right font-medium text-xs'>
+                  {r.scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)).toFixed(2) : ''}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -402,10 +401,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
 
       {view === 'data' && filtered.length > itemsPerPage && (
         <div className='mt-3 flex items-center gap-3'>
-          <MySelect value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
-            overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'>
-            {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-          </MySelect>
+          <RowsPerPageSelect value={itemsPerPage} onChange={v => { setItemsPerPage(v); setCurrentPage(1) }} />
           <span className='text-xs text-gray-400'>p.{currentPage}/{Math.ceil(filtered.length / itemsPerPage)}</span>
           <MyPagination
             totalPages={Math.ceil(filtered.length / itemsPerPage)}

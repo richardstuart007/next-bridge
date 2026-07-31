@@ -6,7 +6,9 @@ import { MyLineChart } from '@/src/ui/graphs/graph_charts'
 import { GraphStructure, Datasets } from '@/src/ui/graphs/graph_types'
 import { MyButton } from 'nextjs-shared/MyButton'
 import MySelect from 'nextjs-shared/MySelect'
-import { NB_BACK_FROM_KEY, CHART_TOP_N_PRESELECTED } from '@/src/lib/constants'
+import { ScoringTypeToggle } from '@/src/ui/shared/ScoringTypeSelects'
+import { saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY, CHART_TOP_N_PRESELECTED, SCORING_TYPES } from '@/src/lib/constants'
 
 interface PartnerRef {
   id: number
@@ -27,6 +29,7 @@ interface ResultRow {
   is_summary:        boolean | null
   percentage:        number
   vp:                number | null
+  ximp:              number | null
   partner_id:        number
   partner_name:      string | null
   partner_nz_number: number | null
@@ -47,7 +50,7 @@ const PARTNER_COLORS = [
   'rgba(100, 100, 200, 1)'
 ]
 
-type Scoring = 'MP' | 'VP'
+type Scoring = (typeof SCORING_TYPES)[number]
 type Grp = 'all' | 'A' | 'B' | 'C'
 
 function grpOf(tournament: string): string {
@@ -108,10 +111,12 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
   }, [partners, self])
 
   const valueOf = (r: ResultRow) =>
-    scoring === 'VP' ? parseFloat(String(r.vp ?? 0)) : parseFloat(String(r.percentage))
+    scoring === 'VP'   ? parseFloat(String(r.vp   ?? 0)) :
+    scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)) :
+    parseFloat(String(r.percentage))
 
   const dp   = 2
-  const unit = scoring === 'VP' ? '' : '%'
+  const unit = scoring === 'MP' ? '%' : ''
 
   // Build ordered list + metadata (self first, then others by avg desc)
   const { ordered, entryMeta } = useMemo(() => {
@@ -211,7 +216,7 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
 
   function exportCSV() {
     const all = self ? [self, ...partners] : partners
-    const header = ['Player','Player NZB#','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP']
+    const header = ['Player','Player NZB#','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP','XIMP']
     const dataRows: string[] = []
     all.forEach(entry => {
       const rows = (partnerResults.get(entry.id) ?? [])
@@ -234,6 +239,7 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
           r.is_summary === true ? 'Summary' : r.is_summary === null ? '?' : '',
           r.scoring === 'MP' ? parseFloat(String(r.percentage)).toFixed(2) : '',
           r.scoring === 'VP' ? parseFloat(String(r.vp ?? 0)).toFixed(2) : '',
+          r.scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)).toFixed(2) : '',
         ].map(escCsv).join(','))
       })
     })
@@ -251,14 +257,7 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
         {loading && <span className='text-xs text-gray-400'>Loading…</span>}
         <div className='flex items-center gap-3 ml-auto flex-wrap'>
           {/* Scoring toggle */}
-          <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
-            {(['MP', 'VP'] as Scoring[]).map(s => (
-              <button key={s} onClick={() => setScoring(s)}
-                className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                {s}
-              </button>
-            ))}
-          </div>
+          <ScoringTypeToggle value={scoring} onChange={setScoring} />
           {/* Group selector */}
           <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
             {(['all', 'A', 'B', 'C'] as Grp[]).map(g => (
@@ -324,14 +323,14 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
             xMaxTicksLimit={24}
             onPointClick={key => {
               if (!key) return
-              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              saveBackNav(BACK_KEY)
               router.push(`/session/${key}`)
             }}
             onLegendClick={idx => {
               const vis = ordered.filter(e => selectedIds.has(e.id))
               const p = vis[idx]
               if (!p) return
-              sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+              saveBackNav(BACK_KEY)
               router.push(`/player/${p.id}`)
             }}
           />

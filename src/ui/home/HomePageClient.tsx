@@ -4,7 +4,10 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { ClubSelect, GradeSelect, RankSelect, StringMultiSelect } from '@/src/ui/shared/LookupSelects'
-import { NB_BACK_FROM_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
+import { ScoringTypeSelect } from '@/src/ui/shared/ScoringTypeSelects'
+import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
+import { saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
 import MyPagination from 'nextjs-shared/MyPagination'
 import { MyHelpField } from 'nextjs-shared/MyHelpField'
 import { MyButton } from 'nextjs-shared/MyButton'
@@ -329,7 +332,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                       <tr key={pl_plid}
                         className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${isTracked(pl_all_results) ? 'bg-green-50' : ''}`}
                         onClick={() => {
-                          sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                          saveBackNav(BACK_KEY)
                           router.push(`/player/${pl_plid}`)
                         }}
                       >
@@ -353,13 +356,11 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
               </div>
               {filteredPlayers.length > playerItemsPerPage && (
                 <div className='mt-3 flex items-center gap-3'>
-                  <MySelect
+                  <RowsPerPageSelect
                     value={playerItemsPerPage}
-                    onChange={e => { setPlayerItemsPerPage(parseInt(e.target.value, 10)); setPlayerPage(1) }}
-                    overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'
-                  >
-                    {[15, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-                  </MySelect>
+                    onChange={v => { setPlayerItemsPerPage(v); setPlayerPage(1) }}
+                    options={[15, 20, 50, 100]}
+                  />
                   <span className='text-xs text-gray-400'>
                     p.{playerPage}/{Math.ceil(filteredPlayers.length / playerItemsPerPage)}
                   </span>
@@ -416,11 +417,8 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     <StringMultiSelect options={TOURNAMENT_TYPES} selected={fTournamentTypes} onChange={setFTournamentTypes} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <MySelect value={scoringFilter} onChange={e => setScoringFilter(e.target.value)} overrideClass={`${SELECT_CLS} h-auto md:h-auto`}>
-                      <option value=''>All</option>
-                      <option value='MP'>MP</option>
-                      <option value='VP'>VP</option>
-                    </MySelect>
+                    <ScoringTypeSelect value={scoringFilter} onChange={setScoringFilter} includeAll allValue=''
+                      overrideClass={`${SELECT_CLS} h-auto md:h-auto`} />
                   </td>
                   <td className='py-1 pr-2'>
                     <MySelect value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')} overrideClass={`${SELECT_CLS} h-auto md:h-auto`}>
@@ -444,7 +442,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                   <tr key={s.se_seid}
                     className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                     onClick={() => {
-                      sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                      saveBackNav(BACK_KEY)
                       router.push(`/session/${s.se_seid}`)
                     }}
                   >
@@ -477,13 +475,10 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
           )}
           {sessions.length > sessionItemsPerPage && (
             <div className='mt-3 flex items-center gap-3'>
-              <MySelect
+              <RowsPerPageSelect
                 value={sessionItemsPerPage}
-                onChange={e => { setSessionItemsPerPage(parseInt(e.target.value, 10)); setSessionPage(1) }}
-                overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'
-              >
-                {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-              </MySelect>
+                onChange={v => { setSessionItemsPerPage(v); setSessionPage(1) }}
+              />
               <span className='text-xs text-gray-400'>
                 p.{sessionPage}/{Math.ceil(sessions.length / sessionItemsPerPage)}
               </span>

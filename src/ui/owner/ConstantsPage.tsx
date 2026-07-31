@@ -2,7 +2,7 @@ import ConstantsViewer, { ConstantSection } from '@/src/ui/owner/ConstantsViewer
 import {
   ROBOT_PLAYER_NAME,
   SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS,
-  NB_BACK_FROM_KEY,
+  BACK_KEY,
   TOURNAMENT_GROUPS,
   TOURNAMENT_DEFAULT_GROUP,
   TOURNAMENT_GROUP_SQL_EXPR,
@@ -72,7 +72,7 @@ const CONSTANTS_SECTIONS: ConstantSection[] = [
   {
     heading: 'UI Display & Navigation',
     entries: [
-      { name: 'NB_BACK_FROM_KEY', value: NB_BACK_FROM_KEY, description: "sessionStorage key capturing the page the user navigated from, right before entering /session/[id] or /player/[id], so those pages can render a 'back to where you came from' link via MyBackHomeNav.", consumers: ['HomePageClient.tsx: HomePageClient', 'PlayerPageClient.tsx: PlayerPageClient', 'RankingsPageClient.tsx: RankingsPageClient', 'PerformanceChart.tsx: PerformanceChart', 'SessionPageClient.tsx: SessionPageClient', 'PartnersTable.tsx: PartnersTable', 'PartnersChart.tsx: PartnersChart', 'PlayersAdmin.tsx: PlayersAdmin'] },
+      { name: 'BACK_KEY', value: BACK_KEY, description: "sessionStorage key (via nextjs-shared's saveBackNav/useBackNav) capturing the page the user navigated from, right before entering /session/[id] or /player/[id], so those pages can render a 'back to where you came from' link via MyBackHomeNav.", consumers: ['HomePageClient.tsx: HomePageClient', 'PlayerPageClient.tsx: PlayerPageClient', 'RankingsPageClient.tsx: RankingsPageClient', 'PerformanceChart.tsx: PerformanceChart', 'SessionPageClient.tsx: SessionPageClient', 'PartnersTable.tsx: PartnersTable', 'PartnersChart.tsx: PartnersChart', 'PlayersAdmin.tsx: PlayersAdmin'] },
       { name: 'EARLIEST_DATA_DATE', value: EARLIEST_DATA_DATE, description: "Earliest date the app's data begins — the min bound on every session/result date picker.", consumers: ['HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient'] },
       { name: 'CHART_TOP_N_PRESELECTED', value: CHART_TOP_N_PRESELECTED, description: 'Number of series pre-selected by default on the Partners/Performance charts.', consumers: ['PartnersChart.tsx: PartnersChart', 'PerformanceChart.tsx: PerformanceChart'] },
       { name: 'ROWS_PER_PAGE', value: ROWS_PER_PAGE, description: 'Default page size for client-side paginated tables across the app.', consumers: ['HomePageClient.tsx: HomePageClient', 'SessionPageClient.tsx: SessionPageClient', 'PartnersTable.tsx: PartnersTable', 'DataTableShared.tsx: DataTable', 'PlayerPageClient.tsx: PlayerPageClient'] },
@@ -96,7 +96,7 @@ const FUNCTION_DESCRIPTIONS: Record<string, string> = {
   'PipelineTable.tsx: doRefreshAll': "Refreshes every step's status counts and defaults the From/To date inputs when empty.",
   'pipelineScrape.ts: normaliseScore': 'Clamps/resets an out-of-range raw scraped score before it is written to ts2_results.',
   'scrape/raw/nzb-by-date/route.ts: normaliseScore': "Legacy route's own copy of the same score sanity-check logic.",
-  'buildSteps.ts: buildResultsFromStaging': 'ts2_results → tpa_partners + tre_results — clamps/caps re_percentage and re_vp on insert.',
+  'buildSteps.ts: buildResultsFromStaging': 'ts2_results → tpa_partners + tre_results — clamps/caps re_score on insert.',
   'BuildDataViewer.tsx: SessionsTab': 'Build Data Viewer tab showing raw tse_sessions rows, filterable by tournament group.',
   'stats.ts: rebuildAllStats': 'Full recompute of ta1_player_stats/ta2_partner_stats for every tournament group plus "all".',
   'src/lib/constants.ts (module scope)': "Used to build TOURNAMENT_GROUP_SQL_EXPR's fallback branch.",

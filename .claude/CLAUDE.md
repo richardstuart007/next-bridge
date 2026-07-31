@@ -36,7 +36,7 @@ The selected env is copied to `.env` before `next dev` starts.
 |---|---|
 | `tpl_players` | Players |
 | `tse_sessions` | One row per session; `se_run_id` is the NZB run_id |
-| `tre_results` | One row per player per session; `re_percentage` NULL for VP, `re_vp` NULL for MP |
+| `tre_results` | One row per player per session; `re_score` holds the value regardless of scoring type — interpretation comes from the session's `tse_sessions.se_scoring` |
 | `tpa_partners` | Partnership rows; `pa_paid` is FK from `tre_results.re_paid` |
 | `ta1_player_stats` | Pre-computed player stats |
 | `ta2_partner_stats` | Pre-computed partner stats |
@@ -69,7 +69,7 @@ from any page but still work if called directly; see "Scrape API routes" below.
 
 ## Key field notes
 
-- `re_percentage`: NULL for VP sessions (use `re_vp` instead); clamped to 25–75 for MP
+- `re_score`: single value column for any scoring type; clamped to 25–75 for MP, hard-capped at 999 for VP
 - `re_paid`: NULL until "Build partner stats" runs; links `tre_results` → `tpa_partners`
 - `se_run_id`: the NZB run_id stored on `tse_sessions` (was `se_source_id` before rename)
 
@@ -146,5 +146,19 @@ stats to see what's actually stored." Two things follow from that purpose:
 ## Cron
 
 `/api/cron/update-sessions` — full pipeline in one request: discover → scrape → build sessions → build results → build stats. Secured with `CRON_SECRET`.
+
+## Outstanding items
+
+- **Production DB migration pending (2026-07-31)** — the `re_score` column consolidation and the
+  `ta1_player_stats`/`ta2_partner_stats` scoring-type restructure (XIMP support) have been applied
+  to **local** only. Production still has the old schema (`re_percentage`/`re_vp` columns on
+  `tre_results`; `a1_mp_*`/`a1_vp_*`/`a2_mp_*`/`a2_vp_*` columns on `ta1_player_stats`/
+  `ta2_partner_stats`). The code deployed by this commit expects the new schema, so before/when
+  deploying to production, run the same manual SQL sequence against production that was already
+  run on local: add + backfill `re_score`, drop `re_percentage`/`re_vp`, and the
+  backup/drop/recreate for `ta1_player_stats`/`ta2_partner_stats` followed by re-running "Update
+  Stats" on `/owner/pipeline` (prod). The exact SQL lived in the now-deleted
+  `docs/PLAN_data-investigation-bill-leach.md` — see this commit's git history for the full text
+  if it's needed again.
 
 

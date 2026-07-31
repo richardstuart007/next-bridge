@@ -193,9 +193,10 @@ function TreResultsSection() {
     <div>
       <h4 className={H4}>Purpose</h4>
       <p className={P}>
-        Production: one row per player per session. <Code>re_percentage</Code> is NULL for VP sessions
-        (use <Code>re_vp</Code> instead); clamped to 25–75 for MP. <Code>re_paid</Code> links to the
-        partnership via <Code>tpa_partners</Code>.
+        Production: one row per player per session. <Code>re_score</Code> holds the session's value
+        regardless of scoring type — clamped to 25–75 for MP, hard-capped at 999 for VP; the
+        containing session's <Code>tse_sessions.se_scoring</Code> says which interpretation applies.
+        <Code>re_paid</Code> links to the partnership via <Code>tpa_partners</Code>.
       </p>
 
       <h4 className={H4}>Input</h4>
@@ -298,9 +299,9 @@ function UpdateStatsSection() {
       <h5 className={H5}>Details</h5>
       <ol className={OL}>
         <li>Group derivation - <Code>TOURNAMENT_GROUP_SQL_EXPR</Code>: last character of <Code>se_tournament</Code> is <Code>&apos;A&apos;</Code> or <Code>&apos;B&apos;</Code>, else defaults to <Code>TOURNAMENT_DEFAULT_GROUP</Code> (<Code>&apos;C&apos;</Code>)</li>
-        <li>Player stats - grouped by player (via <Code>unnest(ARRAY[pa_plid1, pa_plid2])</Code>), MP/VP session counts, average and stddev, filtered to <Code>se_is_summary IS NOT TRUE</Code></li>
+        <li>Player stats - grouped by player and scoring type (via <Code>unnest(ARRAY[pa_plid1, pa_plid2])</Code>, <Code>GROUP BY ..., se_scoring</Code>) — session count, average and stddev per scoring type present, filtered to <Code>se_is_summary IS NOT TRUE</Code></li>
         <li>Partner stats - same aggregation, grouped by <Code>re_paid</Code> directly (no unnest)</li>
-        <li>Upsert - <Code>ON CONFLICT (a1_plid, a1_group)</Code> / <Code>(a2_paid, a2_group)</Code>, so each group can be re-run independently</li>
+        <li>Upsert - <Code>ON CONFLICT (a1_plid, a1_group, a1_scoring)</Code> / <Code>(a2_paid, a2_group, a2_scoring)</Code>, so each group can be re-run independently</li>
       </ol>
 
       <h4 className={H4}>Output</h4>
@@ -328,7 +329,7 @@ function Ta1PlayerStatsSection() {
   return (
     <div>
       <h4 className={H4}>Purpose</h4>
-      <p className={P}>Pre-computed player stats — one row per (player, group): MP/VP session counts, average, stddev.</p>
+      <p className={P}>Pre-computed player stats — one row per (player, group, scoring type): session count, average, stddev, generic across MP/VP/XIMP.</p>
 
       <h4 className={H4}>Input</h4>
       <p className={P}>Computed by Update Stats.</p>
@@ -351,8 +352,9 @@ function Ta2PartnerStatsSection() {
     <div>
       <h4 className={H4}>Purpose</h4>
       <p className={P}>
-        Pre-computed partnership stats — one row per (partnership, group): MP/VP session counts,
-        average, stddev. Up to 4 rows per partnership (A/B/C/all).
+        Pre-computed partnership stats — one row per (partnership, group, scoring type): session
+        count, average, stddev, generic across MP/VP/XIMP. Up to 4 groups (A/B/C/all) × up to 3
+        scoring types = up to 12 rows per partnership.
       </p>
 
       <h4 className={H4}>Input</h4>
@@ -365,7 +367,7 @@ function Ta2PartnerStatsSection() {
       <h5 className={H5}>Player / partnership detail pages</h5>
       <p className={P}>
         <Code>getPartnerStats</Code> — picking a single group to display is an explicit choice, since a
-        partnership can have up to 4 rows here (the same reason <Code>/owner/builddata</Code>&apos;s{' '}
+        partnership can have up to 12 rows here (the same reason <Code>/owner/builddata</Code>&apos;s{' '}
         <Code>tpl</Code>/<Code>tpa</Code> tabs don&apos;t join this table in directly — see this
         project&apos;s <Code>.claude/CLAUDE.md</Code>, &quot;Build Data Viewer — design
         principle&quot;).

@@ -22,11 +22,18 @@ export async function GET(request: NextRequest) {
       query: `
         SELECT pl_plid, pl_name, pl_club, pl_grade, pl_rank,
                pl_a_points, pl_rating,
-               COALESCE(a1_mp_sessions, 0) + COALESCE(a1_vp_sessions, 0) AS a1_sessions,
-               COALESCE(a1_mp_avg_pct, 0)  AS a1_avg_pct,
+               COALESCE(s.a1_sessions, 0) AS a1_sessions,
+               COALESCE(s.a1_avg_pct, 0)  AS a1_avg_pct,
                pl_all_results, pl_nz_bridge_number
         FROM tpl_players
-        LEFT JOIN ta1_player_stats ON a1_plid = pl_plid AND a1_group = 'all'
+        LEFT JOIN (
+          SELECT a1_plid,
+                 SUM(a1_sessions) AS a1_sessions,
+                 MAX(a1_avg) FILTER (WHERE a1_scoring = 'MP') AS a1_avg_pct
+          FROM ta1_player_stats
+          WHERE a1_group = 'all'
+          GROUP BY a1_plid
+        ) s ON s.a1_plid = pl_plid
         ${where}
         ORDER BY pl_name ASC
       `,

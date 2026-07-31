@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { MyInput } from 'nextjs-shared/MyInput'
-import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
+import { saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY } from '@/src/lib/constants'
 
 interface PlayerRow {
   pl_plid:             number
@@ -98,7 +99,7 @@ export default function PlayersAdmin() {
                   </td>
                   <td className='py-1.5 font-medium'>
                     <Link href={`/player/${pl_plid}`} className='text-blue-600 hover:underline'
-                      onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
+                      onClick={() => saveBackNav(BACK_KEY)}>
                       {pl_name}
                     </Link>
                   </td>

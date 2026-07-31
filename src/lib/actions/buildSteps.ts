@@ -2,7 +2,7 @@
 
 import { table_query } from 'nextjs-shared/table_query'
 import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
-import { MP_PERCENTAGE_MIN, MP_PERCENTAGE_MAX, VP_SCORE_HARD_CAP } from '@/src/lib/constants'
+import { MP_PERCENTAGE_MIN, MP_PERCENTAGE_MAX, VP_SCORE_HARD_CAP, UNKNOWN_SCORE_TYPE, XIMP_SCORE_HARD_CAP } from '@/src/lib/constants'
 
 export type BuildSessionsResult = { inserted: number; skipped: number; total: number }
 export type BuildResultsResult  = { inserted: number }
@@ -30,7 +30,10 @@ export async function buildSessionsFromStaging(forceNewRun = false, fromDate?: s
                se_club, se_tournament, se_event_type, se_is_summary)
             SELECT
               s1_run_id, s1_date, TO_CHAR(s1_date, 'FMDay'),
-              CASE WHEN s1_score_type = 'VP' THEN 'VP' ELSE 'MP' END,
+              CASE WHEN s1_score_type = 'VP' THEN 'VP'
+                   WHEN s1_score_type = 'XIMP' THEN 'XIMP'
+                   WHEN s1_score_type = '${UNKNOWN_SCORE_TYPE}' THEN '${UNKNOWN_SCORE_TYPE}'
+                   ELSE 'MP' END,
               s1_event_name,
               CASE s1_club WHEN 'Auckland' THEN 'Remuera Bowls & Bridge Inc' ELSE s1_club END,
               s1_tournament, s1_event_type, s1_is_summary
@@ -91,10 +94,16 @@ export async function buildResultsFromStaging(forceNewRun = false, fromDate?: st
 
   const result = await table_query({
     caller: 'buildSteps/results/insert',
-    query: `INSERT INTO tre_results (re_seid, re_paid, re_percentage, re_vp)
+    query: `INSERT INTO tre_results (re_seid, re_paid, re_score)
             SELECT DISTINCT ON (se_seid, pa_paid) se_seid, pa_paid,
-              CASE WHEN s1_score_type = 'VP' THEN NULL ELSE LEAST(${VP_SCORE_HARD_CAP}.0, GREATEST(${MP_PERCENTAGE_MIN}.0, LEAST(${MP_PERCENTAGE_MAX}.0, s2_score_value))) END,
-              CASE WHEN s1_score_type = 'VP' THEN LEAST(${VP_SCORE_HARD_CAP}.0, s2_score_value) ELSE NULL END
+              CASE WHEN s1_score_type = 'VP'
+                THEN LEAST(${VP_SCORE_HARD_CAP}.0, s2_score_value)
+                WHEN s1_score_type = 'XIMP'
+                THEN LEAST(${XIMP_SCORE_HARD_CAP}.0, s2_score_value)
+                WHEN s1_score_type = '${UNKNOWN_SCORE_TYPE}'
+                THEN s2_score_value
+                ELSE LEAST(${VP_SCORE_HARD_CAP}.0, GREATEST(${MP_PERCENTAGE_MIN}.0, LEAST(${MP_PERCENTAGE_MAX}.0, s2_score_value)))
+              END
             FROM ts2_results
             JOIN tse_sessions ON se_run_id  = s2_run_id
             JOIN ts1_sessions ON s1_run_id  = s2_run_id

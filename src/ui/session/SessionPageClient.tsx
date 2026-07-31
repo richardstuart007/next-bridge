@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react'
 import { getSessionById } from '@/src/lib/actions/sessions'
 import Link from 'next/link'
 import MyPagination from 'nextjs-shared/MyPagination'
-import MySelect from 'nextjs-shared/MySelect'
+import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
-import { useBackNav } from 'nextjs-shared/useBackNav'
-import { NB_BACK_FROM_KEY, ROWS_PER_PAGE } from '@/src/lib/constants'
+import { useBackNav, saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY, ROWS_PER_PAGE } from '@/src/lib/constants'
 
 interface SessionRow {
   se_seid: number
@@ -19,8 +19,7 @@ interface SessionRow {
 }
 
 interface ResultRow {
-  percentage: number | null
-  re_vp: number | null
+  score: number | null
   pl_id: number
   player_name: string
   player_nz_number: number
@@ -36,7 +35,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
   const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(ROWS_PER_PAGE)
-  const backPath = useBackNav(NB_BACK_FROM_KEY)
+  const backPath = useBackNav(BACK_KEY)
 
   useEffect(() => {
     if (isNaN(sessionId)) {
@@ -132,29 +131,29 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                   key={i}
                   className='border-b border-gray-100 hover:bg-blue-50 cursor-pointer'
                   onClick={() => {
-                    sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                    saveBackNav(BACK_KEY)
                     window.location.href = `/player/${r.pl_id}?partner=${r.partner_pl_id}`
                   }}
                 >
                   <td className='py-1.5 text-gray-400'>{rowNum}</td>
                   <td className='py-1.5'>
                     <Link href={`/player/${r.pl_id}`} className='text-blue-600 hover:underline'
-                      onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
+                      onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
                       {r.player_name}
                     </Link>
                   </td>
                   <td className='py-1.5 text-xs text-gray-400'>{r.player_nz_number || '—'}</td>
                   <td className='py-1.5'>
                     <Link href={`/player/${r.partner_pl_id}`} className='text-blue-600 hover:underline'
-                      onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
+                      onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
                       {r.partner_name}
                     </Link>
                   </td>
                   <td className='py-1.5 text-xs text-gray-400'>{r.partner_nz_number || '—'}</td>
                   <td className='py-1.5 text-right font-medium'>
                     {session.se_scoring === 'VP'
-                      ? parseFloat(String(r.re_vp)).toFixed(2)
-                      : `${parseFloat(String(r.percentage)).toFixed(2)}%`}
+                      ? parseFloat(String(r.score)).toFixed(2)
+                      : `${parseFloat(String(r.score)).toFixed(2)}%`}
                   </td>
                 </tr>
               )})}
@@ -163,13 +162,7 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
         )}
         {results.length > itemsPerPage && (
           <div className='mt-3 flex items-center gap-3'>
-            <MySelect
-              value={itemsPerPage}
-              onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
-              overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'
-            >
-              {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-            </MySelect>
+            <RowsPerPageSelect value={itemsPerPage} onChange={v => { setItemsPerPage(v); setCurrentPage(1) }} />
             <span className='text-xs text-gray-400'>
               p.{currentPage}/{Math.ceil(results.length / itemsPerPage)}
             </span>

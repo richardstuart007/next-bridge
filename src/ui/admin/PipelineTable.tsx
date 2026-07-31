@@ -67,31 +67,29 @@ const GRP_EXPR_SQL = TOURNAMENT_GROUP_SQL_EXPR
 function playerStatsSql(grp: string): string {
   const isAll = grp === 'all'
   return `INSERT INTO ta1_player_stats
-  (a1_plid, a1_group, a1_mp_sessions, a1_mp_avg_pct, a1_mp_stddev,
-   a1_vp_sessions, a1_vp_avg_vp, a1_vp_stddev)
-SELECT u.plid, ${isAll ? "'all'" : `'${grp}'`}, ...
+  (a1_plid, a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev)
+SELECT u.plid, ${isAll ? "'all'" : `'${grp}'`}, se_scoring, ...
 FROM tre_results
 JOIN tse_sessions ON se_seid = re_seid
 JOIN tpa_partners ON pa_paid = re_paid
 CROSS JOIN LATERAL unnest(ARRAY[pa_plid1, pa_plid2]) AS u(plid)
 WHERE se_is_summary IS NOT TRUE
 ${isAll ? '' : `AND ${GRP_EXPR_SQL} = '${grp}'`}
-GROUP BY u.plid
-ON CONFLICT (a1_plid, a1_group) DO UPDATE SET ...;`
+GROUP BY u.plid, se_scoring
+ON CONFLICT (a1_plid, a1_group, a1_scoring) DO UPDATE SET ...;`
 }
 
 function partnerStatsSql(grp: string): string {
   const isAll = grp === 'all'
   return `INSERT INTO ta2_partner_stats
-  (a2_paid, a2_group, a2_mp_sessions, a2_mp_avg_pct, a2_mp_stddev,
-   a2_vp_sessions, a2_vp_avg_vp, a2_vp_stddev)
-SELECT re_paid, ${isAll ? "'all'" : `'${grp}'`}, ...
+  (a2_paid, a2_group, a2_scoring, a2_sessions, a2_avg, a2_stddev)
+SELECT re_paid, ${isAll ? "'all'" : `'${grp}'`}, se_scoring, ...
 FROM tre_results
 JOIN tse_sessions ON se_seid = re_seid
 WHERE se_is_summary IS NOT TRUE
 ${isAll ? '' : `AND ${GRP_EXPR_SQL} = '${grp}'`}
-GROUP BY re_paid
-ON CONFLICT (a2_paid, a2_group) DO UPDATE SET ...;`
+GROUP BY re_paid, se_scoring
+ON CONFLICT (a2_paid, a2_group, a2_scoring) DO UPDATE SET ...;`
 }
 
 const STATS_SUB_ROWS: { key: string; label: string; url: string; sql: string }[] = [

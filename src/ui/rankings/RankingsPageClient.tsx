@@ -4,11 +4,13 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { searchAllPlayers } from '@/src/lib/actions/players'
 import { ClubSelect, GradeSelect } from '@/src/ui/shared/LookupSelects'
+import { ScoringTypeToggle, formatScoringValue, scoringAvgLabel } from '@/src/ui/shared/ScoringTypeSelects'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
-import { NB_BACK_FROM_KEY } from '@/src/lib/constants'
+import { saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY, SCORING_TYPES } from '@/src/lib/constants'
 
 interface PlayerRow {
   id: number
@@ -117,7 +119,6 @@ function HeaderTypeahead({ placeholder, onSelect, onClear }: {
   )
 }
 
-type Scoring = 'mp' | 'vp'
 type Group  = 'A' | 'B' | 'C' | 'all'
 type TabId = 'players' | 'partnerships'
 
@@ -125,7 +126,7 @@ const TOP_OPTS = [10, 25, 50, 100]
 
 export default function RankingsPageClient() {
   const [min, setMin] = useState(10)
-  const [scoring, setScoring] = useState<Scoring>('mp')
+  const [scoring, setScoring] = useState<(typeof SCORING_TYPES)[number]>('MP')
   const [group, setGroup] = useState<Group>('all')
   const [players, setPlayers] = useState<PlayerRow[]>([])
   const [partnerships, setPartnerships] = useState<PartnershipRow[]>([])
@@ -195,19 +196,6 @@ export default function RankingsPageClient() {
   const thH = 'px-3 py-2 bg-gray-50 text-xs text-gray-500 uppercase'     // header label cell
   const sel = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
 
-  function ScoringToggle() {
-    return (
-      <div className='flex justify-center rounded border border-gray-300 overflow-hidden text-xs'>
-        {(['mp', 'vp'] as Scoring[]).map(s => (
-          <button key={s} onClick={() => setScoring(s)}
-            className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-            {s.toUpperCase()}
-          </button>
-        ))}
-      </div>
-    )
-  }
-
   function GroupToggle() {
     return (
       <div className='flex justify-center rounded border border-gray-300 overflow-hidden text-xs'>
@@ -270,7 +258,7 @@ export default function RankingsPageClient() {
                     onClear={() => setSearch('')}
                   />
                 </th>
-                <th className={`${thF} text-right`}><ScoringToggle /></th>
+                <th className={`${thF} text-right`}><ScoringTypeToggle value={scoring} onChange={setScoring} /></th>
                 <th className={`${thF} text-right`}><GroupToggle /></th>
                 <th className={`${thF} text-right`}><SessionsSelect /></th>
                 <th className={thF}>
@@ -288,7 +276,7 @@ export default function RankingsPageClient() {
               <tr>
                 <th className={`${thH} text-right`}>#</th>
                 <th className={`${thH} text-left`}>Name</th>
-                <th className={`${thH} text-right`}>{scoring === 'mp' ? 'Avg %' : 'Avg VP'}</th>
+                <th className={`${thH} text-right`}>{scoringAvgLabel(scoring)}</th>
                 <th className={`${thH} text-right`}>Sessions</th>
                 <th className={`${thH} text-left`}>Grade</th>
                 <th className={`${thH} text-left`}>Club</th>
@@ -305,12 +293,12 @@ export default function RankingsPageClient() {
                     <td className='px-3 py-1.5 text-right text-gray-400'>{rank}</td>
                     <td className='px-3 py-1.5'>
                       <Link href={`/player/${p.id}`} className='text-blue-600 hover:underline'
-                        onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
+                        onClick={() => saveBackNav(BACK_KEY)}>
                         {p.name}
                       </Link>
                     </td>
                     <td className='px-3 py-1.5 text-right font-medium'>
-                      {scoring === 'mp' ? `${parseFloat(String(p.avg_pct)).toFixed(2)}%` : parseFloat(String(p.avg_pct)).toFixed(2)}
+                      {formatScoringValue(scoring, p.avg_pct)}
                     </td>
                     <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
                     <td className='px-3 py-1.5 text-gray-500'>{p.grade}</td>
@@ -348,7 +336,7 @@ export default function RankingsPageClient() {
                     onClear={() => setPartnerFilter('')}
                   />
                 </th>
-                <th className={`${thF} text-right`}><ScoringToggle /></th>
+                <th className={`${thF} text-right`}><ScoringTypeToggle value={scoring} onChange={setScoring} /></th>
                 <th className={`${thF} text-right`}><GroupToggle /></th>
                 <th className={`${thF} text-right`}><SessionsSelect /></th>
                 <th className={`${thF} text-center`}>
@@ -360,7 +348,7 @@ export default function RankingsPageClient() {
               <tr>
                 <th className={`${thH} text-right`}>#</th>
                 <th className={`${thH} text-left`}>Players</th>
-                <th className={`${thH} text-right`}>{scoring === 'mp' ? 'Avg %' : 'Avg VP'}</th>
+                <th className={`${thH} text-right`}>{scoringAvgLabel(scoring)}</th>
                 <th className={`${thH} text-right`}>Sessions</th>
                 <th className={`${thH} text-center`}>Tracked</th>
               </tr>
@@ -371,19 +359,19 @@ export default function RankingsPageClient() {
                   <td className='px-3 py-1.5 text-right text-gray-400'>{rank}</td>
                   <td className='px-3 py-1.5'>
                     <Link href={`/player/${p.player1_id}`} className='text-blue-600 hover:underline'
-                      onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
+                      onClick={() => saveBackNav(BACK_KEY)}>
                       {p.player1_name}
                     </Link>
                     {isTracked(p.player1_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                     <span className='mx-1.5 text-gray-400'>&amp;</span>
                     <Link href={`/player/${p.player2_id}`} className='text-blue-600 hover:underline'
-                      onClick={() => sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)}>
+                      onClick={() => saveBackNav(BACK_KEY)}>
                       {p.player2_name}
                     </Link>
                     {isTracked(p.player2_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                   </td>
                   <td className='px-3 py-1.5 text-right font-medium'>
-                    {scoring === 'mp' ? `${parseFloat(String(p.avg_pct)).toFixed(2)}%` : parseFloat(String(p.avg_pct)).toFixed(2)}
+                    {formatScoringValue(scoring, p.avg_pct)}
                   </td>
                   <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
                   <td className='px-3 py-1.5 text-center'>

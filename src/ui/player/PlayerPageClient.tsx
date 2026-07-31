@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getPlayerById, getPartnerStats, getPlayerAllGroupStats } from '@/src/lib/actions/players'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
+import { ScoringTypeSelect, ScoringTypeToggle, formatScoringValue, scoringAvgLabel } from '@/src/ui/shared/ScoringTypeSelects'
+import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
 import PerformanceChart from './PerformanceChart'
 import PartnersTable from './PartnersTable'
 import MyPagination from 'nextjs-shared/MyPagination'
@@ -13,8 +15,8 @@ import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
-import { useBackNav } from 'nextjs-shared/useBackNav'
-import { NB_BACK_FROM_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
+import { useBackNav, saveBackNav } from 'nextjs-shared/useBackNav'
+import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, SCORING_TYPES } from '@/src/lib/constants'
 
 interface ResultRow {
   session_id:      number
@@ -29,6 +31,7 @@ interface ResultRow {
   is_summary:      boolean | null
   percentage:      number
   vp:              number | null
+  ximp:            number | null
   partner_id:         number
   partner_name:       string
   partner_nz_number:  number | null
@@ -135,14 +138,13 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const restoredRef  = useRef(false)
   const savedRef     = useRef<Record<string, unknown> | null>(null)
 
-  const backPath = useBackNav(NB_BACK_FROM_KEY)
+  const backPath = useBackNav(BACK_KEY)
 
   const [player,       setPlayer]       = useState<Player | null>(null)
   const [results,      setResults]      = useState<ResultRow[]>([])
-  const [partnerStats, setPartnerStats] = useState<{ a2_mp_sessions: number; a2_mp_avg_pct: number; a2_vp_sessions: number; a2_vp_avg_vp: number } | null>(null)
+  const [partnerStats, setPartnerStats] = useState<{ a2_scoring: string; a2_sessions: number; a2_avg: number; a2_stddev: number | null }[]>([])
   const [playerStats,  setPlayerStats]  = useState<{
-    a1_group: string; a1_mp_sessions: number; a1_mp_avg_pct: number; a1_mp_stddev: number | null; mp_pct_rank: number | null;
-    a1_vp_sessions: number; a1_vp_avg_vp: number; a1_vp_stddev: number | null; vp_pct_rank: number | null
+    a1_group: string; a1_scoring: string; a1_sessions: number; a1_avg: number; a1_stddev: number | null; pct_rank: number | null
   }[]>([])
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState<string | null>(null)
@@ -152,7 +154,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [dateTo,             setDateTo]             = useState('')
   const [dayFilter,          setDayFilter]          = useState('')
   const [selectedPartnerIds, setSelectedPartnerIds] = useState<Set<number>>(new Set())
-  const [scoring,            setScoring]            = useState<'MP' | 'VP'>('MP')
+  const [scoring,            setScoring]            = useState<(typeof SCORING_TYPES)[number]>('MP')
 
   const [sessionNameFilter,  setSessionNameFilter]  = useState('')
   const [selectedClubs,      setSelectedClubs]      = useState<Set<string>>(new Set())
@@ -161,7 +163,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [selectedEventTypes, setSelectedEventTypes] = useState<Set<string>>(new Set())
   const [eventTypeOptions,   setEventTypeOptions]   = useState<string[]>([])
   const [summaryFilter,        setSummaryFilter]        = useState<'all' | 'summary' | 'session'>('all')
-  const [scoringFilter,      setScoringFilter]      = useState<'all' | 'MP' | 'VP'>('all')
+  const [scoringFilter,      setScoringFilter]      = useState<'all' | (typeof SCORING_TYPES)[number]>('all')
   const [activeTab,    setActiveTab]    = useState<'history' | 'partners'>('history')
   const [historyView,  setHistoryView]  = useState<'data' | 'graph'>('data')
   const [currentPage,  setCurrentPage]  = useState(1)
@@ -177,11 +179,11 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
       if (s.dateFrom)               setDateFrom(s.dateFrom as string)
       if (s.dateTo)                 setDateTo(s.dateTo as string)
       if (s.dayFilter)              setDayFilter(s.dayFilter as string)
-      if (s.scoring)                setScoring(s.scoring as 'MP' | 'VP')
+      if (s.scoring)                setScoring(s.scoring as (typeof SCORING_TYPES)[number])
       if (s.sessionNameFilter)      setSessionNameFilter(s.sessionNameFilter as string)
       if ((s.selectedTournaments as string[])?.length) setSelectedTournaments(new Set(s.selectedTournaments as string[]))
       if (s.summaryFilter)            setSummaryFilter(s.summaryFilter as 'all' | 'summary' | 'session')
-      if (s.scoringFilter)          setScoringFilter(s.scoringFilter as 'all' | 'MP' | 'VP')
+      if (s.scoringFilter)          setScoringFilter(s.scoringFilter as 'all' | (typeof SCORING_TYPES)[number])
       if (s.currentPage)            setCurrentPage(s.currentPage as number)
       if (s.itemsPerPage)           setItemsPerPage(s.itemsPerPage as number)
     }
@@ -278,7 +280,7 @@ useEffect(() => { setCurrentPage(1) },
         ])
         if (!playerData) { setError(`Player ${playerId} not found`); return }
         setPlayer(playerData as Player)
-        if (statsRow) setPartnerStats(statsRow as { a2_mp_sessions: number; a2_mp_avg_pct: number; a2_vp_sessions: number; a2_vp_avg_vp: number })
+        if (statsRow?.length) setPartnerStats(statsRow)
         if (allStats?.length) setPlayerStats(allStats)
         if (resultsRes.ok) setResults(await resultsRes.json())
       } catch (err) { setError(String(err)) }
@@ -314,7 +316,7 @@ useEffect(() => { setCurrentPage(1) },
       const s = String(v ?? '')
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
     }
-    const header = ['Player','NZB#','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP']
+    const header = ['Player','NZB#','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP','XIMP']
     const dataRows = rows.map(r => [
       player!.pl_name,
       player!.pl_nz_bridge_number,
@@ -331,6 +333,7 @@ useEffect(() => { setCurrentPage(1) },
       r.is_summary === true ? 'Summary' : r.is_summary === null ? '?' : 'Session',
       r.scoring === 'MP' ? parseFloat(String(r.percentage)).toFixed(2) : '',
       r.scoring === 'VP' ? parseFloat(String(r.vp ?? 0)).toFixed(2) : '',
+      r.scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)).toFixed(2) : '',
     ].map(esc).join(','))
     return [header.join(','), ...dataRows].join('\n')
   }
@@ -363,13 +366,13 @@ useEffect(() => { setCurrentPage(1) },
             {player.pl_name} <span className='text-gray-400 font-normal'>with</span> {partnerName}
           </h1>
           <div className='flex flex-wrap gap-4 text-sm text-gray-500 mt-1'>
-            <span>{partnerStats ? partnerStats.a2_mp_sessions + partnerStats.a2_vp_sessions : results.length} session{(partnerStats ? partnerStats.a2_mp_sessions + partnerStats.a2_vp_sessions : results.length) !== 1 ? 's' : ''} together</span>
-            {partnerStats && partnerStats.a2_mp_avg_pct > 0 && (
-              <span>MP Avg: <strong>{parseFloat(String(partnerStats.a2_mp_avg_pct)).toFixed(2)}%</strong></span>
-            )}
-            {partnerStats && partnerStats.a2_vp_avg_vp > 0 && (
-              <span>VP Avg: <strong>{parseFloat(String(partnerStats.a2_vp_avg_vp)).toFixed(2)}</strong></span>
-            )}
+            <span>
+              {partnerStats.length ? partnerStats.reduce((sum, r) => sum + r.a2_sessions, 0) : results.length} session
+              {(partnerStats.length ? partnerStats.reduce((sum, r) => sum + r.a2_sessions, 0) : results.length) !== 1 ? 's' : ''} together
+            </span>
+            {partnerStats.filter(r => r.a2_avg > 0).map(r => (
+              <span key={r.a2_scoring}>{r.a2_scoring} Avg: <strong>{formatScoringValue(r.a2_scoring, r.a2_avg)}</strong></span>
+            ))}
           </div>
         </div>
         <div className='rounded border border-gray-200 p-4'>
@@ -406,7 +409,8 @@ useEffect(() => { setCurrentPage(1) },
           {player.pl_c_points > 0 && <span>C pts: {player.pl_c_points}</span>}
         </div>
         {playerStats.length > 0 && (() => {
-          const byGrp = Object.fromEntries(playerStats.map(r => [r.a1_group, r]))
+          const byGrp: Record<string, Record<string, (typeof playerStats)[number]>> = {}
+          playerStats.forEach(r => { (byGrp[r.a1_group] ??= {})[r.a1_scoring] = r })
           const grps = (['A', 'B', 'C', 'all'] as const).filter(g => byGrp[g])
           function consistencyLabel(pctRank: number | null): { text: string; cls: string } | null {
             if (pctRank === null) return null
@@ -420,51 +424,49 @@ useEffect(() => { setCurrentPage(1) },
               <thead>
                 <tr>
                   <th className='text-center font-semibold text-gray-500 pb-0 px-4 align-bottom' rowSpan={2}>Tournament<br/>Type</th>
-                  <th colSpan={3} className='text-center font-semibold text-gray-500 pb-0 px-6'>MP</th>
-                  <th className='w-6' />
-                  <th colSpan={3} className='text-center font-semibold text-gray-500 pb-0 px-6'>VP</th>
+                  {SCORING_TYPES.map((s, i) => (
+                    <Fragment key={s}>
+                      <th colSpan={3} className='text-center font-semibold text-gray-500 pb-0 px-6'>{s}</th>
+                      {i < SCORING_TYPES.length - 1 && <th className='w-6' />}
+                    </Fragment>
+                  ))}
                 </tr>
                 <tr>
-                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Avg</th>
-                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Sessions</th>
-                  <th className='text-left text-gray-400 font-normal pb-1 px-4'>Consistency</th>
-                  <th />
-                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Avg</th>
-                  <th className='text-right text-gray-400 font-normal pb-1 px-4'>Sessions</th>
-                  <th className='text-left text-gray-400 font-normal pb-1 px-4'>Consistency</th>
+                  {SCORING_TYPES.map((s, i) => (
+                    <Fragment key={s}>
+                      <th className='text-right text-gray-400 font-normal pb-1 px-4'>Avg</th>
+                      <th className='text-right text-gray-400 font-normal pb-1 px-4'>Sessions</th>
+                      <th className='text-left text-gray-400 font-normal pb-1 px-4'>Consistency</th>
+                      {i < SCORING_TYPES.length - 1 && <th />}
+                    </Fragment>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {grps.map(g => {
-                  const r = byGrp[g]
-                  const label = g === 'all' ? 'All' : g
-                  const mpLabel = consistencyLabel(r.mp_pct_rank)
-                  const vpLabel = consistencyLabel(r.vp_pct_rank)
-                  return (
-                    <tr key={g}>
-                      <td className='text-center text-gray-600 py-0.5 px-4'>{label}</td>
-                      <td className='text-right font-medium text-gray-700 py-0.5 px-4'>
-                        {r.a1_mp_sessions > 0 ? `${parseFloat(String(r.a1_mp_avg_pct)).toFixed(2)}%` : '—'}
-                      </td>
-                      <td className='text-right text-gray-500 py-0.5 px-4'>
-                        {r.a1_mp_sessions > 0 ? r.a1_mp_sessions : ''}
-                      </td>
-                      <td className={`text-left py-0.5 px-4 text-xs font-medium ${mpLabel?.cls ?? 'text-gray-300'}`}>
-                        {r.a1_mp_sessions >= 10 && mpLabel ? `${mpLabel.text} (${parseFloat(String(r.a1_mp_stddev)).toFixed(2)})` : ''}
-                      </td>
-                      <td />
-                      <td className='text-right font-medium text-gray-700 py-0.5 px-4'>
-                        {r.a1_vp_sessions > 0 ? parseFloat(String(r.a1_vp_avg_vp)).toFixed(2) : '—'}
-                      </td>
-                      <td className='text-right text-gray-500 py-0.5 px-4'>
-                        {r.a1_vp_sessions > 0 ? r.a1_vp_sessions : ''}
-                      </td>
-                      <td className={`text-left py-0.5 px-4 text-xs font-medium ${vpLabel?.cls ?? 'text-gray-300'}`}>
-                        {r.a1_vp_sessions >= 10 && vpLabel ? `${vpLabel.text} (${parseFloat(String(r.a1_vp_stddev)).toFixed(2)})` : ''}
-                      </td>
-                    </tr>
-                  )
-                })}
+                {grps.map(g => (
+                  <tr key={g}>
+                    <td className='text-center text-gray-600 py-0.5 px-4'>{g === 'all' ? 'All' : g}</td>
+                    {SCORING_TYPES.map((s, i) => {
+                      const r = byGrp[g][s]
+                      const sessions = r?.a1_sessions ?? 0
+                      const label = consistencyLabel(r?.pct_rank ?? null)
+                      return (
+                        <Fragment key={s}>
+                          <td className='text-right font-medium text-gray-700 py-0.5 px-4'>
+                            {sessions > 0 ? formatScoringValue(s, r.a1_avg) : '—'}
+                          </td>
+                          <td className='text-right text-gray-500 py-0.5 px-4'>
+                            {sessions > 0 ? sessions : ''}
+                          </td>
+                          <td className={`text-left py-0.5 px-4 text-xs font-medium ${label?.cls ?? 'text-gray-300'}`}>
+                            {sessions >= 10 && label ? `${label.text} (${parseFloat(String(r.a1_stddev)).toFixed(2)})` : ''}
+                          </td>
+                          {i < SCORING_TYPES.length - 1 && <td />}
+                        </Fragment>
+                      )
+                    })}
+                  </tr>
+                ))}
               </tbody>
             </table>
           )
@@ -517,14 +519,7 @@ useEffect(() => { setCurrentPage(1) },
           ) : historyView === 'graph' ? (
             <>
               <div className='flex items-center gap-2 mb-3'>
-                <div className='flex rounded border border-gray-300 overflow-hidden text-xs'>
-                  {(['MP', 'VP'] as const).map(s => (
-                    <button key={s} onClick={() => setScoring(s)}
-                      className={`px-2 py-0.5 ${scoring === s ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                <ScoringTypeToggle value={scoring} onChange={setScoring} />
               </div>
               <PerformanceChart results={sessionsSorted} scoring={scoring} />
             </>
@@ -545,6 +540,7 @@ useEffect(() => { setCurrentPage(1) },
                     <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Summary</th>
                     <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>%</th>
                     <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>VP</th>
+                    <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>XIMP</th>
                   </tr>
                   <tr className='border-b border-gray-100 bg-gray-50 align-top'>
                     {/* Source — no filter */}
@@ -611,12 +607,7 @@ useEffect(() => { setCurrentPage(1) },
                     </td>
                     {/* Scoring filter */}
                     <td className='py-1 pr-1'>
-                      <MySelect value={scoringFilter} onChange={e => setScoringFilter(e.target.value as 'all' | 'MP' | 'VP')}
-                        overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
-                        <option value='all'>All</option>
-                        <option value='MP'>MP</option>
-                        <option value='VP'>VP</option>
-                      </MySelect>
+                      <ScoringTypeSelect value={scoringFilter} onChange={v => setScoringFilter(v as 'all' | (typeof SCORING_TYPES)[number])} includeAll />
                     </td>
                     {/* Summary filter */}
                     <td className='py-1 pr-1'>
@@ -627,7 +618,8 @@ useEffect(() => { setCurrentPage(1) },
                         <option value='session'>Session</option>
                       </MySelect>
                     </td>
-                    {/* % and VP — no filter */}
+                    {/* %, VP, XIMP — no filter */}
+                    <td className='py-1' />
                     <td className='py-1' />
                     <td className='py-1' />
                   </tr>
@@ -637,7 +629,7 @@ useEffect(() => { setCurrentPage(1) },
                     <tr key={i}
                       className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                       onClick={() => {
-                        sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search)
+                        saveBackNav(BACK_KEY)
                         window.location.href = `/session/${r.session_id}`
                       }}
                     >
@@ -647,7 +639,7 @@ useEffect(() => { setCurrentPage(1) },
                       <td className='py-1.5'>
                         <Link href={`/player/${playerId}?partner=${r.partner_id}`}
                           className='text-blue-600 hover:underline'
-                          onClick={e => { e.stopPropagation(); sessionStorage.setItem(NB_BACK_FROM_KEY, window.location.pathname + window.location.search) }}>
+                          onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
                           {r.partner_name}
                         </Link>
                       </td>
@@ -667,6 +659,9 @@ useEffect(() => { setCurrentPage(1) },
                       <td className='py-1.5 text-right font-medium text-xs'>
                         {r.scoring === 'VP' ? parseFloat(String(r.vp ?? 0)).toFixed(2) : ''}
                       </td>
+                      <td className='py-1.5 text-right font-medium text-xs'>
+                        {r.scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)).toFixed(2) : ''}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -675,10 +670,7 @@ useEffect(() => { setCurrentPage(1) },
           )}
           {historyView === 'data' && sessionsSorted.length > itemsPerPage && (
             <div className='mt-3 flex items-center gap-3'>
-              <MySelect value={itemsPerPage} onChange={e => { setItemsPerPage(parseInt(e.target.value, 10)); setCurrentPage(1) }}
-                overrideClass='rounded border border-gray-300 px-1.5 py-0.5 text-xs h-auto md:h-auto w-auto'>
-                {[10, 20, 50, 100].map(n => <option key={n} value={n}>{n} rows</option>)}
-              </MySelect>
+              <RowsPerPageSelect value={itemsPerPage} onChange={v => { setItemsPerPage(v); setCurrentPage(1) }} />
               <span className='text-xs text-gray-400'>p.{currentPage}/{Math.ceil(sessionsSorted.length / itemsPerPage)}</span>
               <MyPagination
                 totalPages={Math.ceil(sessionsSorted.length / itemsPerPage)}

@@ -13,7 +13,7 @@ import {
   DataTable, SectionHeader, FText, FDate, FSelect, FMultiSelect, rowKey, dateKey, numMatch,
   type Row, type SharedKey, type SharedFilters, SHARED_KEYS
 } from '@/src/ui/admin/DataTableShared'
-import { TOURNAMENT_GROUPS } from '@/src/lib/constants'
+import { TOURNAMENT_GROUPS, SCORING_TYPES } from '@/src/lib/constants'
 
 type Tab = 'ts1' | 'ts2' | 'tse' | 'tre' | 'tpl' | 'tpa' | 'ta1' | 'ta2' | 'filters'
 
@@ -169,7 +169,7 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
     se_run_id:    <FText placeholder='id…'   value={filter_run_id}   onChange={setFilter_run_id} />,
     se_date:      <FDate value={filter_date} onChange={setFilter_date} />,
     se_day_of_week:  <FMultiSelect options={dayNames} value={filter_day_of_week} onChange={setFilter_day_of_week} />,
-    se_scoring:      <FMultiSelect options={['MP', 'VP']} value={filter_scoring} onChange={setFilter_scoring} />,
+    se_scoring:      <FMultiSelect options={[...SCORING_TYPES]} value={filter_scoring} onChange={setFilter_scoring} />,
     se_name:         <FText placeholder='name…' value={filter_name} onChange={setFilter_name} />,
     se_club:         <FMultiSelect options={clubOptions} value={filter_club} onChange={setFilter_club} />,
     se_tournament:   <FMultiSelect options={tournamentTypes} value={filter_tournament} onChange={setFilter_tournament} />,
@@ -231,8 +231,7 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_player1,    setFilter_player1]    = useState('')
   const [filter_player2,    setFilter_player2]    = useState('')
   const [filter_paid,       setFilter_paid]       = useState(() => sharedFilters.paid?.value ?? '')
-  const [filter_percentage, setFilter_percentage] = useState('')
-  const [filter_vp,         setFilter_vp]         = useState('')
+  const [filter_score,      setFilter_score]      = useState('')
 
   async function load() {
     setLoading(true); setError(null)
@@ -256,8 +255,7 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
     if (filter_player1    && !String(r.player1 ?? '').toLowerCase().includes(filter_player1.toLowerCase())) return false
     if (filter_player2    && !String(r.player2 ?? '').toLowerCase().includes(filter_player2.toLowerCase())) return false
     if (filter_paid       && !String(r.re_paid ?? '').includes(filter_paid)) return false
-    if (filter_percentage && !String(r.re_percentage ?? '').includes(filter_percentage)) return false
-    if (filter_vp         && !String(r.re_vp ?? '').includes(filter_vp)) return false
+    if (filter_score      && !String(r.re_score ?? '').includes(filter_score)) return false
     return true
   })
 
@@ -267,8 +265,7 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
     player1:       <FText placeholder='name…'  value={filter_player1}    onChange={setFilter_player1} />,
     player2:       <FText placeholder='name…'  value={filter_player2}    onChange={setFilter_player2} />,
     re_paid:       <FText placeholder='paid…'  value={filter_paid}       onChange={setFilter_paid} />,
-    re_percentage: <FText placeholder='pct…'   value={filter_percentage} onChange={setFilter_percentage} />,
-    re_vp:         <FText placeholder='vp…'    value={filter_vp}         onChange={setFilter_vp} />,
+    re_score:      <FText placeholder='score…' value={filter_score}      onChange={setFilter_score} />,
   }
 
   return (
@@ -367,12 +364,10 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_player,      setFilter_player]      = useState('')
   const [filter_plid,        setFilter_plid]        = useState(() => sharedFilters.plid?.value ?? '')
   const [filter_group,       setFilter_group]       = useState<string[]>([])
-  const [filter_mp_sessions, setFilter_mp_sessions] = useState('')
-  const [filter_mp_avg_pct,  setFilter_mp_avg_pct]  = useState('')
-  const [filter_mp_stddev,   setFilter_mp_stddev]   = useState('')
-  const [filter_vp_sessions, setFilter_vp_sessions] = useState('')
-  const [filter_vp_avg_vp,   setFilter_vp_avg_vp]   = useState('')
-  const [filter_vp_stddev,   setFilter_vp_stddev]   = useState('')
+  const [filter_scoring,     setFilter_scoring]     = useState<string[]>([])
+  const [filter_sessions,    setFilter_sessions]    = useState('')
+  const [filter_avg,         setFilter_avg]         = useState('')
+  const [filter_stddev,      setFilter_stddev]      = useState('')
 
   async function load() {
     setLoading(true); setError(null)
@@ -388,30 +383,27 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   }
 
   const groupOptions = Array.from(new Set(stats.map(r => String(r.a1_group ?? '')))).filter(Boolean).sort()
+  const scoringOptions = Array.from(new Set(stats.map(r => String(r.a1_scoring ?? '')))).filter(Boolean).sort()
 
   const filteredStats = stats.filter(r => {
     if (filter_player      && !String(r.player ?? '').toLowerCase().includes(filter_player.toLowerCase())) return false
     if (filter_plid        && !String(r.a1_plid ?? '').includes(filter_plid)) return false
     if (filter_group.length > 0 && !filter_group.includes(String(r.a1_group ?? ''))) return false
-    if (!numMatch(filter_mp_sessions, r.a1_mp_sessions)) return false
-    if (!numMatch(filter_mp_avg_pct,  r.a1_mp_avg_pct))  return false
-    if (!numMatch(filter_mp_stddev,   r.a1_mp_stddev))   return false
-    if (!numMatch(filter_vp_sessions, r.a1_vp_sessions)) return false
-    if (!numMatch(filter_vp_avg_vp,   r.a1_vp_avg_vp))   return false
-    if (!numMatch(filter_vp_stddev,   r.a1_vp_stddev))   return false
+    if (filter_scoring.length > 0 && !filter_scoring.includes(String(r.a1_scoring ?? ''))) return false
+    if (!numMatch(filter_sessions, r.a1_sessions)) return false
+    if (!numMatch(filter_avg,      r.a1_avg))      return false
+    if (!numMatch(filter_stddev,   r.a1_stddev))   return false
     return true
   })
 
   const filters: Record<string, React.ReactNode> = {
-    player:         <FText placeholder='name…'        value={filter_player}      onChange={setFilter_player} />,
-    a1_plid:        <FText placeholder='id…'          value={filter_plid}        onChange={setFilter_plid} />,
-    a1_group:       <FMultiSelect options={groupOptions} value={filter_group} onChange={setFilter_group} />,
-    a1_mp_sessions: <FText placeholder='mp sessions…' value={filter_mp_sessions} onChange={setFilter_mp_sessions} />,
-    a1_mp_avg_pct:  <FText placeholder='mp avg%…'     value={filter_mp_avg_pct}  onChange={setFilter_mp_avg_pct} />,
-    a1_mp_stddev:   <FText placeholder='mp stddev…'   value={filter_mp_stddev}   onChange={setFilter_mp_stddev} />,
-    a1_vp_sessions: <FText placeholder='vp sessions…' value={filter_vp_sessions} onChange={setFilter_vp_sessions} />,
-    a1_vp_avg_vp:   <FText placeholder='vp avg…'      value={filter_vp_avg_vp}   onChange={setFilter_vp_avg_vp} />,
-    a1_vp_stddev:   <FText placeholder='vp stddev…'   value={filter_vp_stddev}   onChange={setFilter_vp_stddev} />,
+    player:      <FText placeholder='name…'     value={filter_player}   onChange={setFilter_player} />,
+    a1_plid:     <FText placeholder='id…'       value={filter_plid}     onChange={setFilter_plid} />,
+    a1_group:    <FMultiSelect options={groupOptions}   value={filter_group}   onChange={setFilter_group} />,
+    a1_scoring:  <FMultiSelect options={scoringOptions} value={filter_scoring} onChange={setFilter_scoring} />,
+    a1_sessions: <FText placeholder='sessions…' value={filter_sessions} onChange={setFilter_sessions} />,
+    a1_avg:      <FText placeholder='avg…'      value={filter_avg}      onChange={setFilter_avg} />,
+    a1_stddev:   <FText placeholder='stddev…'   value={filter_stddev}   onChange={setFilter_stddev} />,
   }
 
   return (
@@ -441,12 +433,10 @@ function PartnerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
 
   const [filter_paid,        setFilter_paid]        = useState(() => sharedFilters.paid?.value ?? '')
   const [filter_group,       setFilter_group]       = useState<string[]>([])
-  const [filter_mp_sessions, setFilter_mp_sessions] = useState('')
-  const [filter_mp_avg_pct,  setFilter_mp_avg_pct]  = useState('')
-  const [filter_mp_stddev,   setFilter_mp_stddev]   = useState('')
-  const [filter_vp_sessions, setFilter_vp_sessions] = useState('')
-  const [filter_vp_avg_vp,   setFilter_vp_avg_vp]   = useState('')
-  const [filter_vp_stddev,   setFilter_vp_stddev]   = useState('')
+  const [filter_scoring,     setFilter_scoring]     = useState<string[]>([])
+  const [filter_sessions,    setFilter_sessions]    = useState('')
+  const [filter_avg,         setFilter_avg]         = useState('')
+  const [filter_stddev,      setFilter_stddev]      = useState('')
 
   async function load() {
     setLoading(true); setError(null)
@@ -462,28 +452,25 @@ function PartnerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   }
 
   const groupOptions = Array.from(new Set(stats.map(r => String(r.a2_group ?? '')))).filter(Boolean).sort()
+  const scoringOptions = Array.from(new Set(stats.map(r => String(r.a2_scoring ?? '')))).filter(Boolean).sort()
 
   const filteredStats = stats.filter(r => {
     if (filter_paid        && !String(r.a2_paid ?? '').includes(filter_paid)) return false
     if (filter_group.length > 0 && !filter_group.includes(String(r.a2_group ?? ''))) return false
-    if (!numMatch(filter_mp_sessions, r.a2_mp_sessions)) return false
-    if (!numMatch(filter_mp_avg_pct,  r.a2_mp_avg_pct))  return false
-    if (!numMatch(filter_mp_stddev,   r.a2_mp_stddev))   return false
-    if (!numMatch(filter_vp_sessions, r.a2_vp_sessions)) return false
-    if (!numMatch(filter_vp_avg_vp,   r.a2_vp_avg_vp))   return false
-    if (!numMatch(filter_vp_stddev,   r.a2_vp_stddev))   return false
+    if (filter_scoring.length > 0 && !filter_scoring.includes(String(r.a2_scoring ?? ''))) return false
+    if (!numMatch(filter_sessions, r.a2_sessions)) return false
+    if (!numMatch(filter_avg,      r.a2_avg))      return false
+    if (!numMatch(filter_stddev,   r.a2_stddev))   return false
     return true
   })
 
   const filters: Record<string, React.ReactNode> = {
-    a2_paid:        <FText placeholder='id…'          value={filter_paid}        onChange={setFilter_paid} />,
-    a2_group:       <FMultiSelect options={groupOptions} value={filter_group} onChange={setFilter_group} />,
-    a2_mp_sessions: <FText placeholder='mp sessions…' value={filter_mp_sessions} onChange={setFilter_mp_sessions} />,
-    a2_mp_avg_pct:  <FText placeholder='mp avg%…'     value={filter_mp_avg_pct}  onChange={setFilter_mp_avg_pct} />,
-    a2_mp_stddev:   <FText placeholder='mp stddev…'   value={filter_mp_stddev}   onChange={setFilter_mp_stddev} />,
-    a2_vp_sessions: <FText placeholder='vp sessions…' value={filter_vp_sessions} onChange={setFilter_vp_sessions} />,
-    a2_vp_avg_vp:   <FText placeholder='vp avg…'      value={filter_vp_avg_vp}   onChange={setFilter_vp_avg_vp} />,
-    a2_vp_stddev:   <FText placeholder='vp stddev…'   value={filter_vp_stddev}   onChange={setFilter_vp_stddev} />,
+    a2_paid:     <FText placeholder='id…'       value={filter_paid}     onChange={setFilter_paid} />,
+    a2_group:    <FMultiSelect options={groupOptions}   value={filter_group}   onChange={setFilter_group} />,
+    a2_scoring:  <FMultiSelect options={scoringOptions} value={filter_scoring} onChange={setFilter_scoring} />,
+    a2_sessions: <FText placeholder='sessions…' value={filter_sessions} onChange={setFilter_sessions} />,
+    a2_avg:      <FText placeholder='avg…'      value={filter_avg}      onChange={setFilter_avg} />,
+    a2_stddev:   <FText placeholder='stddev…'   value={filter_stddev}   onChange={setFilter_stddev} />,
   }
 
   return (

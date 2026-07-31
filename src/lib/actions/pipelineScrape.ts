@@ -13,7 +13,8 @@ import {
   MP_PERCENTAGE_MIN,
   MP_PERCENTAGE_MAX,
   VP_SCORE_SANITY_MAX,
-  VP_SCORE_SANITY_RESET
+  VP_SCORE_SANITY_RESET,
+  UNKNOWN_SCORE_TYPE
 } from '@/src/lib/constants'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
@@ -55,13 +56,26 @@ function parseDate(raw: string): string | null {
   return `${year}-${month}-${m[1].padStart(2, '0')}`
 }
 
-function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
-  const m = raw.trim().match(/^([\d.]+)\s*(PCT|VP)$/i)
-  if (!m) return null
-  return { value: parseFloat(m[1]), type: m[2].toUpperCase() as 'PCT' | 'VP' }
+function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' | 'XIMP' | typeof UNKNOWN_SCORE_TYPE } | null {
+  const trimmed = raw.trim()
+  const known = trimmed.match(/^([\d.]+)\s*(PCT|VP|XIMPS?)$/i)
+  if (known) {
+    const suffix = known[2].toUpperCase()
+    const type = suffix.startsWith('XIMP') ? 'XIMP' : (suffix as 'PCT' | 'VP')
+    return { value: parseFloat(known[1]), type }
+  }
+  //
+  //  Suffix isn't a recognized score type — still capture the numeric value under a sentinel
+  //  type instead of silently dropping the row, so the session survives into
+  //  ts1_sessions/tse_sessions as visible, queryable "known bad/unhandled data" rather than
+  //  vanishing with no trace of what it was
+  //
+  const unrecognised = trimmed.match(/^([\d.]+)\s*\S+$/)
+  if (!unrecognised) return null
+  return { value: parseFloat(unrecognised[1]), type: UNKNOWN_SCORE_TYPE }
 }
 
-function normaliseScore(value: number, type: 'PCT' | 'VP'): number {
+function normaliseScore(value: number, type: 'PCT' | 'VP' | 'XIMP' | typeof UNKNOWN_SCORE_TYPE): number {
   if (type === 'PCT' && (value < MP_PERCENTAGE_MIN || value > MP_PERCENTAGE_MAX)) return 50
   if (type === 'VP' && value > VP_SCORE_SANITY_MAX) return VP_SCORE_SANITY_RESET
   return value
@@ -74,7 +88,7 @@ type ParsedRow = {
   club:         string
   player_names: string[]
   score_value:  number
-  score_type:   'PCT' | 'VP'
+  score_type:   'PCT' | 'VP' | 'XIMP' | typeof UNKNOWN_SCORE_TYPE
   tournament:   string
 }
 

@@ -21,7 +21,7 @@ export async function PATCH(
   try {
     await table_query({
       caller: 'admin/players/all-results',
-      query: `UPDATE tpl_players SET pl_all_results = $1 WHERE pl_plid = $2`,
+      query: `UPDATE tpl_players SET pl_tracked = $1 WHERE pl_plid = $2`,
       params: [body.all_results, plid]
     })
     return NextResponse.json({ ok: true })

@@ -50,6 +50,31 @@ export async function computePlayerGroupStats(grp: string): Promise<{ inserted: 
     params: isAll ? [] : [grp],
     isupdate: true
   })
+
+  //
+  //  Precompute rank/group_total/pct_rank for this group now that its averages are current —
+  //  read on every Rankings/Player Stats page view otherwise, even though this data is static
+  //  until the next "Update Stats" run
+  //
+  await table_query({
+    caller: `statsCompute/player-${grp}-rank`,
+    query: `UPDATE ta1_player_stats t
+            SET a1_avg_rank    = sub.avg_rank,
+                a1_group_total = sub.group_total,
+                a1_pct_rank    = sub.pct_rank
+            FROM (
+              SELECT a1_plid, a1_scoring,
+                     RANK() OVER (PARTITION BY a1_scoring ORDER BY a1_avg DESC) AS avg_rank,
+                     COUNT(*) OVER (PARTITION BY a1_scoring) AS group_total,
+                     PERCENT_RANK() OVER (PARTITION BY a1_scoring ORDER BY a1_stddev NULLS LAST) AS pct_rank
+              FROM ta1_player_stats
+              WHERE a1_group = $1
+            ) sub
+            WHERE t.a1_group = $1 AND t.a1_plid = sub.a1_plid AND t.a1_scoring = sub.a1_scoring`,
+    params: [grp],
+    isupdate: true
+  })
+
   return { inserted: rows.length, inputRecs }
 }
 
@@ -93,5 +118,27 @@ export async function computePartnerGroupStats(grp: string): Promise<{ inserted:
     params: isAll ? [] : [grp],
     isupdate: true
   })
+
+  //
+  //  Precompute rank/group_total for this group now that its averages are current — see the
+  //  matching comment in computePlayerGroupStats for the full reasoning
+  //
+  await table_query({
+    caller: `statsCompute/partner-${grp}-rank`,
+    query: `UPDATE ta2_partner_stats t
+            SET a2_avg_rank    = sub.avg_rank,
+                a2_group_total = sub.group_total
+            FROM (
+              SELECT a2_paid, a2_scoring,
+                     RANK() OVER (PARTITION BY a2_scoring ORDER BY a2_avg DESC) AS avg_rank,
+                     COUNT(*) OVER (PARTITION BY a2_scoring) AS group_total
+              FROM ta2_partner_stats
+              WHERE a2_group = $1
+            ) sub
+            WHERE t.a2_group = $1 AND t.a2_paid = sub.a2_paid AND t.a2_scoring = sub.a2_scoring`,
+    params: [grp],
+    isupdate: true
+  })
+
   return { inserted: rows.length, inputRecs }
 }

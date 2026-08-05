@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react'
 import { getSessionById } from '@/src/lib/actions/sessions'
 import Link from 'next/link'
-import MyPagination from 'nextjs-shared/MyPagination'
-import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
+import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
 import { useBackNav, saveBackNav } from 'nextjs-shared/useBackNav'
 import { BACK_KEY, ROWS_PER_PAGE } from '@/src/lib/constants'
@@ -19,13 +18,13 @@ interface SessionRow {
 }
 
 interface ResultRow {
-  score: number | null
-  pl_id: number
-  player_name: string
-  player_nz_number: number
-  partner_pl_id: number
+  re_score: number | null
+  plid: number
+  pl_name: string
+  pl_nz_bridge_number: number
+  partner_plid: number
   partner_name: string
-  partner_nz_number: number
+  partner_nz_bridge_number: number
 }
 
 export default function SessionPageClient({ sessionId }: { sessionId: number }) {
@@ -132,28 +131,28 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                   className='border-b border-gray-100 hover:bg-blue-50 cursor-pointer'
                   onClick={() => {
                     saveBackNav(BACK_KEY)
-                    window.location.href = `/player/${r.pl_id}?partner=${r.partner_pl_id}`
+                    window.location.href = `/player/${r.plid}?partner=${r.partner_plid}`
                   }}
                 >
                   <td className='py-1.5 text-gray-400'>{rowNum}</td>
                   <td className='py-1.5'>
-                    <Link href={`/player/${r.pl_id}`} className='text-blue-600 hover:underline'
+                    <Link href={`/player/${r.plid}`} className='text-blue-600 hover:underline'
                       onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
-                      {r.player_name}
+                      {r.pl_name}
                     </Link>
                   </td>
-                  <td className='py-1.5 text-xs text-gray-400'>{r.player_nz_number || '—'}</td>
+                  <td className='py-1.5 text-xs text-gray-400'>{r.pl_nz_bridge_number || '—'}</td>
                   <td className='py-1.5'>
-                    <Link href={`/player/${r.partner_pl_id}`} className='text-blue-600 hover:underline'
+                    <Link href={`/player/${r.partner_plid}`} className='text-blue-600 hover:underline'
                       onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
                       {r.partner_name}
                     </Link>
                   </td>
-                  <td className='py-1.5 text-xs text-gray-400'>{r.partner_nz_number || '—'}</td>
+                  <td className='py-1.5 text-xs text-gray-400'>{r.partner_nz_bridge_number || '—'}</td>
                   <td className='py-1.5 text-right font-medium'>
                     {session.se_scoring === 'VP'
-                      ? parseFloat(String(r.score)).toFixed(2)
-                      : `${parseFloat(String(r.score)).toFixed(2)}%`}
+                      ? parseFloat(String(r.re_score)).toFixed(2)
+                      : `${parseFloat(String(r.re_score)).toFixed(2)}%`}
                   </td>
                 </tr>
               )})}
@@ -161,17 +160,13 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
           </table>
         )}
         {results.length > itemsPerPage && (
-          <div className='mt-3 flex items-center gap-3'>
-            <RowsPerPageSelect value={itemsPerPage} onChange={v => { setItemsPerPage(v); setCurrentPage(1) }} />
-            <span className='text-xs text-gray-400'>
-              p.{currentPage}/{Math.ceil(results.length / itemsPerPage)}
-            </span>
-            <MyPagination
-              totalPages={Math.ceil(results.length / itemsPerPage)}
-              statecurrentPage={currentPage}
-              setStateCurrentPage={setCurrentPage}
-            />
-          </div>
+          <MyPaginationFooter
+            totalPages={Math.ceil(results.length / itemsPerPage)}
+            statecurrentPage={currentPage}
+            setStateCurrentPage={setCurrentPage}
+            rowsPerPage={itemsPerPage}
+            setRowsPerPage={v => { setItemsPerPage(v); setCurrentPage(1) }}
+          />
         )}
       </div>
     </div>

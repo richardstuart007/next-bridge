@@ -20,12 +20,12 @@ export async function GET(
         WITH ranked AS (
           SELECT
             re_score,
-            pa_plid1         AS plid1,
-            pa_plid2         AS plid2,
-            p1.pl_name       AS name1,
-            p2.pl_name       AS name2,
-            COALESCE(p1.pl_nz_bridge_number, 0) AS nz1,
-            COALESCE(p2.pl_nz_bridge_number, 0) AS nz2,
+            pa_plid1,
+            pa_plid2,
+            p1.pl_name       AS pl_name1,
+            p2.pl_name       AS pl_name2,
+            COALESCE(p1.pl_nz_bridge_number, 0) AS pl_nz_bridge_number1,
+            COALESCE(p2.pl_nz_bridge_number, 0) AS pl_nz_bridge_number2,
             CASE WHEN COALESCE(p1.pl_nz_bridge_number, 0) = 0 THEN 2147483647
                  ELSE p1.pl_nz_bridge_number END AS sort1,
             CASE WHEN COALESCE(p2.pl_nz_bridge_number, 0) = 0 THEN 2147483647
@@ -37,13 +37,13 @@ export async function GET(
           WHERE re_seid = $1
         )
         SELECT
-          re_score           AS score,
-          CASE WHEN sort1 <= sort2 THEN plid1 ELSE plid2 END AS pl_id,
-          CASE WHEN sort1 <= sort2 THEN name1 ELSE name2 END AS player_name,
-          CASE WHEN sort1 <= sort2 THEN nz1   ELSE nz2   END AS player_nz_number,
-          CASE WHEN sort1 <= sort2 THEN plid2 ELSE plid1 END AS partner_pl_id,
-          CASE WHEN sort1 <= sort2 THEN name2 ELSE name1 END AS partner_name,
-          CASE WHEN sort1 <= sort2 THEN nz2   ELSE nz1   END AS partner_nz_number
+          re_score,
+          CASE WHEN sort1 <= sort2 THEN pa_plid1 ELSE pa_plid2 END AS plid,
+          CASE WHEN sort1 <= sort2 THEN pl_name1 ELSE pl_name2 END AS pl_name,
+          CASE WHEN sort1 <= sort2 THEN pl_nz_bridge_number1 ELSE pl_nz_bridge_number2 END AS pl_nz_bridge_number,
+          CASE WHEN sort1 <= sort2 THEN pa_plid2 ELSE pa_plid1 END AS partner_plid,
+          CASE WHEN sort1 <= sort2 THEN pl_name2 ELSE pl_name1 END AS partner_name,
+          CASE WHEN sort1 <= sort2 THEN pl_nz_bridge_number2 ELSE pl_nz_bridge_number1 END AS partner_nz_bridge_number
         FROM ranked
         ORDER BY re_score DESC NULLS LAST
       `,

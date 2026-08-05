@@ -5,7 +5,8 @@ import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import MySelectMulti from 'nextjs-shared/MySelectMulti'
 import MyPagination from 'nextjs-shared/MyPagination'
-import { ROWS_PER_PAGE } from '@/src/lib/constants'
+import { ROWS_PER_PAGE, TABLE_MIN_HEIGHT_PX } from '@/src/lib/constants'
+import { TableEmptyRow } from '@/src/ui/shared/TableEmptyRow'
 
 export type Row = Record<string, unknown>
 
@@ -140,7 +141,7 @@ export function DataTable({ rows, allRows, onRowClick, isClickable, selected, fi
 
   return (
     <div>
-      <div className='overflow-x-auto border border-gray-200 rounded'>
+      <div className='overflow-x-auto border border-gray-200 rounded' style={{ minHeight: TABLE_MIN_HEIGHT_PX }}>
         <table className='w-full text-xs'>
           <thead className='bg-gray-50'>
             {filters && (
@@ -160,7 +161,7 @@ export function DataTable({ rows, allRows, onRowClick, isClickable, selected, fi
           </thead>
           <tbody>
             {pageRows.length === 0
-              ? <tr><td colSpan={cols.length} className='px-2 py-2 text-xs text-gray-400 text-center'>No rows match filter</td></tr>
+              ? <TableEmptyRow colSpan={cols.length} message='No rows match filter' />
               : pageRows.map((row, i) => {
                   const clickable = isClickable && !!onRowClick
                   const isSelected = selected != null && rowKey(selected) === rowKey(row)

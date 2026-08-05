@@ -1,7 +1,8 @@
 'use client'
 
 import MySelect from 'nextjs-shared/MySelect'
-import { SCORING_TYPES } from '@/src/lib/constants'
+import { StringMultiSelect } from '@/src/ui/shared/LookupSelects'
+import { SCORING_TYPES, WIDTH_SCORING } from '@/src/lib/constants'
 
 const SELECT_OVERRIDE_CLASS = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'
 
@@ -44,6 +45,19 @@ export function ScoringTypeToggle({ value, onChange }: {
       ))}
     </div>
   )
+}
+
+//----------------------------------------------------------------------------------------------
+//  ScoringTypeMultiSelect — checkbox-dropdown multi-select over the shared SCORING_TYPES list,
+//  for filter bars where more than one scoring type can be selected at once (every option
+//  selected = no filter, matching MySelectMulti's standard convention).
+//----------------------------------------------------------------------------------------------
+export function ScoringTypeMultiSelect({ selected, onChange, overrideClass = WIDTH_SCORING }: {
+  selected: Set<string>
+  onChange: (s: Set<string>) => void
+  overrideClass?: string
+}) {
+  return <StringMultiSelect options={[...SCORING_TYPES]} selected={selected} onChange={onChange} overrideClass={overrideClass} />
 }
 
 //----------------------------------------------------------------------------------------------

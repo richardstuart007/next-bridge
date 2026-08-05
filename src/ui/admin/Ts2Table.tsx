@@ -14,9 +14,9 @@ export default function Ts2Table({ sharedFilters, onKeyClick }: {
   const [selected, setSelected] = useState<Row | null>(null)
 
   const [filter_run_id,      setFilter_run_id]      = useState(() => sharedFilters.run_id?.value ?? '')
-  const [filter_player1,     setFilter_player1]     = useState('')
+  const [filter_pl_name1,    setFilter_pl_name1]    = useState('')
   const [filter_plid1,       setFilter_plid1]       = useState(() => sharedFilters.plid1?.value ?? '')
-  const [filter_player2,     setFilter_player2]     = useState('')
+  const [filter_pl_name2,    setFilter_pl_name2]    = useState('')
   const [filter_plid2,       setFilter_plid2]       = useState(() => sharedFilters.plid2?.value ?? '')
   const [filter_score_value, setFilter_score_value] = useState('')
 
@@ -40,16 +40,16 @@ export default function Ts2Table({ sharedFilters, onKeyClick }: {
     setSelected(row)
     onKeyClick({
       run_id: { value: String(row.s2_run_id) },
-      plid1:  { value: String(row.s2_plid1), label: String(row.player1 ?? '') },
-      plid2:  { value: String(row.s2_plid2), label: String(row.player2 ?? '') },
+      plid1:  { value: String(row.s2_plid1), label: String(row.pl_name1 ?? '') },
+      plid2:  { value: String(row.s2_plid2), label: String(row.pl_name2 ?? '') },
     })
   }
 
   const filteredRows = results.filter(r => {
     if (filter_run_id && !String(r.s2_run_id ?? '').includes(filter_run_id)) return false
-    if (filter_player1 && !String(r.player1 ?? '').toLowerCase().includes(filter_player1.toLowerCase())) return false
+    if (filter_pl_name1 && !String(r.pl_name1 ?? '').toLowerCase().includes(filter_pl_name1.toLowerCase())) return false
     if (filter_plid1 && !String(r.s2_plid1 ?? '').includes(filter_plid1)) return false
-    if (filter_player2 && !String(r.player2 ?? '').toLowerCase().includes(filter_player2.toLowerCase())) return false
+    if (filter_pl_name2 && !String(r.pl_name2 ?? '').toLowerCase().includes(filter_pl_name2.toLowerCase())) return false
     if (filter_plid2 && !String(r.s2_plid2 ?? '').includes(filter_plid2)) return false
     if (filter_score_value && !String(r.s2_score_value ?? '').includes(filter_score_value)) return false
     return true
@@ -57,9 +57,9 @@ export default function Ts2Table({ sharedFilters, onKeyClick }: {
 
   const filters: Record<string, React.ReactNode> = {
     s2_run_id:      <FText placeholder='id…'    value={filter_run_id} onChange={setFilter_run_id} />,
-    player1:        <FText placeholder='name…'  value={filter_player1} onChange={setFilter_player1} />,
+    pl_name1:       <FText placeholder='name…'  value={filter_pl_name1} onChange={setFilter_pl_name1} />,
     s2_plid1:       <FText placeholder='plid1…' value={filter_plid1} onChange={setFilter_plid1} />,
-    player2:        <FText placeholder='name…'  value={filter_player2} onChange={setFilter_player2} />,
+    pl_name2:       <FText placeholder='name…'  value={filter_pl_name2} onChange={setFilter_pl_name2} />,
     s2_plid2:       <FText placeholder='plid2…' value={filter_plid2} onChange={setFilter_plid2} />,
     s2_score_value: <FText placeholder='score…' value={filter_score_value} onChange={setFilter_score_value} />,
   }

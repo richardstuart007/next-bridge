@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
           caller: 'scrape/discover/nzb-by-flagged/flagged',
           query: `SELECT pl_plid, pl_name, pl_nz_bridge_number
                   FROM tpl_players
-                  WHERE pl_all_results = TRUE AND pl_nz_bridge_number > 0
+                  WHERE pl_tracked = TRUE AND pl_nz_bridge_number > 0
                   ORDER BY pl_name ASC`,
           params: []
         }) as { pl_plid: number; pl_name: string; pl_nz_bridge_number: number }[]

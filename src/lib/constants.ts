@@ -100,15 +100,16 @@ export const EARLIEST_DATA_DATE = '2024-01-01'
 export const CHART_TOP_N_PRESELECTED = 5
 
 //
-//  Default page size for client-side paginated tables across the app
+//  Default page size for paginated tables across the app (server-side pagination — see
+//  docs/PLAN_production-data-errors.md item 3)
 //
 export const ROWS_PER_PAGE = 20
 
 //
-//  Standard rows-per-page dropdown choices (RowsPerPageSelect) — the default `options` list;
-//  overrideable per call site via its own `options` prop
+//  Delay before a filter change triggers a paginated re-fetch (Home page Players/Sessions
+//  tabs) — avoids firing a request on every keystroke while typing into a text filter
 //
-export const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100]
+export const FILTER_DEBOUNCE_MS = 300
 
 //
 //  Recognized scoring types shown in scoring-type UI (ScoringTypeSelect/ScoringTypeToggle, and
@@ -118,7 +119,58 @@ export const ROWS_PER_PAGE_OPTIONS = [10, 20, 50, 100]
 export const SCORING_TYPES = ['MP', 'VP', 'XIMP'] as const
 
 //
+//  Recognized session-summary types (Home Sessions tab's Summary filter — se_is_summary is a
+//  boolean column; both selected = no filter, matching the standard MySelectMulti convention)
+//
+export const SUMMARY_TYPES = ['Summary', 'Session'] as const
+
+//
 //  Value strings longer than this (or any object/array) render behind the Constants page's
 //  Show popover button instead of inline
 //
 export const VALUE_DISPLAY_MAX_LENGTH = 40
+
+//
+//  Consistency label bands for the player stats table (PlayerPageClient.tsx) — pct_rank is a
+//  player's percentile position by stddev among others in the same group/scoring (0 = most
+//  consistent). Ordered ascending by `max`; the first band whose max the value falls under wins,
+//  with the last entry (Infinity) as the catch-all.
+//
+export const CONSISTENCY_LEVELS = [
+  { max: 0.25,      text: 'Consistent', cls: 'text-green-600'  },
+  { max: 0.50,      text: 'Wobbly',     cls: 'text-yellow-600' },
+  { max: 0.75,      text: 'Volatile',   cls: 'text-orange-500' },
+  { max: Infinity,  text: 'Wild',       cls: 'text-red-600'    },
+] as const
+
+//
+//  Minimum height for a table's overflow-x-auto scroll wrapper, so a filter that narrows the
+//  table down to few/no rows never leaves too little room below the header for an open
+//  MySelectMulti dropdown panel to render into (the wrapper's horizontal scrolling also clips
+//  vertically, per the CSS rule that promotes a `visible` overflow axis to `auto` when the other
+//  axis isn't `visible`). TABLE_MIN_VISIBLE_ROWS (8) was sized to fully contain nextjs-shared's
+//  MySelectMulti panel at its capped max-h-60 (~240px); TABLE_ROW_HEIGHT_PX matches these tables'
+//  text-sm + py-1.5 + border row styling; TABLE_HEADER_HEIGHT_PX covers the tallest 2-row filter
+//  header among the affected tables (Home Players' stacked NZ#-input-plus-checkbox cell)
+//
+export const TABLE_MIN_VISIBLE_ROWS = 8
+export const TABLE_ROW_HEIGHT_PX = 33
+export const TABLE_HEADER_HEIGHT_PX = 90
+export const TABLE_MIN_HEIGHT_PX = TABLE_HEADER_HEIGHT_PX + TABLE_MIN_VISIBLE_ROWS * TABLE_ROW_HEIGHT_PX
+
+//
+//  Per-dropdown trigger widths for Home page filter-row MySelectMulti/MySelect controls — each
+//  named after the dropdown it applies to. Passed as `overrideClass`/merged against the shared
+//  per-column default so only the width piece changes. WIDTH_CLUB is shared by both the Players
+//  and Sessions tabs' Club dropdown (same value, same DD item, not two independent decisions).
+//
+export const WIDTH_RANK = 'w-40'
+export const WIDTH_GRADE = 'w-40'
+export const WIDTH_CLUB = 'w-96'
+export const WIDTH_DAY = 'w-40'
+export const WIDTH_TOURNAMENT_TYPE = 'w-40'
+export const WIDTH_SCORING = 'w-40'
+export const WIDTH_SUMMARY = 'w-40'
+export const WIDTH_SESSIONS_MIN = 'w-32'
+export const WIDTH_SCORING_RANKINGS = 'w-32'
+export const WIDTH_TOURNAMENT_NAME = 'w-96'

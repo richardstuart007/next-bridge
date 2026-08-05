@@ -1,22 +1,23 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { getPlayerById, getPartnerStats, getPlayerAllGroupStats } from '@/src/lib/actions/players'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
+import { TableEmptyRow } from '@/src/ui/shared/TableEmptyRow'
 import { ScoringTypeSelect, ScoringTypeToggle, formatScoringValue, scoringAvgLabel } from '@/src/ui/shared/ScoringTypeSelects'
-import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
 import PerformanceChart from './PerformanceChart'
 import PartnersTable from './PartnersTable'
-import MyPagination from 'nextjs-shared/MyPagination'
+import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
 import { useBackNav, saveBackNav } from 'nextjs-shared/useBackNav'
-import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, SCORING_TYPES } from '@/src/lib/constants'
+import { isSelectionFiltering } from 'nextjs-shared/isSelectionFiltering'
+import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, SCORING_TYPES, CONSISTENCY_LEVELS, TABLE_MIN_HEIGHT_PX } from '@/src/lib/constants'
 
 interface ResultRow {
   session_id:      number
@@ -49,7 +50,7 @@ interface Player {
   pl_a_points:         number
   pl_b_points:         number
   pl_c_points:         number
-  pl_all_results:      boolean
+  pl_tracked:      boolean
 }
 
 const playerStorageKey = (id: number) => `player_state_${id}`
@@ -144,7 +145,8 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [results,      setResults]      = useState<ResultRow[]>([])
   const [partnerStats, setPartnerStats] = useState<{ a2_scoring: string; a2_sessions: number; a2_avg: number; a2_stddev: number | null }[]>([])
   const [playerStats,  setPlayerStats]  = useState<{
-    a1_group: string; a1_scoring: string; a1_sessions: number; a1_avg: number; a1_stddev: number | null; pct_rank: number | null
+    a1_group: string; a1_scoring: string; a1_sessions: number; a1_avg: number; a1_stddev: number | null
+    a1_pct_rank: number | null; a1_avg_rank: number; a1_group_total: number
   }[]>([])
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState<string | null>(null)
@@ -155,6 +157,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [dayFilter,          setDayFilter]          = useState('')
   const [selectedPartnerIds, setSelectedPartnerIds] = useState<Set<number>>(new Set())
   const [scoring,            setScoring]            = useState<(typeof SCORING_TYPES)[number]>('MP')
+  const [statsScoring,       setStatsScoring]        = useState<(typeof SCORING_TYPES)[number]>('MP')
 
   const [sessionNameFilter,  setSessionNameFilter]  = useState('')
   const [selectedClubs,      setSelectedClubs]      = useState<Set<string>>(new Set())
@@ -164,7 +167,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [eventTypeOptions,   setEventTypeOptions]   = useState<string[]>([])
   const [summaryFilter,        setSummaryFilter]        = useState<'all' | 'summary' | 'session'>('all')
   const [scoringFilter,      setScoringFilter]      = useState<'all' | (typeof SCORING_TYPES)[number]>('all')
-  const [activeTab,    setActiveTab]    = useState<'history' | 'partners'>('history')
+  const [activeTab,    setActiveTab]    = useState<'stats' | 'history' | 'partners'>('history')
   const [historyView,  setHistoryView]  = useState<'data' | 'graph'>('data')
   const [currentPage,  setCurrentPage]  = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(ROWS_PER_PAGE)
@@ -174,12 +177,13 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     const s = loadPlayerSaved(playerId)
     savedRef.current = s
     if (s) {
-      if (s.activeTab === 'history' || s.activeTab === 'partners') setActiveTab(s.activeTab)
+      if (s.activeTab === 'stats' || s.activeTab === 'history' || s.activeTab === 'partners') setActiveTab(s.activeTab)
       if (s.historyView === 'data' || s.historyView === 'graph') setHistoryView(s.historyView)
       if (s.dateFrom)               setDateFrom(s.dateFrom as string)
       if (s.dateTo)                 setDateTo(s.dateTo as string)
       if (s.dayFilter)              setDayFilter(s.dayFilter as string)
       if (s.scoring)                setScoring(s.scoring as (typeof SCORING_TYPES)[number])
+      if (s.statsScoring)           setStatsScoring(s.statsScoring as (typeof SCORING_TYPES)[number])
       if (s.sessionNameFilter)      setSessionNameFilter(s.sessionNameFilter as string)
       if ((s.selectedTournaments as string[])?.length) setSelectedTournaments(new Set(s.selectedTournaments as string[]))
       if (s.summaryFilter)            setSummaryFilter(s.summaryFilter as 'all' | 'summary' | 'session')
@@ -194,7 +198,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (!restoredRef.current) return
     try {
       sessionStorage.setItem(playerStorageKey(playerId), JSON.stringify({
-        activeTab, historyView, dateFrom, dateTo, dayFilter, scoring, sessionNameFilter,
+        activeTab, historyView, dateFrom, dateTo, dayFilter, scoring, statsScoring, sessionNameFilter,
         selectedTournaments: [...selectedTournaments],
         selectedClubs: [...selectedClubs],
         selectedEventTypes: [...selectedEventTypes],
@@ -202,7 +206,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
         summaryFilter, scoringFilter, currentPage, itemsPerPage,
       }))
     } catch {}
-  }, [playerId, activeTab, dateFrom, dateTo, dayFilter, scoring, sessionNameFilter,
+  }, [playerId, activeTab, dateFrom, dateTo, dayFilter, scoring, statsScoring, sessionNameFilter,
       selectedTournaments, selectedClubs, selectedEventTypes, selectedPartnerIds,
       summaryFilter, scoringFilter, currentPage, itemsPerPage])
 
@@ -246,11 +250,11 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (scoringFilter !== 'all') rows = rows.filter(r => r.scoring === scoringFilter)
 
     if (sessionNameFilter)     rows = rows.filter(r => r.session_name.toLowerCase().includes(sessionNameFilter.toLowerCase()))
-    if (selectedClubs.size < clubOptions.length)
+    if (isSelectionFiltering([...selectedClubs], clubOptions.length))
                                rows = rows.filter(r => selectedClubs.has(r.club))
-    if (selectedTournaments.size < 3)
+    if (isSelectionFiltering([...selectedTournaments], 3))
                                rows = rows.filter(r => selectedTournaments.has((r.tournament ?? '').match(/[ABC]$/i)?.[0]?.toUpperCase() ?? ''))
-    if (selectedEventTypes.size < eventTypeOptions.length)
+    if (isSelectionFiltering([...selectedEventTypes], eventTypeOptions.length))
                                rows = rows.filter(r => selectedEventTypes.has(r.event_type))
     if (summaryFilter === 'summary') rows = rows.filter(r => r.is_summary === true)
     if (summaryFilter === 'session') rows = rows.filter(r => r.is_summary !== true)
@@ -296,9 +300,9 @@ useEffect(() => { setCurrentPage(1) },
   const hasFilter = !!(dateFrom || dateTo || dayFilter ||
     sessionNameFilter ||
     selectedPartnerIds.size < uniquePartners.length ||
-    selectedClubs.size < clubOptions.length ||
-    selectedTournaments.size < 3 ||
-    selectedEventTypes.size < eventTypeOptions.length ||
+    isSelectionFiltering([...selectedClubs], clubOptions.length) ||
+    isSelectionFiltering([...selectedTournaments], 3) ||
+    isSelectionFiltering([...selectedEventTypes], eventTypeOptions.length) ||
     scoringFilter !== 'all')
 
   function clearFilters() {
@@ -392,68 +396,75 @@ useEffect(() => { setCurrentPage(1) },
         <div className='mb-1'>
           <MyBackHomeNav backPath={backPath} linkClass='text-xs text-blue-600 hover:underline' />
         </div>
-        <div className='flex items-baseline gap-3 mb-2'>
+        <div className='flex items-baseline gap-3'>
           <h1 className='text-xl font-bold text-gray-900'>{player.pl_name}</h1>
           <span className='text-xs text-gray-400'>NZ Bridge #{player.pl_nz_bridge_number}</span>
-          {player.pl_all_results && (
+          {player.pl_tracked && (
             <span className='rounded-full bg-green-100 border border-green-300 px-2 py-0.5 text-xs font-medium text-green-700'>Tracked</span>
           )}
         </div>
-        <div className='flex flex-wrap gap-4 text-sm text-gray-600'>
-          {player.pl_club && <span>Club: {player.pl_club}</span>}
-          {player.pl_rank && <span>Rank: {player.pl_rank}</span>}
-          {player.pl_grade && <span>Grade: {player.pl_grade}</span>}
-          {player.pl_rating > 0 && <span>Rating: {player.pl_rating}</span>}
-          {player.pl_a_points > 0 && <span>A pts: {player.pl_a_points}</span>}
-          {player.pl_b_points > 0 && <span>B pts: {player.pl_b_points}</span>}
-          {player.pl_c_points > 0 && <span>C pts: {player.pl_c_points}</span>}
-        </div>
-        {playerStats.length > 0 && (() => {
-          const byGrp: Record<string, Record<string, (typeof playerStats)[number]>> = {}
-          playerStats.forEach(r => { (byGrp[r.a1_group] ??= {})[r.a1_scoring] = r })
-          const grps = (['A', 'B', 'C', 'all'] as const).filter(g => byGrp[g])
-          function consistencyLabel(pctRank: number | null): { text: string; cls: string } | null {
-            if (pctRank === null) return null
-            if (pctRank < 0.25) return { text: 'Consistent', cls: 'text-green-600' }
-            if (pctRank < 0.50) return { text: 'Wobbly',     cls: 'text-yellow-600' }
-            if (pctRank < 0.75) return { text: 'Volatile',   cls: 'text-orange-500' }
-            return                      { text: 'Wild',       cls: 'text-red-600' }
-          }
-          return (
-            <table className='mt-2 text-sm text-gray-600'>
-              <thead>
-                <tr>
-                  <th className='text-center font-semibold text-gray-500 pb-0 px-4 align-bottom' rowSpan={2}>Tournament<br/>Type</th>
-                  {SCORING_TYPES.map((s, i) => (
-                    <Fragment key={s}>
-                      <th colSpan={3} className='text-center font-semibold text-gray-500 pb-0 px-6'>{s}</th>
-                      {i < SCORING_TYPES.length - 1 && <th className='w-6' />}
-                    </Fragment>
-                  ))}
-                </tr>
-                <tr>
-                  {SCORING_TYPES.map((s, i) => (
-                    <Fragment key={s}>
+      </div>
+
+      {/* Tabs */}
+      <div className='flex gap-1 border-b border-gray-200'>
+        {(['stats', 'history', 'partners'] as const).map(tab => (
+          <MyTab key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}
+            underlineActiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-white border-gray-200 text-gray-900'
+            underlineInactiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'>
+            {tab === 'stats' ? 'Player Stats' : tab === 'history' ? 'Player History' : 'All Partners History'}
+          </MyTab>
+        ))}
+      </div>
+
+      {/* Player Stats */}
+      {activeTab === 'stats' && (
+        <div className='rounded border border-gray-200 p-4'>
+          <div className='flex flex-wrap gap-4 text-sm text-gray-600'>
+            {player.pl_club && <span>Club: {player.pl_club}</span>}
+            {player.pl_rank && <span>Rank: {player.pl_rank}</span>}
+            {player.pl_grade && <span>Grade: {player.pl_grade}</span>}
+            {player.pl_rating > 0 && <span>Rating: {player.pl_rating}</span>}
+            {player.pl_a_points > 0 && <span>A pts: {player.pl_a_points}</span>}
+            {player.pl_b_points > 0 && <span>B pts: {player.pl_b_points}</span>}
+            {player.pl_c_points > 0 && <span>C pts: {player.pl_c_points}</span>}
+          </div>
+          {playerStats.length > 0 && (() => {
+            const byGrp: Record<string, Record<string, (typeof playerStats)[number]>> = {}
+            playerStats.forEach(r => { (byGrp[r.a1_group] ??= {})[r.a1_scoring] = r })
+            const grps = (['A', 'B', 'C', 'all'] as const).filter(g => byGrp[g])
+            function consistencyLabel(pctRank: number | null): { text: string; cls: string } | null {
+              if (pctRank === null) return null
+              return CONSISTENCY_LEVELS.find(level => pctRank < level.max) ?? null
+            }
+            return (
+              <div className='mt-2'>
+                <div className='flex items-center gap-1.5 mb-1.5'>
+                  <span className='text-xs text-gray-500'>Scoring</span>
+                  <ScoringTypeToggle value={statsScoring} onChange={setStatsScoring} />
+                </div>
+                <table className='text-sm text-gray-600'>
+                  <thead>
+                    <tr>
+                      <th className='text-center font-semibold text-gray-500 pb-1 px-4'>Tournament<br/>Type</th>
                       <th className='text-right text-gray-400 font-normal pb-1 px-4'>Avg</th>
+                      <th className='text-right text-gray-400 font-normal pb-1 px-4'>Rank</th>
                       <th className='text-right text-gray-400 font-normal pb-1 px-4'>Sessions</th>
                       <th className='text-left text-gray-400 font-normal pb-1 px-4'>Consistency</th>
-                      {i < SCORING_TYPES.length - 1 && <th />}
-                    </Fragment>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {grps.map(g => (
-                  <tr key={g}>
-                    <td className='text-center text-gray-600 py-0.5 px-4'>{g === 'all' ? 'All' : g}</td>
-                    {SCORING_TYPES.map((s, i) => {
-                      const r = byGrp[g][s]
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {grps.map(g => {
+                      const r = byGrp[g][statsScoring]
                       const sessions = r?.a1_sessions ?? 0
-                      const label = consistencyLabel(r?.pct_rank ?? null)
+                      const label = consistencyLabel(r?.a1_pct_rank ?? null)
                       return (
-                        <Fragment key={s}>
+                        <tr key={g}>
+                          <td className='text-center text-gray-600 py-0.5 px-4'>{g === 'all' ? 'All' : g}</td>
                           <td className='text-right font-medium text-gray-700 py-0.5 px-4'>
-                            {sessions > 0 ? formatScoringValue(s, r.a1_avg) : '—'}
+                            {sessions > 0 ? formatScoringValue(statsScoring, r.a1_avg) : '—'}
+                          </td>
+                          <td className='text-right text-xs text-gray-400 py-0.5 px-4'>
+                            {sessions > 0 ? `${r.a1_avg_rank} of ${r.a1_group_total}` : ''}
                           </td>
                           <td className='text-right text-gray-500 py-0.5 px-4'>
                             {sessions > 0 ? sessions : ''}
@@ -461,28 +472,16 @@ useEffect(() => { setCurrentPage(1) },
                           <td className={`text-left py-0.5 px-4 text-xs font-medium ${label?.cls ?? 'text-gray-300'}`}>
                             {sessions >= 10 && label ? `${label.text} (${parseFloat(String(r.a1_stddev)).toFixed(2)})` : ''}
                           </td>
-                          {i < SCORING_TYPES.length - 1 && <td />}
-                        </Fragment>
+                        </tr>
                       )
                     })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        })()}
-      </div>
-
-      {/* Tabs */}
-      <div className='flex gap-1 border-b border-gray-200'>
-        {(['history', 'partners'] as const).map(tab => (
-          <MyTab key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}
-            underlineActiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-white border-gray-200 text-gray-900'
-            underlineInactiveClass='px-4 py-1.5 text-sm font-medium rounded-t border border-b-0 bg-gray-50 border-transparent text-gray-500 hover:text-gray-700'>
-            {tab === 'history' ? 'Player History' : 'All Partners History'}
-          </MyTab>
-        ))}
-      </div>
+                  </tbody>
+                </table>
+              </div>
+            )
+          })()}
+        </div>
+      )}
 
       {/* Player History */}
       {activeTab === 'history' && (
@@ -524,7 +523,7 @@ useEffect(() => { setCurrentPage(1) },
               <PerformanceChart results={sessionsSorted} scoring={scoring} />
             </>
           ) : (
-            <div className='overflow-x-auto'>
+            <div className='overflow-x-auto' style={{ minHeight: TABLE_MIN_HEIGHT_PX }}>
               <table className='w-full text-sm'>
                 <thead>
                   <tr className='border-b border-gray-200'>
@@ -575,7 +574,7 @@ useEffect(() => { setCurrentPage(1) },
                     </td>
                     {/* Club */}
                     <td className='py-1 pr-1'>
-                      <ClubSelect mode='all' selected={selectedClubs} onChange={setSelectedClubs}
+                      <ClubSelect selected={selectedClubs} onChange={setSelectedClubs}
                         onOptionsLoaded={opts => {
                           setClubOptions(opts)
                           const saved = savedRef.current?.selectedClubs as string[] | undefined
@@ -593,7 +592,7 @@ useEffect(() => { setCurrentPage(1) },
                     </td>
                     {/* Event type */}
                     <td className='py-1 pr-1'>
-                      <EventTypeSelect mode='all' selected={selectedEventTypes} onChange={setSelectedEventTypes}
+                      <EventTypeSelect selected={selectedEventTypes} onChange={setSelectedEventTypes}
                         onOptionsLoaded={opts => {
                           setEventTypeOptions(opts)
                           const saved = savedRef.current?.selectedEventTypes as string[] | undefined
@@ -625,7 +624,9 @@ useEffect(() => { setCurrentPage(1) },
                   </tr>
                 </thead>
                 <tbody>
-                  {sessionsSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => (
+                  {sessionsSorted.length === 0 ? (
+                    <TableEmptyRow colSpan={13} message='No results match the current filters.' />
+                  ) : sessionsSorted.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => (
                     <tr key={i}
                       className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                       onClick={() => {
@@ -669,15 +670,13 @@ useEffect(() => { setCurrentPage(1) },
             </div>
           )}
           {historyView === 'data' && sessionsSorted.length > itemsPerPage && (
-            <div className='mt-3 flex items-center gap-3'>
-              <RowsPerPageSelect value={itemsPerPage} onChange={v => { setItemsPerPage(v); setCurrentPage(1) }} />
-              <span className='text-xs text-gray-400'>p.{currentPage}/{Math.ceil(sessionsSorted.length / itemsPerPage)}</span>
-              <MyPagination
-                totalPages={Math.ceil(sessionsSorted.length / itemsPerPage)}
-                statecurrentPage={currentPage}
-                setStateCurrentPage={setCurrentPage}
-              />
-            </div>
+            <MyPaginationFooter
+              totalPages={Math.ceil(sessionsSorted.length / itemsPerPage)}
+              statecurrentPage={currentPage}
+              setStateCurrentPage={setCurrentPage}
+              rowsPerPage={itemsPerPage}
+              setRowsPerPage={v => { setItemsPerPage(v); setCurrentPage(1) }}
+            />
           )}
         </div>
       )}
@@ -687,7 +686,7 @@ useEffect(() => { setCurrentPage(1) },
         <div className='rounded border border-gray-200 p-4'>
           {results.length === 0
             ? <div className='text-sm text-gray-400 py-4 text-center'>No results recorded yet</div>
-            : <PartnersTable partners={uniquePartners} />}
+            : <PartnersTable partners={uniquePartners} playerId={playerId} />}
         </div>
       )}
     </div>

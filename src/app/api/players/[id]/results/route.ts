@@ -36,7 +36,7 @@ export async function GET(
         CASE WHEN pa_plid1 = $1 THEN pa_plid2 ELSE pa_plid1 END AS partner_id,
         pl_name          AS partner_name,
         pl_nz_bridge_number AS partner_nz_number,
-        pl_all_results   AS partner_tracked
+        pl_tracked   AS partner_tracked
       FROM tre_results
       JOIN tse_sessions ON se_seid = re_seid
       JOIN tpa_partners ON pa_paid = re_paid

@@ -722,7 +722,7 @@ export default function PipelineTable() {
                 <MyHelpStep
                   title='2a. Scrape Tracked Players'
                   input={["nzbridge.co.nz — each tracked player's full online-points history (no date range — NZB returns everything)"]}
-                  processing="For each flagged player (pl_all_results = TRUE), fetches their full match history and finds every run_id not already in tse_sessions or ts1_sessions — so a session already built (e.g. by Scrape AKBC + Build Sessions, if that ran first) or already scraped in a previous run is never re-fetched, however many tracked players share it. Does not truncate ts1_sessions/ts2_results — adds to whatever's already staged. Writes exactly like Scrape AKBC otherwise."
+                  processing="For each flagged player (pl_tracked = TRUE), fetches their full match history and finds every run_id not already in tse_sessions or ts1_sessions — so a session already built (e.g. by Scrape AKBC + Build Sessions, if that ran first) or already scraped in a previous run is never re-fetched, however many tracked players share it. Does not truncate ts1_sessions/ts2_results — adds to whatever's already staged. Writes exactly like Scrape AKBC otherwise."
                   output={[
                     'ts1_sessions — one row per newly-discovered session',
                     'ts2_results — one row per pair per session',

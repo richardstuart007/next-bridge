@@ -1,18 +1,24 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { getSessionsByYear } from '@/src/lib/actions/sessions'
+import { getSessionsPaged, SessionListRow } from '@/src/lib/actions/sessions'
 import { ClubSelect, GradeSelect, RankSelect, StringMultiSelect } from '@/src/ui/shared/LookupSelects'
-import { ScoringTypeSelect } from '@/src/ui/shared/ScoringTypeSelects'
-import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
+import { TableEmptyRow } from '@/src/ui/shared/TableEmptyRow'
+import { ScoringTypeMultiSelect } from '@/src/ui/shared/ScoringTypeSelects'
+import { SummaryTypeMultiSelect } from '@/src/ui/shared/SummaryTypeSelects'
 import { saveBackNav } from 'nextjs-shared/useBackNav'
-import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE } from '@/src/lib/constants'
-import MyPagination from 'nextjs-shared/MyPagination'
+import { isSelectionFiltering } from 'nextjs-shared/isSelectionFiltering'
+import { myMergeClasses } from 'nextjs-shared/MyMergeClasses'
+import {
+  BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, FILTER_DEBOUNCE_MS, TABLE_MIN_HEIGHT_PX,
+  WIDTH_DAY, WIDTH_TOURNAMENT_TYPE, WIDTH_TOURNAMENT_NAME,
+  SCORING_TYPES, SUMMARY_TYPES
+} from '@/src/lib/constants'
+import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { MyHelpField } from 'nextjs-shared/MyHelpField'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
-import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
 import { useTabQueryState } from 'nextjs-shared/useTabQueryState'
 import RankingsPageClient from '@/src/ui/rankings/RankingsPageClient'
@@ -28,34 +34,13 @@ interface PlayerRow {
   pl_a_points: number
   a1_sessions: number
   a1_avg_pct: number
-  pl_all_results: boolean
-}
-
-interface SessionRow {
-  se_seid: number
-  se_date: string
-  se_day_of_week: string
-  se_run_id: number
-  se_scoring: string
-  se_name: string
-  se_tournament: string
-  se_club: string
-  se_is_summary: boolean
+  pl_tracked: boolean
 }
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const TOURNAMENT_TYPES = ['A', 'B', 'C']
-const SELECT_CLS = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
 const INPUT_CLS  = 'w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal'
 const NUM_CLS    = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
-
-function normalizeRank(rank: string): string {
-  const lower = (rank ?? '').toLowerCase()
-  if (!lower || lower === 'n/a' || lower === 'no rank' || lower === 'unknown') return 'No Rank'
-  return rank
-}
-
-
 
 const SESSION_KEY = 'home_state'
 
@@ -67,15 +52,23 @@ function loadSaved() {
 export default function HomePageClient() {
   const router = useRouter()
   const restoredRef    = useRef(false)
+  const savedRef        = useRef<Record<string, unknown> | null>(null)
 
   const [activeTab, setActiveTab] = useTabQueryState('tab', 'players')
 
   // ── Option counts for filter comparisons (populated via onOptionsLoaded callbacks) ──
   const [fTournamentTypes, setFTournamentTypes] = useState<Set<string>>(new Set(TOURNAMENT_TYPES))
   const [sessClubOptions,   setSessClubOptions]   = useState<string[]>([])
+  const [rankOptions,       setRankOptions]       = useState<string[]>([])
+  const [gradeOptions,      setGradeOptions]      = useState<string[]>([])
+  const [clubOptions,       setClubOptions]       = useState<string[]>([])
 
   // ── Players ──
-  const [allPlayers, setAllPlayers] = useState<PlayerRow[]>([])
+  const [players,          setPlayers]          = useState<PlayerRow[]>([])
+  const [playersTotalPages, setPlayersTotalPages] = useState(1)
+  const [playersTotalCount, setPlayersTotalCount] = useState(0)
+  const [loadingPlayers,   setLoadingPlayers]    = useState(true)
+  const [hasLoadedPlayersOnce, setHasLoadedPlayersOnce] = useState(false)
   const [playerPage, setPlayerPage] = useState(1)
   const [playerItemsPerPage, setPlayerItemsPerPage] = useState(ROWS_PER_PAGE)
 
@@ -92,27 +85,29 @@ export default function HomePageClient() {
   const [fExcludeNz0, setFExcludeNz0] = useState(true)
 
   // ── Sessions ──
-  const [allSessions,         setAllSessions]         = useState<SessionRow[]>([])
+  const [sessions,            setSessions]            = useState<SessionListRow[]>([])
+  const [sessionsTotalPages,  setSessionsTotalPages]  = useState(1)
   const [dateFrom,            setDateFrom]            = useState('')
   const [dateTo,              setDateTo]              = useState('')
   const [fDays,               setFDays]               = useState<Set<string>>(new Set(DAYS))
-  const [scoringFilter,       setScoringFilter]       = useState('')
+  const [scoringFilter,       setScoringFilter]       = useState<Set<string>>(new Set(SCORING_TYPES))
   const [sessNameFilter,      setSessNameFilter]      = useState('')
-const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new Set())
-  const [summaryFilter,         setSummaryFilter]         = useState<'all' | 'summary' | 'session'>('all')
+  const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new Set())
+  const [summaryFilter,       setSummaryFilter]       = useState<Set<string>>(new Set(SUMMARY_TYPES))
   const [sessionPage,         setSessionPage]         = useState(1)
   const [sessionItemsPerPage, setSessionItemsPerPage] = useState(ROWS_PER_PAGE)
-  const [loadingSessions,     setLoadingSessions]     = useState(false)
+  const [loadingSessions,     setLoadingSessions]     = useState(true)
+  const [hasLoadedSessionsOnce, setHasLoadedSessionsOnce] = useState(false)
 
   // ── Restore from sessionStorage on mount ──
   useEffect(() => {
     const s = loadSaved()
+    savedRef.current = s
     if (s) {
       if (s.fName)              setFName(s.fName)
       if (s.fNz)                setFNz(s.fNz)
-      if (s.fRanks?.length)     setFRanks(new Set(s.fRanks))
-      if (s.fGrades?.length)    setFGrades(new Set(s.fGrades))
-      if (Array.isArray(s.fClubs)) setFClubs(new Set(s.fClubs))
+      // fRanks/fGrades/fClubs are restored inside their own onOptionsLoaded callbacks below,
+      // once the full option list is known (same pattern as PlayerPageClient.tsx)
       if (s.fRatingMin)         setFRatingMin(s.fRatingMin)
       if (s.fAMin)              setFAMin(s.fAMin)
       if (s.fSessMin)                    setFSessMin(s.fSessMin)
@@ -123,10 +118,19 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
       // Session tab filters
       if (s.dateFrom)                    setDateFrom(s.dateFrom)
       if (s.dateTo)                      setDateTo(s.dateTo)
-      if (s.fDays?.length)               setFDays(new Set(s.fDays))
-      if (s.scoringFilter !== undefined) setScoringFilter(s.scoringFilter)
+      if (s.fDays?.length) {
+        const valid = s.fDays.filter((d: string) => DAYS.includes(d))
+        if (valid.length > 0) setFDays(new Set(valid))
+      }
+      if (s.scoringFilter?.length) {
+        const valid = s.scoringFilter.filter((v: string) => (SCORING_TYPES as readonly string[]).includes(v))
+        if (valid.length > 0) setScoringFilter(new Set(valid))
+      }
       if (s.sessNameFilter !== undefined) setSessNameFilter(s.sessNameFilter)
-      if (s.summaryFilter)                 setSummaryFilter(s.summaryFilter as 'all' | 'summary' | 'session')
+      if (s.summaryFilter?.length) {
+        const valid = s.summaryFilter.filter((v: string) => (SUMMARY_TYPES as readonly string[]).includes(v))
+        if (valid.length > 0) setSummaryFilter(new Set(valid))
+      }
       if (s.sessionPage)                 setSessionPage(s.sessionPage)
       if (s.sessionItemsPerPage)         setSessionItemsPerPage(s.sessionItemsPerPage)
     }
@@ -142,7 +146,8 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
         fRanks: [...fRanks], fGrades: [...fGrades], fClubs: [...fClubs],
         fRatingMin, fAMin, fSessMin,
         playerPage, playerItemsPerPage,
-        dateFrom, dateTo, fDays: [...fDays], scoringFilter, sessNameFilter, summaryFilter,
+        dateFrom, dateTo, fDays: [...fDays], scoringFilter: [...scoringFilter], sessNameFilter,
+        summaryFilter: [...summaryFilter],
         sessionPage, sessionItemsPerPage,
       }))
     } catch {}
@@ -152,77 +157,90 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
       dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, summaryFilter,
       sessionPage, sessionItemsPerPage])
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch('/api/admin/players')
-        const rows = await r.json()
-        setAllPlayers(rows as PlayerRow[])
-      } catch (err) { console.error(err) }
-    })()
-  }, [])
-
-  useEffect(() => {
-    (async () => {
-      setLoadingSessions(true)
-      try {
-        const rows = await getSessionsByYear(null)
-        setAllSessions(rows as SessionRow[])
-      } catch (err) { console.error(err) }
-      finally { setLoadingSessions(false) }
-    })()
-  }, [])
-
-  const num = (v: string) => v === '' ? null : parseFloat(v)
-
   const isTracked = (v: unknown) => v === true || v === 't' || v === 'true' || v === 1
 
-  const filteredPlayers = useMemo(() => {
-    let rows = allPlayers
-    if (fTracked)        rows = rows.filter(p => isTracked(p.pl_all_results))
-    if (fExcludeNz0)     rows = rows.filter(p => (p.pl_nz_bridge_number ?? 0) > 0)
-    if (fName)           rows = rows.filter(p => p.pl_name.toLowerCase().includes(fName.toLowerCase()))
-    if (fNz)             rows = rows.filter(p => String(p.pl_nz_bridge_number ?? '').includes(fNz))
-    if (fRanks.size > 0) rows = rows.filter(p => fRanks.has(normalizeRank(p.pl_rank)))
-    if (fGrades.size > 0) rows = rows.filter(p => fGrades.has(p.pl_grade))
-    if (fClubs.size > 0)  rows = rows.filter(p => fClubs.has(p.pl_club))
-    const rMin = num(fRatingMin)
-    if (rMin !== null)   rows = rows.filter(p => parseFloat(String(p.pl_rating)) >= rMin)
-    const aMin = num(fAMin)
-    if (aMin !== null)   rows = rows.filter(p => parseFloat(String(p.pl_a_points)) >= aMin)
-    const sMin = num(fSessMin)
-    if (sMin !== null)   rows = rows.filter(p => p.a1_sessions >= sMin)
-    return rows
-  }, [allPlayers, fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fSessMin])
-
-  const hasPlayerFilter = fTracked || fName || fNz || fRanks.size || fGrades.size || fClubs.size ||
+  const hasPlayerFilter = fTracked || fName || fNz ||
+    isSelectionFiltering([...fRanks], rankOptions.length) ||
+    isSelectionFiltering([...fGrades], gradeOptions.length) ||
+    isSelectionFiltering([...fClubs], clubOptions.length) ||
     fRatingMin || fAMin || fSessMin
 
   function clearPlayerFilters() {
     setFTracked(false); setFExcludeNz0(true)
-    setFName(''); setFNz(''); setFRanks(new Set()); setFGrades(new Set()); setFClubs(new Set())
+    setFName(''); setFNz('')
+    setFRanks(new Set(rankOptions)); setFGrades(new Set(gradeOptions)); setFClubs(new Set(clubOptions))
     setFRatingMin(''); setFAMin(''); setFSessMin('')
   }
 
+  // Reset to page 1 whenever a player filter changes
   useEffect(() => {
     if (restoredRef.current) setPlayerPage(1)
   }, [fTracked, fExcludeNz0, fName, fNz, fRanks, fGrades, fClubs, fRatingMin, fAMin, fSessMin])
 
-  const sessions = useMemo(() => {
-    let rows = allSessions
-    if (dateFrom)                  rows = rows.filter(s => s.se_date.slice(0, 10) >= dateFrom)
-    if (dateTo)                    rows = rows.filter(s => s.se_date.slice(0, 10) <= dateTo)
-    if (fDays.size < DAYS.length)  rows = rows.filter(s => fDays.has(s.se_day_of_week ?? ''))
-    if (scoringFilter) rows = rows.filter(s => s.se_scoring === scoringFilter)
-    if (sessNameFilter) rows = rows.filter(s => s.se_name.toLowerCase().includes(sessNameFilter.toLowerCase()))
-    if (fTournamentTypes.size < TOURNAMENT_TYPES.length) rows = rows.filter(s => fTournamentTypes.has((s.se_tournament ?? '').slice(-1).toUpperCase()))
-    if (fSessClubs.size < sessClubOptions.length) rows = rows.filter(s => fSessClubs.has(s.se_club ?? ''))
-    if (summaryFilter === 'summary') rows = rows.filter(s => s.se_is_summary === true)
-    if (summaryFilter === 'session') rows = rows.filter(s => s.se_is_summary !== true)
-    return rows
-  }, [allSessions, dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, fTournamentTypes, fSessClubs, sessClubOptions.length, summaryFilter])
+  // Reset to page 1 whenever a session filter changes
+  useEffect(() => {
+    if (restoredRef.current) setSessionPage(1)
+  }, [dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, fTournamentTypes, fSessClubs, summaryFilter])
 
-  useEffect(() => { setSessionPage(1) }, [dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, fTournamentTypes, fSessClubs, summaryFilter])
+  // ── Players: fetch only the current page from the server (debounced) ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      (async () => {
+        setLoadingPlayers(true)
+        try {
+          const params = new URLSearchParams()
+          if (fName) params.set('name', fName)
+          if (fNz)   params.set('nz', fNz)
+          if (isSelectionFiltering([...fRanks], rankOptions.length))   params.set('ranks', [...fRanks].join(','))
+          if (isSelectionFiltering([...fGrades], gradeOptions.length)) params.set('grades', [...fGrades].join(','))
+          if (isSelectionFiltering([...fClubs], clubOptions.length))   params.set('clubs', [...fClubs].join(','))
+          if (fRatingMin) params.set('ratingMin', fRatingMin)
+          if (fAMin)      params.set('aMin', fAMin)
+          if (fSessMin)   params.set('sessMin', fSessMin)
+          if (fTracked)   params.set('tracked', 'true')
+          params.set('excludeNz0', String(fExcludeNz0))
+          params.set('page', String(playerPage))
+          params.set('itemsPerPage', String(playerItemsPerPage))
+
+          const r = await fetch(`/api/admin/players?${params.toString()}`)
+          const data = await r.json()
+          setPlayers(data.rows as PlayerRow[])
+          setPlayersTotalPages(data.totalPages ?? 1)
+          setPlayersTotalCount(data.totalCount ?? 0)
+        } catch (err) { console.error(err) }
+        finally { setLoadingPlayers(false); setHasLoadedPlayersOnce(true) }
+      })()
+    }, FILTER_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [fName, fNz, fRanks, fGrades, fClubs, rankOptions.length, gradeOptions.length, clubOptions.length,
+      fRatingMin, fAMin, fSessMin, fTracked, fExcludeNz0,
+      playerPage, playerItemsPerPage])
+
+  // ── Sessions: fetch only the current page from the server (debounced) ──
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      (async () => {
+        setLoadingSessions(true)
+        try {
+          const { rows, totalPages } = await getSessionsPaged(sessionPage, sessionItemsPerPage, {
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+            days: isSelectionFiltering([...fDays], DAYS.length) ? [...fDays] : undefined,
+            scoring: isSelectionFiltering([...scoringFilter], SCORING_TYPES.length) ? [...scoringFilter] : undefined,
+            name: sessNameFilter || undefined,
+            clubs: isSelectionFiltering([...fSessClubs], sessClubOptions.length) ? [...fSessClubs] : undefined,
+            summaryTypes: isSelectionFiltering([...summaryFilter], SUMMARY_TYPES.length) ? [...summaryFilter] : undefined,
+            tournamentTypes: isSelectionFiltering([...fTournamentTypes], TOURNAMENT_TYPES.length) ? [...fTournamentTypes] : undefined,
+          })
+          setSessions(rows)
+          setSessionsTotalPages(totalPages)
+        } catch (err) { console.error(err) }
+        finally { setLoadingSessions(false); setHasLoadedSessionsOnce(true) }
+      })()
+    }, FILTER_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [dateFrom, dateTo, fDays, scoringFilter, sessNameFilter, fSessClubs, sessClubOptions.length,
+      summaryFilter, fTournamentTypes, sessionPage, sessionItemsPerPage])
 
   return (
     <div className='space-y-4'>
@@ -236,7 +254,6 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
         >
           <span className='flex items-center gap-1'>
             Players
-            <MyHelpField text='List of players who have had sessions imported.' />
           </span>
         </MyTab>
         <MyTab active={activeTab === 'sessions'} onClick={() => setActiveTab('sessions')}
@@ -254,19 +271,18 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
           <div className='flex items-center justify-between mb-3'>
             <h2 className='text-base font-semibold text-gray-800'>
               Players
-              <span className='ml-2 text-xs font-normal text-gray-400'>{filteredPlayers.length} of {allPlayers.length}</span>
+              <span className='ml-2 text-xs font-normal text-gray-400'>{playersTotalCount} found</span>
             </h2>
             {hasPlayerFilter && (
               <MyButton onClick={clearPlayerFilters} overrideClass='text-xs text-blue-600 hover:underline bg-transparent hover:bg-transparent h-auto md:h-auto px-0'>Clear filters</MyButton>
             )}
           </div>
 
-          {allPlayers.length === 0 ? (
+          {!hasLoadedPlayersOnce ? (
             <p className='text-sm text-gray-400'>Loading…</p>
           ) : (
             <>
-              <div className='overflow-x-auto'>
-              <div className='max-h-[760px] overflow-y-auto'>
+              <div className='overflow-x-auto' style={{ minHeight: TABLE_MIN_HEIGHT_PX }}>
                 <table className='w-full text-sm'>
                   <thead className='sticky top-0 z-10 bg-white'>
                     <tr className='border-b border-gray-200'>
@@ -299,13 +315,43 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                         </label>
                       </td>
                       <td className='py-1 pr-1'>
-                        <RankSelect mode='any' selected={fRanks} onChange={setFRanks} placeholder='All' />
+                        <RankSelect selected={fRanks} onChange={setFRanks}
+                          onOptionsLoaded={opts => {
+                            setRankOptions(opts)
+                            const saved = savedRef.current?.fRanks as string[] | undefined
+                            if (saved?.length) {
+                              const valid = new Set(saved.filter(o => opts.includes(o)))
+                              setFRanks(valid.size > 0 ? valid : new Set(opts))
+                            } else {
+                              setFRanks(new Set(opts))
+                            }
+                          }} />
                       </td>
                       <td className='py-1 pr-1'>
-                        <GradeSelect mode='any' selected={fGrades} onChange={setFGrades} placeholder='All' />
+                        <GradeSelect selected={fGrades} onChange={setFGrades}
+                          onOptionsLoaded={opts => {
+                            setGradeOptions(opts)
+                            const saved = savedRef.current?.fGrades as string[] | undefined
+                            if (saved?.length) {
+                              const valid = new Set(saved.filter(o => opts.includes(o)))
+                              setFGrades(valid.size > 0 ? valid : new Set(opts))
+                            } else {
+                              setFGrades(new Set(opts))
+                            }
+                          }} />
                       </td>
                       <td className='py-1 pr-1'>
-                        <ClubSelect mode='any' selected={fClubs} onChange={setFClubs} placeholder='All' />
+                        <ClubSelect selected={fClubs} onChange={setFClubs}
+                          onOptionsLoaded={opts => {
+                            setClubOptions(opts)
+                            const saved = savedRef.current?.fClubs as string[] | undefined
+                            if (saved?.length) {
+                              const valid = new Set(saved.filter(o => opts.includes(o)))
+                              setFClubs(valid.size > 0 ? valid : new Set(opts))
+                            } else {
+                              setFClubs(new Set(opts))
+                            }
+                          }} />
                       </td>
                       <td className='py-1 pr-1'>
                         <MyInput type='text' inputMode='decimal' placeholder='Min' value={fRatingMin}
@@ -328,9 +374,9 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPlayers.slice((playerPage - 1) * playerItemsPerPage, playerPage * playerItemsPerPage).map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_rank, pl_grade, pl_club, pl_rating, pl_a_points, a1_avg_pct, a1_sessions, pl_all_results }) => (
+                    {players.map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_rank, pl_grade, pl_club, pl_rating, pl_a_points, a1_avg_pct, a1_sessions, pl_tracked }) => (
                       <tr key={pl_plid}
-                        className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${isTracked(pl_all_results) ? 'bg-green-50' : ''}`}
+                        className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${isTracked(pl_tracked) ? 'bg-green-50' : ''}`}
                         onClick={() => {
                           saveBackNav(BACK_KEY)
                           router.push(`/player/${pl_plid}`)
@@ -346,30 +392,22 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                         <td className='py-1.5 text-right font-medium'>{parseFloat(String(a1_avg_pct)).toFixed(2)}%</td>
                         <td className='py-1.5 text-right text-gray-600'>{a1_sessions}</td>
                         <td className='py-1.5 text-center'>
-                          {isTracked(pl_all_results) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
+                          {isTracked(pl_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              </div>
-              {filteredPlayers.length > playerItemsPerPage && (
-                <div className='mt-3 flex items-center gap-3'>
-                  <RowsPerPageSelect
-                    value={playerItemsPerPage}
-                    onChange={v => { setPlayerItemsPerPage(v); setPlayerPage(1) }}
-                    options={[15, 20, 50, 100]}
-                  />
-                  <span className='text-xs text-gray-400'>
-                    p.{playerPage}/{Math.ceil(filteredPlayers.length / playerItemsPerPage)}
-                  </span>
-                  <MyPagination
-                    totalPages={Math.ceil(filteredPlayers.length / playerItemsPerPage)}
-                    statecurrentPage={playerPage}
-                    setStateCurrentPage={setPlayerPage}
-                  />
-                </div>
+              {playersTotalPages > 1 && (
+                <MyPaginationFooter
+                  totalPages={playersTotalPages}
+                  statecurrentPage={playerPage}
+                  setStateCurrentPage={setPlayerPage}
+                  rowsPerPage={playerItemsPerPage}
+                  setRowsPerPage={v => { setPlayerItemsPerPage(v); setPlayerPage(1) }}
+                  rowsOptions={[15, 20, 50, 100]}
+                />
               )}
             </>
           )}
@@ -381,15 +419,14 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
             <h2 className='text-base font-semibold text-gray-800'>
               Sessions
               <span className='ml-2 text-xs font-normal text-gray-400'>
-                {loadingSessions ? 'Loading…' : `${sessions.length} shown`}
+                {loadingSessions ? 'Loading…' : `page ${sessionPage} of ${sessionsTotalPages}`}
               </span>
             </h2>
           </div>
 
-          {allSessions.length === 0 && !loadingSessions ? (
-            <p className='text-sm text-gray-400'>No sessions found.</p>
+          {!hasLoadedSessionsOnce ? (
+            <p className='text-sm text-gray-400'>Loading…</p>
           ) : (
-            <div className='max-h-[760px] overflow-y-auto'>
             <table className='w-full text-sm'>
               <thead className='sticky top-0 z-10 bg-white'>
                 <tr className='border-b border-gray-200'>
@@ -400,7 +437,7 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Scoring</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Summary</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium whitespace-nowrap'>Club</th>
-                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Tournament Name</th>
+                  <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_TOURNAMENT_NAME}`}>Tournament Name</th>
                 </tr>
                 <tr className='border-b border-gray-100 bg-gray-50'>
                   <td className='py-1 pr-2' />
@@ -411,34 +448,31 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                     </div>
                   </td>
                   <td className='py-1 pr-2'>
-                    <StringMultiSelect options={DAYS} selected={fDays} onChange={setFDays} />
+                    <StringMultiSelect options={DAYS} selected={fDays} onChange={setFDays} overrideClass={WIDTH_DAY} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <StringMultiSelect options={TOURNAMENT_TYPES} selected={fTournamentTypes} onChange={setFTournamentTypes} />
+                    <StringMultiSelect options={TOURNAMENT_TYPES} selected={fTournamentTypes} onChange={setFTournamentTypes} overrideClass={WIDTH_TOURNAMENT_TYPE} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <ScoringTypeSelect value={scoringFilter} onChange={setScoringFilter} includeAll allValue=''
-                      overrideClass={`${SELECT_CLS} h-auto md:h-auto`} />
+                    <ScoringTypeMultiSelect selected={scoringFilter} onChange={setScoringFilter} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <MySelect value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')} overrideClass={`${SELECT_CLS} h-auto md:h-auto`}>
-                      <option value='all'>All</option>
-                      <option value='summary'>Summary</option>
-                      <option value='session'>Session</option>
-                    </MySelect>
+                    <SummaryTypeMultiSelect selected={summaryFilter} onChange={setSummaryFilter} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <ClubSelect mode='all' selected={fSessClubs} onChange={setFSessClubs}
+                    <ClubSelect selected={fSessClubs} onChange={setFSessClubs}
                       onOptionsLoaded={opts => { setSessClubOptions(opts); setFSessClubs(new Set(opts)) }} />
                   </td>
                   <td className='py-1'>
                     <MyInput type='text' value={sessNameFilter} onChange={e => setSessNameFilter(e.target.value)}
-                      placeholder='Search…' overrideClass={`${INPUT_CLS} h-auto md:h-auto`} />
+                      placeholder='Search…' overrideClass={myMergeClasses(INPUT_CLS, `${WIDTH_TOURNAMENT_NAME} h-auto md:h-auto`)} />
                   </td>
                 </tr>
               </thead>
               <tbody>
-                {sessions.slice((sessionPage - 1) * sessionItemsPerPage, sessionPage * sessionItemsPerPage).map(s => (
+                {sessions.length === 0 ? (
+                  <TableEmptyRow colSpan={8} message='No sessions found.' />
+                ) : sessions.map(s => (
                   <tr key={s.se_seid}
                     className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                     onClick={() => {
@@ -471,23 +505,15 @@ const [fSessClubs,          setFSessClubs]          = useState<Set<string>>(new 
                 ))}
               </tbody>
             </table>
-            </div>
           )}
-          {sessions.length > sessionItemsPerPage && (
-            <div className='mt-3 flex items-center gap-3'>
-              <RowsPerPageSelect
-                value={sessionItemsPerPage}
-                onChange={v => { setSessionItemsPerPage(v); setSessionPage(1) }}
-              />
-              <span className='text-xs text-gray-400'>
-                p.{sessionPage}/{Math.ceil(sessions.length / sessionItemsPerPage)}
-              </span>
-              <MyPagination
-                totalPages={Math.ceil(sessions.length / sessionItemsPerPage)}
-                statecurrentPage={sessionPage}
-                setStateCurrentPage={setSessionPage}
-              />
-            </div>
+          {sessionsTotalPages > 1 && (
+            <MyPaginationFooter
+              totalPages={sessionsTotalPages}
+              statecurrentPage={sessionPage}
+              setStateCurrentPage={setSessionPage}
+              rowsPerPage={sessionItemsPerPage}
+              setRowsPerPage={v => { setSessionItemsPerPage(v); setSessionPage(1) }}
+            />
           )}
       </section>
 

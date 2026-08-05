@@ -4,6 +4,7 @@ import OwnerTableCache from 'nextjs-shared/OwnerTableCache'
 import OwnerTableLogging from 'nextjs-shared/OwnerTableLogging'
 import DataflowTabs from '@/src/ui/dataflow/DataflowTabs'
 import ConstantsPage from '@/src/ui/owner/ConstantsPage'
+import OwnerTableSessionStorage from 'nextjs-shared/OwnerTableSessionStorage'
 
 const TOOLS = [
   { href: '/owner/pipeline', label: 'Pipeline', description: 'Discover, scrape, build, and recompute stats — run each step individually or all in sequence.', step: '▶' },
@@ -41,6 +42,7 @@ export default function Page() {
         { label: 'Cache', content: <OwnerTableCache /> },
         { label: 'Dataflow', content: <div className='p-6 md:p-8'><DataflowTabs /></div> },
         { label: 'Constants', content: <ConstantsPage /> },
+        { label: 'Session Storage', content: <OwnerTableSessionStorage /> },
       ]}
     />
   )

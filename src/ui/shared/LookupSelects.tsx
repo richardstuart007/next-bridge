@@ -1,101 +1,33 @@
 'use client'
-/* force githuub change*/
 
 import { useState, useEffect, useRef } from 'react'
 import { getAllClubs, getAllGrades, getAllRanks, getAllEventTypes } from '@/src/lib/actions/lookup'
-import { MyButton } from 'nextjs-shared/MyButton'
+import MySelectMulti from 'nextjs-shared/MySelectMulti'
+import { myMergeClasses } from 'nextjs-shared/MyMergeClasses'
+import { WIDTH_RANK, WIDTH_GRADE, WIDTH_CLUB } from '@/src/lib/constants'
 
-// ── Shared dropdown panel ─────────────────────────────────────────────────────
+// Replicates the old hand-rolled DropdownPanel trigger button's exact styling — narrow enough
+// to fit a table filter-row cell, unlike MySelectMulti's own wider default
+const TRIGGER_OVERRIDE_CLASS =
+  'w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate text-gray-700 justify-start h-auto md:h-auto'
 
-function DropdownPanel({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+// ── StringMultiSelect ──────────────────────────────────────────────────────────
+// MySelectMulti now has one unconditional convention: every option selected = no filter
 
-  useEffect(() => {
-    if (!open) return
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [open])
-
-  return (
-    <div ref={ref} className='relative'>
-      <MyButton type='button' onClick={() => setOpen(v => !v)}
-        overrideClass='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate text-gray-700 justify-start h-auto md:h-auto'>
-        {label}
-      </MyButton>
-      {open && (
-        <div className='absolute left-0 top-full z-20 bg-white border border-gray-200 rounded shadow-lg min-w-max max-h-56 overflow-y-auto'>
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── MultiSelect: empty selection = no filter ──────────────────────────────────
-
-export function MultiSelect({ options, selected, onChange, placeholder }: {
+export function StringMultiSelect({ options, selected, onChange, overrideClass }: {
   options: string[]
   selected: Set<string>
   onChange: (s: Set<string>) => void
-  placeholder: string
+  overrideClass?: string
 }) {
-  const label = selected.size === 0 ? placeholder : `${selected.size} selected`
+  const triggerClass = overrideClass ? myMergeClasses(TRIGGER_OVERRIDE_CLASS, overrideClass) : TRIGGER_OVERRIDE_CLASS
   return (
-    <DropdownPanel label={label}>
-      {options.length === 0
-        ? <div className='px-3 py-2 text-xs text-gray-400'>No values</div>
-        : options.map(opt => (
-          <label key={opt} className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap'>
-            <input type='checkbox' checked={selected.has(opt)}
-              onChange={e => {
-                const next = new Set(selected)
-                if (e.target.checked) next.add(opt)
-                else next.delete(opt)
-                onChange(next)
-              }} />
-            {opt || '(blank)'}
-          </label>
-        ))
-      }
-    </DropdownPanel>
-  )
-}
-
-// ── StringMultiSelect: all selected = no filter ───────────────────────────────
-
-export function StringMultiSelect({ options, selected, onChange }: {
-  options: string[]
-  selected: Set<string>
-  onChange: (s: Set<string>) => void
-}) {
-  const allSelected = selected.size === options.length
-  const label = allSelected ? 'All' : `${selected.size} / ${options.length}`
-
-  function toggle(v: string) {
-    if (allSelected) { onChange(new Set([v])); return }
-    const next = new Set(selected)
-    if (next.has(v)) next.delete(v)
-    else next.add(v)
-    onChange(next)
-  }
-
-  return (
-    <DropdownPanel label={label}>
-      <label className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs border-b border-gray-100 font-medium whitespace-nowrap'>
-        <input type='checkbox' checked={allSelected} onChange={() => onChange(new Set(options))} />
-        All
-      </label>
-      {options.map(opt => (
-        <label key={opt} className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap'>
-          <input type='checkbox' checked={!allSelected && selected.has(opt)} onChange={() => toggle(opt)} />
-          {opt || '(blank)'}
-        </label>
-      ))}
-    </DropdownPanel>
+    <MySelectMulti
+      options={options}
+      selected={[...selected]}
+      onChange={values => onChange(new Set(values))}
+      overrideClass={triggerClass}
+    />
   )
 }
 
@@ -104,27 +36,30 @@ export function StringMultiSelect({ options, selected, onChange }: {
 interface LookupProps {
   selected: Set<string>
   onChange: (s: Set<string>) => void
-  /** 'any' = MultiSelect (empty=no filter)   'all' = StringMultiSelect (all=no filter) */
-  mode?: 'any' | 'all'
-  placeholder?: string
   onOptionsLoaded?: (opts: string[]) => void
+  overrideClass?: string
 }
 
-function LookupBase({ options, selected, onChange, mode = 'all', placeholder = 'All' }: {
+function LookupBase({ options, selected, onChange, overrideClass }: {
   options: string[]
   selected: Set<string>
   onChange: (s: Set<string>) => void
-  mode?: 'any' | 'all'
-  placeholder?: string
+  overrideClass?: string
 }) {
-  if (mode === 'any')
-    return <MultiSelect options={options} selected={selected} onChange={onChange} placeholder={placeholder} />
-  return <StringMultiSelect options={options} selected={selected} onChange={onChange} />
+  const triggerClass = overrideClass ? myMergeClasses(TRIGGER_OVERRIDE_CLASS, overrideClass) : TRIGGER_OVERRIDE_CLASS
+  return (
+    <MySelectMulti
+      options={options}
+      selected={[...selected]}
+      onChange={values => onChange(new Set(values))}
+      overrideClass={triggerClass}
+    />
+  )
 }
 
 // ── ClubSelect ────────────────────────────────────────────────────────────────
 
-export function ClubSelect({ selected, onChange, mode = 'all', placeholder = 'All', onOptionsLoaded }: LookupProps) {
+export function ClubSelect({ selected, onChange, onOptionsLoaded, overrideClass }: LookupProps) {
   const [options, setOptions] = useState<string[]>([])
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
@@ -138,12 +73,12 @@ export function ClubSelect({ selected, onChange, mode = 'all', placeholder = 'Al
       } catch (err) { console.error(err) }
     })()
   }, [])
-  return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
+  return <LookupBase options={options} selected={selected} onChange={onChange} overrideClass={overrideClass ?? WIDTH_CLUB} />
 }
 
 // ── GradeSelect ───────────────────────────────────────────────────────────────
 
-export function GradeSelect({ selected, onChange, mode = 'all', placeholder = 'All', onOptionsLoaded }: LookupProps) {
+export function GradeSelect({ selected, onChange, onOptionsLoaded, overrideClass }: LookupProps) {
   const [options, setOptions] = useState<string[]>([])
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
@@ -157,12 +92,12 @@ export function GradeSelect({ selected, onChange, mode = 'all', placeholder = 'A
       } catch (err) { console.error(err) }
     })()
   }, [])
-  return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
+  return <LookupBase options={options} selected={selected} onChange={onChange} overrideClass={overrideClass ?? WIDTH_GRADE} />
 }
 
 // ── RankSelect ────────────────────────────────────────────────────────────────
 
-export function RankSelect({ selected, onChange, mode = 'all', placeholder = 'All', onOptionsLoaded }: LookupProps) {
+export function RankSelect({ selected, onChange, onOptionsLoaded, overrideClass }: LookupProps) {
   const [options, setOptions] = useState<string[]>([])
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
@@ -176,12 +111,12 @@ export function RankSelect({ selected, onChange, mode = 'all', placeholder = 'Al
       } catch (err) { console.error(err) }
     })()
   }, [])
-  return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
+  return <LookupBase options={options} selected={selected} onChange={onChange} overrideClass={overrideClass ?? WIDTH_RANK} />
 }
 
 // ── EventTypeSelect ───────────────────────────────────────────────────────────
 
-export function EventTypeSelect({ selected, onChange, mode = 'all', placeholder = 'All', onOptionsLoaded }: LookupProps) {
+export function EventTypeSelect({ selected, onChange, onOptionsLoaded, overrideClass }: LookupProps) {
   const [options, setOptions] = useState<string[]>([])
   const cbRef = useRef(onOptionsLoaded)
   cbRef.current = onOptionsLoaded
@@ -195,5 +130,5 @@ export function EventTypeSelect({ selected, onChange, mode = 'all', placeholder 
       } catch (err) { console.error(err) }
     })()
   }, [])
-  return <LookupBase options={options} selected={selected} onChange={onChange} mode={mode} placeholder={placeholder} />
+  return <LookupBase options={options} selected={selected} onChange={onChange} overrideClass={overrideClass} />
 }

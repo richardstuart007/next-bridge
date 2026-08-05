@@ -2,16 +2,17 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
-import MyPagination from 'nextjs-shared/MyPagination'
+import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
 import { saveBackNav } from 'nextjs-shared/useBackNav'
-import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, SCORING_TYPES } from '@/src/lib/constants'
+import { isSelectionFiltering } from 'nextjs-shared/isSelectionFiltering'
+import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, SCORING_TYPES, TABLE_MIN_HEIGHT_PX } from '@/src/lib/constants'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
+import { TableEmptyRow } from '@/src/ui/shared/TableEmptyRow'
 import { ScoringTypeSelect, ScoringTypeToggle } from '@/src/ui/shared/ScoringTypeSelects'
-import { RowsPerPageSelect } from '@/src/ui/shared/RowsPerPageSelect'
 import PerformanceChart from './PerformanceChart'
 
 interface PartnerEntry {
@@ -104,7 +105,7 @@ function PlayerSelect({
   )
 }
 
-export default function PartnersTable({ partners }: { partners: PartnerEntry[] }) {
+export default function PartnersTable({ partners, playerId }: { partners: PartnerEntry[]; playerId: number }) {
   const [partnerResults,    setPartnerResults]    = useState<Map<number, ResultRow[]>>(new Map())
   const [loading,           setLoading]           = useState(false)
   const [view,         setView]         = useState<'data' | 'graph'>('data')
@@ -131,7 +132,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
     Promise.all(
       partners.map(async p => {
         try {
-          const r = await fetch(`/api/players/${p.id}/results`)
+          const r = await fetch(`/api/players/${p.id}/results?partner_id=${playerId}`)
           const rows: ResultRow[] = await r.json()
           return { id: p.id, rows }
         } catch {
@@ -144,7 +145,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
       setPartnerResults(map)
       setLoading(false)
     })
-  }, [partners])
+  }, [partners, playerId])
 
   useEffect(() => {
     setSelectedPlayerIds(new Set(partners.map(p => p.id)))
@@ -172,11 +173,11 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
     if (dayFilter)         rows = rows.filter(r => r.day_of_week === dayFilter)
     if (scoringFilter !== 'all') rows = rows.filter(r => r.scoring === scoringFilter)
     if (sessionNameFilter) rows = rows.filter(r => r.session_name.toLowerCase().includes(sessionNameFilter.toLowerCase()))
-    if (selectedClubs.size < clubOptions.length)
+    if (isSelectionFiltering([...selectedClubs], clubOptions.length))
                            rows = rows.filter(r => selectedClubs.has(r.club))
-    if (selectedTournaments.size < 3)
+    if (isSelectionFiltering([...selectedTournaments], 3))
                            rows = rows.filter(r => selectedTournaments.has((r.tournament ?? '').match(/[ABC]$/i)?.[0]?.toUpperCase() ?? ''))
-    if (selectedEventTypes.size < eventTypeOptions.length)
+    if (isSelectionFiltering([...selectedEventTypes], eventTypeOptions.length))
                            rows = rows.filter(r => selectedEventTypes.has(r.event_type))
     if (summaryFilter === 'summary') rows = rows.filter(r => r.is_summary === true)
     if (summaryFilter === 'session') rows = rows.filter(r => r.is_summary !== true)
@@ -273,7 +274,7 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
             : <div className='text-sm text-gray-400 py-4 text-center'>No data to graph</div>}
         </div>
       ) : (
-      <div className='overflow-x-auto'>
+      <div className='overflow-x-auto' style={{ minHeight: TABLE_MIN_HEIGHT_PX }}>
         <table className='w-full text-sm'>
           <thead>
             <tr className='border-b border-gray-200'>
@@ -281,7 +282,6 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
               <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Run ID</th>
               <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Date</th>
               <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Day</th>
-              <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-32'>Partner</th>
               <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-36'>Session</th>
               <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-28'>Club</th>
               <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Tournament</th>
@@ -313,21 +313,20 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
                     <option key={d}>{d}</option>)}
                 </MySelect>
               </td>
-              <td className='py-1' />
               <td className='py-1 pr-1'>
                 <MyInput type='text' value={sessionNameFilter} onChange={e => setSessionNameFilter(e.target.value)}
                   placeholder='Search…'
                   overrideClass='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal h-auto md:h-auto' />
               </td>
               <td className='py-1 pr-1'>
-                <ClubSelect mode='all' selected={selectedClubs} onChange={setSelectedClubs}
+                <ClubSelect selected={selectedClubs} onChange={setSelectedClubs}
                   onOptionsLoaded={opts => { setClubOptions(opts); setSelectedClubs(new Set(opts)) }} />
               </td>
               <td className='py-1 pr-1'>
                 <StringMultiSelect options={['A', 'B', 'C']} selected={selectedTournaments} onChange={setSelectedTournaments} />
               </td>
               <td className='py-1 pr-1'>
-                <EventTypeSelect mode='all' selected={selectedEventTypes} onChange={setSelectedEventTypes}
+                <EventTypeSelect selected={selectedEventTypes} onChange={setSelectedEventTypes}
                   onOptionsLoaded={opts => { setEventTypeOptions(opts); setSelectedEventTypes(new Set(opts)) }} />
               </td>
               <td className='py-1 pr-1'>
@@ -347,7 +346,9 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
             </tr>
           </thead>
           <tbody>
-            {filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => (
+            {filtered.length === 0 ? (
+              <TableEmptyRow colSpan={13} message='No results match the current filters.' />
+            ) : filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((r, i) => (
               <tr key={i}
                 className='border-b border-gray-100 hover:bg-gray-50 cursor-pointer'
                 onClick={() => {
@@ -365,14 +366,6 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
                 <td className='py-1.5 text-gray-400 text-xs font-mono'>{r.run_id}</td>
                 <td className='py-1.5'>{r.date.slice(0, 10)}</td>
                 <td className='py-1.5 text-gray-500'>{r.day_of_week}</td>
-                <td className='py-1.5'>
-                  {r.partner_name
-                    ? <Link href={`/player/${r.partner_id}`} className='text-blue-600 hover:underline'
-                        onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
-                        {r.partner_name}
-                      </Link>
-                    : '—'}
-                </td>
                 <td className='py-1.5 text-gray-500 text-xs'>{r.session_name}</td>
                 <td className='py-1.5 text-gray-500 text-xs'>{r.club}</td>
                 <td className='py-1.5 text-gray-500 text-xs'>{r.tournament}</td>
@@ -400,15 +393,13 @@ export default function PartnersTable({ partners }: { partners: PartnerEntry[] }
       )}
 
       {view === 'data' && filtered.length > itemsPerPage && (
-        <div className='mt-3 flex items-center gap-3'>
-          <RowsPerPageSelect value={itemsPerPage} onChange={v => { setItemsPerPage(v); setCurrentPage(1) }} />
-          <span className='text-xs text-gray-400'>p.{currentPage}/{Math.ceil(filtered.length / itemsPerPage)}</span>
-          <MyPagination
-            totalPages={Math.ceil(filtered.length / itemsPerPage)}
-            statecurrentPage={currentPage}
-            setStateCurrentPage={setCurrentPage}
-          />
-        </div>
+        <MyPaginationFooter
+          totalPages={Math.ceil(filtered.length / itemsPerPage)}
+          statecurrentPage={currentPage}
+          setStateCurrentPage={setCurrentPage}
+          rowsPerPage={itemsPerPage}
+          setRowsPerPage={v => { setItemsPerPage(v); setCurrentPage(1) }}
+        />
       )}
     </div>
   )

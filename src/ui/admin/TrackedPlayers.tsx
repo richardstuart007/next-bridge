@@ -21,8 +21,8 @@ export default function TrackedPlayers({ stagingEmpty, onDiscoveryDone }: Props)
   useEffect(() => {
     fetch('/api/admin/players')
       .then(r => r.json())
-      .then((rows: { pl_all_results: boolean }[]) =>
-        setTrackedCount(rows.filter(p => p.pl_all_results).length)
+      .then((rows: { pl_tracked: boolean }[]) =>
+        setTrackedCount(rows.filter(p => p.pl_tracked).length)
       )
   }, [])
 

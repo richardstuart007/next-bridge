@@ -105,30 +105,30 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
   return { withNumber, withoutNumber: total - withNumber }
 }
 
-/** Fetch all group/scoring stats (A/B/C/all × MP/VP/XIMP) for a player from ta1_player_stats. */
+/** Fetch all group/scoring stats (A/B/C/all × MP/VP/XIMP) for a player from ta1_player_stats.
+ *  avg_rank/group_total/pct_rank are precomputed by statsCompute.ts during the "Update Stats"
+ *  pipeline step, not recalculated here — this data is static between pipeline runs. */
 export async function getPlayerAllGroupStats(plid: number) {
   const rows = await table_query({
     caller: 'getPlayerAllGroupStats',
     query: `
-      WITH all_ranked AS (
-        SELECT a1_plid, a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev,
-               PERCENT_RANK() OVER (PARTITION BY a1_group, a1_scoring ORDER BY a1_stddev NULLS LAST) AS pct_rank
-        FROM ta1_player_stats
-      )
-      SELECT a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev, pct_rank
-      FROM all_ranked
+      SELECT a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev,
+             a1_pct_rank, a1_avg_rank, a1_group_total
+      FROM ta1_player_stats
       WHERE a1_plid = $1
       ORDER BY a1_group, a1_scoring
     `,
     params: [plid]
   })
   return rows as {
-    a1_group:    string
-    a1_scoring:  string
-    a1_sessions: number
-    a1_avg:      number
-    a1_stddev:   number | null
-    pct_rank:    number | null
+    a1_group:       string
+    a1_scoring:     string
+    a1_sessions:    number
+    a1_avg:         number
+    a1_stddev:      number | null
+    a1_pct_rank:    number | null
+    a1_avg_rank:    number
+    a1_group_total: number
   }[]
 }
 

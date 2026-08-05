@@ -360,7 +360,7 @@ export async function scrapeTrackedPlayerSessions(): Promise<ScrapeSessionsResul
 
   const flagged = await table_query({
     caller: 'pipelineScrape/flagged',
-    query:  `SELECT pl_name, pl_nz_bridge_number FROM tpl_players WHERE pl_all_results = TRUE AND pl_nz_bridge_number > 0 ORDER BY pl_name ASC`,
+    query:  `SELECT pl_name, pl_nz_bridge_number FROM tpl_players WHERE pl_tracked = TRUE AND pl_nz_bridge_number > 0 ORDER BY pl_name ASC`,
     params: [],
     skipCache: true
   }) as { pl_name: string; pl_nz_bridge_number: number }[]

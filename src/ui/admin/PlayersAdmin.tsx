@@ -17,7 +17,7 @@ interface PlayerRow {
   pl_a_points:         number
   a1_sessions:         number
   a1_avg_pct:          number
-  pl_all_results:      boolean
+  pl_tracked:      boolean
 }
 
 export default function PlayersAdmin() {
@@ -50,7 +50,7 @@ export default function PlayersAdmin() {
       })
       if (res.ok) {
         setPlayers(prev => prev.map(p =>
-          p.pl_plid === plid ? { ...p, pl_all_results: !current } : p
+          p.pl_plid === plid ? { ...p, pl_tracked: !current } : p
         ))
       }
     } finally {
@@ -58,7 +58,7 @@ export default function PlayersAdmin() {
     }
   }
 
-  const trackedCount = players.filter(p => p.pl_all_results).length
+  const trackedCount = players.filter(p => p.pl_tracked).length
 
   return (
     <div className='space-y-4'>
@@ -88,13 +88,13 @@ export default function PlayersAdmin() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_club, pl_rank, a1_sessions, a1_avg_pct, pl_all_results }) => (
+              {filtered.map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_club, pl_rank, a1_sessions, a1_avg_pct, pl_tracked }) => (
                 <tr key={pl_plid}
-                  className={`border-b border-gray-100 ${pl_all_results ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                  className={`border-b border-gray-100 ${pl_tracked ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
                   <td className='py-1.5'>
-                    <input type='checkbox' checked={pl_all_results}
+                    <input type='checkbox' checked={pl_tracked}
                       disabled={toggling.has(pl_plid)}
-                      onChange={() => toggle(pl_plid, pl_all_results)}
+                      onChange={() => toggle(pl_plid, pl_tracked)}
                       className='cursor-pointer' />
                   </td>
                   <td className='py-1.5 font-medium'>

@@ -1,37 +1,43 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { searchAllPlayers } from '@/src/lib/actions/players'
 import { ClubSelect, GradeSelect } from '@/src/ui/shared/LookupSelects'
-import { ScoringTypeToggle, formatScoringValue, scoringAvgLabel } from '@/src/ui/shared/ScoringTypeSelects'
+import { TableEmptyRow } from '@/src/ui/shared/TableEmptyRow'
+import { ScoringTypeSelect, formatScoringValue, scoringAvgLabel } from '@/src/ui/shared/ScoringTypeSelects'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
 import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
+import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { saveBackNav } from 'nextjs-shared/useBackNav'
-import { BACK_KEY, SCORING_TYPES } from '@/src/lib/constants'
+import { isSelectionFiltering } from 'nextjs-shared/isSelectionFiltering'
+import { myMergeClasses } from 'nextjs-shared/MyMergeClasses'
+import { BACK_KEY, SCORING_TYPES, ROWS_PER_PAGE, FILTER_DEBOUNCE_MS, WIDTH_SESSIONS_MIN, WIDTH_SCORING_RANKINGS } from '@/src/lib/constants'
 
 interface PlayerRow {
-  id: number
-  name: string
-  avg_pct: number
-  sessions: number
-  grade: string
-  club: string
-  tracked: boolean
+  pl_plid: number
+  pl_name: string
+  a1_avg: number
+  a1_sessions: number
+  a1_avg_rank: number
+  pl_grade: string
+  pl_club: string
+  pl_tracked: boolean
 }
 
 interface PartnershipRow {
-  id: number
-  sessions: number
-  avg_pct: number
-  player1_id: number
-  player1_name: string
-  player1_tracked: boolean
-  player2_id: number
-  player2_name: string
-  player2_tracked: boolean
+  pa_paid: number
+  a2_sessions: number
+  a2_avg: number
+  a2_avg_rank: number
+  pl_plid1: number
+  pl_name1: string
+  pl_tracked1: boolean
+  pl_plid2: number
+  pl_name2: string
+  pl_tracked2: boolean
 }
 
 interface PlayerSearchRow {
@@ -39,10 +45,6 @@ interface PlayerSearchRow {
   pl_name: string
   pl_grade: string
   pl_club: string
-}
-
-function matchesSearch(text: string, search: string): boolean {
-  return text.toLowerCase().includes(search.toLowerCase())
 }
 
 function isTracked(v: unknown): boolean {
@@ -123,13 +125,33 @@ type Group  = 'A' | 'B' | 'C' | 'all'
 type TabId = 'players' | 'partnerships'
 
 const TOP_OPTS = [10, 25, 50, 100]
+const SESSIONS_MIN_OPTIONS = [1, 20, 50, 100, 200]
+const SEL_CLS = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
+
+//----------------------------------------------------------------------------------------------
+//  SessionsMinSelect — "≥ N sessions" threshold dropdown, shared by the Players and
+//  Partnerships tabs (both filter on the same underlying `min` value)
+//----------------------------------------------------------------------------------------------
+function SessionsMinSelect({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <MySelect value={value} onChange={e => onChange(parseInt(e.target.value, 10))}
+      overrideClass={myMergeClasses(SEL_CLS, `${WIDTH_SESSIONS_MIN} text-right h-auto md:h-auto`)}>
+      {SESSIONS_MIN_OPTIONS.map(n => <option key={n} value={n}>≥ {n}</option>)}
+    </MySelect>
+  )
+}
 
 export default function RankingsPageClient() {
-  const [min, setMin] = useState(10)
+  const restoredRef = useRef(false)
+  const [min, setMin] = useState(20)
   const [scoring, setScoring] = useState<(typeof SCORING_TYPES)[number]>('MP')
   const [group, setGroup] = useState<Group>('all')
   const [players, setPlayers] = useState<PlayerRow[]>([])
+  const [playersTotalPages, setPlayersTotalPages] = useState(1)
+  const [playersGroupTotal, setPlayersGroupTotal] = useState<number | null>(null)
   const [partnerships, setPartnerships] = useState<PartnershipRow[]>([])
+  const [partnersTotalPages, setPartnersTotalPages] = useState(1)
+  const [partnersGroupTotal, setPartnersGroupTotal] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<TabId>('players')
@@ -139,62 +161,71 @@ export default function RankingsPageClient() {
   const [search, setSearch] = useState('')
   const [gradeFilter, setGradeFilter] = useState<Set<string>>(new Set())
   const [clubFilter,  setClubFilter]  = useState<Set<string>>(new Set())
+  const [gradeOptions, setGradeOptions] = useState<string[]>([])
+  const [clubOptions,  setClubOptions]  = useState<string[]>([])
   const [trackedOnly, setTrackedOnly] = useState(false)
+  const [playersPage, setPlayersPage] = useState(1)
+  const [playersItemsPerPage, setPlayersItemsPerPage] = useState(ROWS_PER_PAGE)
 
   // Partnership column filters
   const [partnerTopN, setPartnerTopN] = useState(0)
   const [partnerFilter, setPartnerFilter] = useState('')
   const [partnerTrackedOnly, setPartnerTrackedOnly] = useState(false)
+  const [partnersPage, setPartnersPage] = useState(1)
+  const [partnersItemsPerPage, setPartnersItemsPerPage] = useState(ROWS_PER_PAGE)
+
+  // Reset to page 1 whenever a filter changes
+  useEffect(() => {
+    if (restoredRef.current) setPlayersPage(1)
+  }, [min, scoring, group, topN, search, gradeFilter, clubFilter, gradeOptions.length, clubOptions.length, trackedOnly])
 
   useEffect(() => {
-    (async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const r = await fetch(`/api/rankings?min=${min}&scoring=${scoring}&group=${group}`)
-        const data = await r.json()
-        if (data.error) { setError(data.error); return }
-        setPlayers(data.players ?? [])
-        setPartnerships(data.partnerships ?? [])
-      } catch (err) { setError(String(err)) }
-      finally { setLoading(false) }
-    })()
-  }, [min, scoring, group])
+    if (restoredRef.current) setPartnersPage(1)
+  }, [min, scoring, group, partnerTopN, partnerFilter, partnerTrackedOnly])
 
-  // Scroll to first highlighted player after render
   useEffect(() => {
-    if (!search) return
-    const el = document.querySelector('[data-highlight="true"]') as HTMLElement | null
-    el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [search, players])
+    const timer = setTimeout(() => {
+      (async () => {
+        setLoading(true)
+        setError(null)
+        try {
+          const params = new URLSearchParams({ min: String(min), scoring, group })
+          if (search) params.set('playerSearch', search)
+          if (isSelectionFiltering([...gradeFilter], gradeOptions.length)) params.set('grades', [...gradeFilter].join(','))
+          if (isSelectionFiltering([...clubFilter], clubOptions.length))   params.set('clubs', [...clubFilter].join(','))
+          if (trackedOnly) params.set('tracked', 'true')
+          if (topN > 0) params.set('playersTopN', String(topN))
+          params.set('playersPage', String(playersPage))
+          params.set('playersItemsPerPage', String(playersItemsPerPage))
 
-  const filteredPlayers = useMemo(() => {
-    let r = players.map((p, i) => ({ rank: i + 1, row: p }))
-    if (topN > 0)            r = r.slice(0, topN)
-    if (clubFilter.size > 0) r = r.filter(({ row }) => clubFilter.has(row.club))
-    if (gradeFilter.size > 0)r = r.filter(({ row }) => gradeFilter.has(row.grade))
-    if (trackedOnly)         r = r.filter(({ row }) => isTracked(row.tracked))
-    return r
-  }, [players, topN, clubFilter, gradeFilter, trackedOnly])
+          if (partnerFilter) params.set('partnerSearch', partnerFilter)
+          if (partnerTrackedOnly) params.set('partnerTracked', 'true')
+          if (partnerTopN > 0) params.set('partnersTopN', String(partnerTopN))
+          params.set('partnersPage', String(partnersPage))
+          params.set('partnersItemsPerPage', String(partnersItemsPerPage))
 
-  const filteredPartnerships = useMemo(() => {
-    let r = partnerships.map((p, i) => ({ rank: i + 1, row: p }))
-    if (partnerTopN > 0)       r = r.slice(0, partnerTopN)
-    if (partnerFilter)         r = r.filter(({ row }) =>
-      matchesSearch(row.player1_name, partnerFilter) || matchesSearch(row.player2_name, partnerFilter)
-    )
-    if (partnerTrackedOnly)    r = r.filter(({ row }) =>
-      isTracked(row.player1_tracked) || isTracked(row.player2_tracked)
-    )
-    return r
-  }, [partnerships, partnerTopN, partnerFilter, partnerTrackedOnly])
-
-  const trimmed = search.trim()
+          const r = await fetch(`/api/rankings?${params.toString()}`)
+          const data = await r.json()
+          if (data.error) { setError(data.error); return }
+          setPlayers(data.players ?? [])
+          setPlayersTotalPages(data.playersTotalPages ?? 1)
+          setPlayersGroupTotal(data.playersGroupTotal ?? null)
+          setPartnerships(data.partnerships ?? [])
+          setPartnersTotalPages(data.partnersTotalPages ?? 1)
+          setPartnersGroupTotal(data.partnersGroupTotal ?? null)
+        } catch (err) { setError(String(err)) }
+        finally { setLoading(false); restoredRef.current = true }
+      })()
+    }, FILTER_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [min, scoring, group, topN, search, gradeFilter, clubFilter, gradeOptions.length, clubOptions.length,
+      trackedOnly, playersPage, playersItemsPerPage,
+      partnerFilter, partnerTrackedOnly, partnerTopN, partnersPage, partnersItemsPerPage])
 
   // Shared styles
   const thF = 'px-2 pt-2 pb-1 bg-white align-bottom'                     // filter row cell
   const thH = 'px-3 py-2 bg-gray-50 text-xs text-gray-500 uppercase'     // header label cell
-  const sel = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal'
+  const sel = SEL_CLS
 
   function GroupToggle() {
     return (
@@ -212,14 +243,6 @@ export default function RankingsPageClient() {
     )
   }
 
-  function SessionsSelect() {
-    return (
-      <MySelect value={min} onChange={e => setMin(parseInt(e.target.value, 10))} overrideClass={`${sel} h-auto md:h-auto`}>
-        {[5, 10, 20, 50].map(n => <option key={n} value={n}>≥ {n}</option>)}
-      </MySelect>
-    )
-  }
-
   return (
     <div className='space-y-4'>
 
@@ -230,9 +253,18 @@ export default function RankingsPageClient() {
             <MyTab key={tab} active={activeTab === tab} onClick={() => setActiveTab(tab)}
               underlineActiveClass='px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize border-blue-600 text-blue-600'
               underlineInactiveClass='px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize border-transparent text-gray-500 hover:text-gray-700'>
-              {tab === 'players' ? `Players (${players.length})` : `Partnerships (${partnerships.length})`}
+              {tab === 'players' ? 'Players' : 'Partnerships'}
             </MyTab>
           ))}
+        </div>
+        {/* Tournament Type applies to both tabs and filters no single displayed column, so it
+            lives here rather than in either table's per-column filter row */}
+        <div className='flex items-center gap-1.5'>
+          <span className='text-xs text-gray-500'>Tournament Type</span>
+          <GroupToggle />
+          <span className='text-xs text-gray-400'>
+            ({(activeTab === 'players' ? playersGroupTotal : partnersGroupTotal) ?? '—'} total)
+          </span>
         </div>
         {loading && <span className='text-xs text-gray-400'>Loading…</span>}
       </div>
@@ -253,19 +285,20 @@ export default function RankingsPageClient() {
                 </th>
                 <th className={thF}>
                   <HeaderTypeahead
-                    placeholder='Find player…'
+                    placeholder='Filter by player…'
                     onSelect={name => setSearch(name)}
                     onClear={() => setSearch('')}
                   />
                 </th>
-                <th className={`${thF} text-right`}><ScoringTypeToggle value={scoring} onChange={setScoring} /></th>
-                <th className={`${thF} text-right`}><GroupToggle /></th>
-                <th className={`${thF} text-right`}><SessionsSelect /></th>
+                <th className={`${thF} text-right ${WIDTH_SCORING_RANKINGS}`}><ScoringTypeSelect value={scoring} onChange={v => setScoring(v as (typeof SCORING_TYPES)[number])} overrideClass={myMergeClasses(sel, `${WIDTH_SCORING_RANKINGS} text-right h-auto md:h-auto`)} /></th>
+                <th className={`${thF} text-right ${WIDTH_SESSIONS_MIN}`}><SessionsMinSelect value={min} onChange={setMin} /></th>
                 <th className={thF}>
-                  <GradeSelect mode='any' selected={gradeFilter} onChange={setGradeFilter} placeholder='All' />
+                  <GradeSelect selected={gradeFilter} onChange={setGradeFilter}
+                    onOptionsLoaded={opts => { setGradeOptions(opts); setGradeFilter(new Set(opts)) }} />
                 </th>
                 <th className={thF}>
-                  <ClubSelect mode='any' selected={clubFilter} onChange={setClubFilter} placeholder='All' />
+                  <ClubSelect selected={clubFilter} onChange={setClubFilter}
+                    onOptionsLoaded={opts => { setClubOptions(opts); setClubFilter(new Set(opts)) }} />
                 </th>
                 <th className={`${thF} text-center`}>
                   <label className='flex items-center justify-center cursor-pointer' title='Tracked only'>
@@ -276,44 +309,52 @@ export default function RankingsPageClient() {
               <tr>
                 <th className={`${thH} text-right`}>#</th>
                 <th className={`${thH} text-left`}>Name</th>
-                <th className={`${thH} text-right`}>{scoringAvgLabel(scoring)}</th>
-                <th className={`${thH} text-right`}>Sessions</th>
+                <th className={`${thH} text-right ${WIDTH_SCORING_RANKINGS}`}>{scoringAvgLabel(scoring)}</th>
+                <th className={`${thH} text-right ${WIDTH_SESSIONS_MIN}`}>Sessions</th>
                 <th className={`${thH} text-left`}>Grade</th>
                 <th className={`${thH} text-left`}>Club</th>
                 <th className={`${thH} text-center`}>Tracked</th>
               </tr>
             </thead>
             <tbody className='divide-y divide-gray-100'>
-              {filteredPlayers.map(({ rank, row: p }, i) => {
-                const highlighted = trimmed ? matchesSearch(p.name, trimmed) : false
+              {players.map(p => {
                 return (
-                  <tr key={p.id}
-                    data-highlight={highlighted && i === filteredPlayers.findIndex(({ row }) => matchesSearch(row.name, trimmed)) ? 'true' : undefined}
-                    className={highlighted ? 'bg-yellow-100' : 'hover:bg-gray-50'}>
-                    <td className='px-3 py-1.5 text-right text-gray-400'>{rank}</td>
+                  <tr key={p.pl_plid} className='hover:bg-gray-50'>
+                    <td className='px-3 py-1.5 text-right text-gray-400'>{p.a1_avg_rank}</td>
                     <td className='px-3 py-1.5'>
-                      <Link href={`/player/${p.id}`} className='text-blue-600 hover:underline'
+                      <Link href={`/player/${p.pl_plid}`} className='text-blue-600 hover:underline'
                         onClick={() => saveBackNav(BACK_KEY)}>
-                        {p.name}
+                        {p.pl_name}
                       </Link>
                     </td>
                     <td className='px-3 py-1.5 text-right font-medium'>
-                      {formatScoringValue(scoring, p.avg_pct)}
+                      {formatScoringValue(scoring, p.a1_avg)}
                     </td>
-                    <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
-                    <td className='px-3 py-1.5 text-gray-500'>{p.grade}</td>
-                    <td className='px-3 py-1.5 text-gray-500'>{p.club}</td>
+                    <td className='px-3 py-1.5 text-right text-gray-500'>{p.a1_sessions}</td>
+                    <td className='px-3 py-1.5 text-gray-500'>{p.pl_grade}</td>
+                    <td className='px-3 py-1.5 text-gray-500'>{p.pl_club}</td>
                     <td className='px-3 py-1.5 text-center'>
-                      {isTracked(p.tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
+                      {isTracked(p.pl_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
                     </td>
                   </tr>
                 )
               })}
-              {!loading && filteredPlayers.length === 0 && (
-                <tr><td colSpan={7} className='px-3 py-4 text-center text-gray-400'>No players found</td></tr>
+              {!loading && players.length === 0 && (
+                <TableEmptyRow colSpan={7} message={search ? `No players found for "${search}"` : 'No players found'} />
               )}
             </tbody>
           </table>
+          {playersTotalPages > 1 && (
+            <div className='p-2'>
+              <MyPaginationFooter
+                totalPages={playersTotalPages}
+                statecurrentPage={playersPage}
+                setStateCurrentPage={setPlayersPage}
+                rowsPerPage={playersItemsPerPage}
+                setRowsPerPage={v => { setPlayersItemsPerPage(v); setPlayersPage(1) }}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -336,9 +377,8 @@ export default function RankingsPageClient() {
                     onClear={() => setPartnerFilter('')}
                   />
                 </th>
-                <th className={`${thF} text-right`}><ScoringTypeToggle value={scoring} onChange={setScoring} /></th>
-                <th className={`${thF} text-right`}><GroupToggle /></th>
-                <th className={`${thF} text-right`}><SessionsSelect /></th>
+                <th className={`${thF} text-right ${WIDTH_SCORING_RANKINGS}`}><ScoringTypeSelect value={scoring} onChange={v => setScoring(v as (typeof SCORING_TYPES)[number])} overrideClass={myMergeClasses(sel, `${WIDTH_SCORING_RANKINGS} text-right h-auto md:h-auto`)} /></th>
+                <th className={`${thF} text-right ${WIDTH_SESSIONS_MIN}`}><SessionsMinSelect value={min} onChange={setMin} /></th>
                 <th className={`${thF} text-center`}>
                   <label className='flex items-center justify-center cursor-pointer' title='Tracked only'>
                     <input type='checkbox' checked={partnerTrackedOnly} onChange={e => setPartnerTrackedOnly(e.target.checked)} />
@@ -348,44 +388,53 @@ export default function RankingsPageClient() {
               <tr>
                 <th className={`${thH} text-right`}>#</th>
                 <th className={`${thH} text-left`}>Players</th>
-                <th className={`${thH} text-right`}>{scoringAvgLabel(scoring)}</th>
-                <th className={`${thH} text-right`}>Sessions</th>
+                <th className={`${thH} text-right ${WIDTH_SCORING_RANKINGS}`}>{scoringAvgLabel(scoring)}</th>
+                <th className={`${thH} text-right ${WIDTH_SESSIONS_MIN}`}>Sessions</th>
                 <th className={`${thH} text-center`}>Tracked</th>
               </tr>
             </thead>
             <tbody className='divide-y divide-gray-100'>
-              {filteredPartnerships.map(({ rank, row: p }) => (
-                <tr key={p.id} className='hover:bg-gray-50'>
-                  <td className='px-3 py-1.5 text-right text-gray-400'>{rank}</td>
+              {partnerships.map(p => (
+                <tr key={p.pa_paid} className='hover:bg-gray-50'>
+                  <td className='px-3 py-1.5 text-right text-gray-400'>{p.a2_avg_rank}</td>
                   <td className='px-3 py-1.5'>
-                    <Link href={`/player/${p.player1_id}`} className='text-blue-600 hover:underline'
+                    <Link href={`/player/${p.pl_plid1}`} className='text-blue-600 hover:underline'
                       onClick={() => saveBackNav(BACK_KEY)}>
-                      {p.player1_name}
+                      {p.pl_name1}
                     </Link>
-                    {isTracked(p.player1_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
+                    {isTracked(p.pl_tracked1) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                     <span className='mx-1.5 text-gray-400'>&amp;</span>
-                    <Link href={`/player/${p.player2_id}`} className='text-blue-600 hover:underline'
+                    <Link href={`/player/${p.pl_plid2}`} className='text-blue-600 hover:underline'
                       onClick={() => saveBackNav(BACK_KEY)}>
-                      {p.player2_name}
+                      {p.pl_name2}
                     </Link>
-                    {isTracked(p.player2_tracked) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
+                    {isTracked(p.pl_tracked2) && <span className='inline-block w-2 h-2 rounded-full bg-green-500 ml-1 mb-0.5' />}
                   </td>
                   <td className='px-3 py-1.5 text-right font-medium'>
-                    {formatScoringValue(scoring, p.avg_pct)}
+                    {formatScoringValue(scoring, p.a2_avg)}
                   </td>
-                  <td className='px-3 py-1.5 text-right text-gray-500'>{p.sessions}</td>
+                  <td className='px-3 py-1.5 text-right text-gray-500'>{p.a2_sessions}</td>
                   <td className='px-3 py-1.5 text-center'>
-                    {(isTracked(p.player1_tracked) || isTracked(p.player2_tracked)) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
+                    {(isTracked(p.pl_tracked1) || isTracked(p.pl_tracked2)) && <span className='inline-block w-2 h-2 rounded-full bg-green-500' />}
                   </td>
                 </tr>
               ))}
-              {!loading && filteredPartnerships.length === 0 && (
-                <tr><td colSpan={5} className='px-3 py-4 text-center text-gray-400'>
-                  {partnerFilter ? `No partnerships found for "${partnerFilter}"` : 'No partnerships found'}
-                </td></tr>
+              {!loading && partnerships.length === 0 && (
+                <TableEmptyRow colSpan={5} message={partnerFilter ? `No partnerships found for "${partnerFilter}"` : 'No partnerships found'} />
               )}
             </tbody>
           </table>
+          {partnersTotalPages > 1 && (
+            <div className='p-2'>
+              <MyPaginationFooter
+                totalPages={partnersTotalPages}
+                statecurrentPage={partnersPage}
+                setStateCurrentPage={setPartnersPage}
+                rowsPerPage={partnersItemsPerPage}
+                setRowsPerPage={v => { setPartnersItemsPerPage(v); setPartnersPage(1) }}
+              />
+            </div>
+          )}
         </div>
       )}
 

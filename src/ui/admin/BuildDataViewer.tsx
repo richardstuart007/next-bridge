@@ -5,6 +5,7 @@ import { getAllPlayers } from '@/src/lib/actions/players'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
 import { getResultsBySeid, getAllPartners, getAllResults, getAllPlayerStats, getAllPartnerStats } from '@/src/lib/actions/build-viewer'
 import { EventTypeSelect } from '@/src/ui/shared/LookupSelects'
+import { isSelectionFiltering } from 'nextjs-shared/isSelectionFiltering'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { MyTab } from 'nextjs-shared/MyTab'
 import Ts1Table from '@/src/ui/admin/Ts1Table'
@@ -74,7 +75,7 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
     if (filter_grade.length > 0 && !filter_grade.includes(String(r.pl_grade ?? ''))) return false
     if (filter_all_results !== 'all') {
       const want = filter_all_results === 'yes'
-      if (Boolean(r.pl_all_results) !== want) return false
+      if (Boolean(r.pl_tracked) !== want) return false
     }
     return true
   })
@@ -86,7 +87,7 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
     pl_club:             <FMultiSelect options={clubOptions} value={filter_club} onChange={setFilter_club} />,
     pl_rank:             <FText placeholder='rank…'  value={filter_rank} onChange={setFilter_rank} />,
     pl_grade:            <FMultiSelect options={gradeOptions} value={filter_grade} onChange={setFilter_grade} />,
-    pl_all_results:      <FSelect value={filter_all_results} onChange={setFilter_all_results}>
+    pl_tracked:      <FSelect value={filter_all_results} onChange={setFilter_all_results}>
                             <option value='all'>all</option><option value='yes'>Yes</option><option value='no'>No</option>
                           </FSelect>,
   }
@@ -124,6 +125,7 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_name,        setFilter_name]        = useState('')
   const [filter_tournament,  setFilter_tournament]  = useState<string[]>([])
   const [filter_event_type,  setFilter_event_type]  = useState<Set<string>>(new Set())
+  const [eventTypeOptions,   setEventTypeOptions]   = useState<string[]>([])
   const [filter_day_of_week, setFilter_day_of_week] = useState<string[]>([])
   const [filter_is_summary,  setFilter_is_summary]  = useState('all')
   const tournamentTypes: string[] = [...TOURNAMENT_GROUPS]
@@ -155,7 +157,7 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
     if (filter_club.length > 0 && !filter_club.includes(String(r.se_club ?? ''))) return false
     if (filter_run_id    && !String(r.se_run_id  ?? '').includes(filter_run_id))                            return false
     if (filter_scoring.length > 0 && !filter_scoring.includes(String(r.se_scoring ?? '')))   return false
-    if (filter_event_type.size > 0 && !filter_event_type.has(String(r.se_event_type ?? ''))) return false
+    if (isSelectionFiltering([...filter_event_type], eventTypeOptions.length) && !filter_event_type.has(String(r.se_event_type ?? ''))) return false
     if (filter_day_of_week.length > 0 && !filter_day_of_week.includes(String(r.se_day_of_week ?? '')))       return false
     if (filter_is_summary !== 'all') {
       const want = filter_is_summary === 'yes'
@@ -173,7 +175,8 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
     se_name:         <FText placeholder='name…' value={filter_name} onChange={setFilter_name} />,
     se_club:         <FMultiSelect options={clubOptions} value={filter_club} onChange={setFilter_club} />,
     se_tournament:   <FMultiSelect options={tournamentTypes} value={filter_tournament} onChange={setFilter_tournament} />,
-    se_event_type:   <EventTypeSelect mode='any' selected={filter_event_type} onChange={setFilter_event_type} placeholder='all' />,
+    se_event_type:   <EventTypeSelect selected={filter_event_type} onChange={setFilter_event_type}
+                        onOptionsLoaded={opts => { setEventTypeOptions(opts); setFilter_event_type(new Set(opts)) }} />,
     se_is_summary:   <FSelect value={filter_is_summary} onChange={setFilter_is_summary}>
                         <option value='all'>all</option><option value='yes'>Yes</option><option value='no'>No</option>
                       </FSelect>,
@@ -228,8 +231,8 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
 
   const [filter_reid,       setFilter_reid]       = useState('')
   const [filter_seid,       setFilter_seid]       = useState(() => sharedFilters.seid?.value ?? '')
-  const [filter_player1,    setFilter_player1]    = useState('')
-  const [filter_player2,    setFilter_player2]    = useState('')
+  const [filter_pl_name1,   setFilter_pl_name1]   = useState('')
+  const [filter_pl_name2,   setFilter_pl_name2]   = useState('')
   const [filter_paid,       setFilter_paid]       = useState(() => sharedFilters.paid?.value ?? '')
   const [filter_score,      setFilter_score]      = useState('')
 
@@ -252,8 +255,8 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
   const filteredResults = results.filter(r => {
     if (filter_reid       && !String(r.re_reid ?? '').includes(filter_reid)) return false
     if (filter_seid       && !String(r.re_seid ?? '').includes(filter_seid)) return false
-    if (filter_player1    && !String(r.player1 ?? '').toLowerCase().includes(filter_player1.toLowerCase())) return false
-    if (filter_player2    && !String(r.player2 ?? '').toLowerCase().includes(filter_player2.toLowerCase())) return false
+    if (filter_pl_name1   && !String(r.pl_name1 ?? '').toLowerCase().includes(filter_pl_name1.toLowerCase())) return false
+    if (filter_pl_name2   && !String(r.pl_name2 ?? '').toLowerCase().includes(filter_pl_name2.toLowerCase())) return false
     if (filter_paid       && !String(r.re_paid ?? '').includes(filter_paid)) return false
     if (filter_score      && !String(r.re_score ?? '').includes(filter_score)) return false
     return true
@@ -262,8 +265,8 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
   const filters: Record<string, React.ReactNode> = {
     re_reid:       <FText placeholder='id…'    value={filter_reid}       onChange={setFilter_reid} />,
     re_seid:       <FText placeholder='seid…'  value={filter_seid}       onChange={setFilter_seid} />,
-    player1:       <FText placeholder='name…'  value={filter_player1}    onChange={setFilter_player1} />,
-    player2:       <FText placeholder='name…'  value={filter_player2}    onChange={setFilter_player2} />,
+    pl_name1:      <FText placeholder='name…'  value={filter_pl_name1}   onChange={setFilter_pl_name1} />,
+    pl_name2:      <FText placeholder='name…'  value={filter_pl_name2}   onChange={setFilter_pl_name2} />,
     re_paid:       <FText placeholder='paid…'  value={filter_paid}       onChange={setFilter_paid} />,
     re_score:      <FText placeholder='score…' value={filter_score}      onChange={setFilter_score} />,
   }
@@ -292,9 +295,9 @@ function PartnersTab({ sharedFilters, onKeyClick }: TabProps) {
   const [partners,        setPartners]        = useState<Row[]>([])
   const [partnersLoading, setPartnersLoading] = useState(false)
   const [selectedPartner, setSelectedPartner] = useState<Row | null>(null)
-  const [filter_player1,      setFilter_player1]      = useState('')
+  const [filter_pl_name1,     setFilter_pl_name1]     = useState('')
   const [filter_plid1,        setFilter_plid1]        = useState(() => sharedFilters.plid1?.value ?? '')
-  const [filter_player2,      setFilter_player2]      = useState('')
+  const [filter_pl_name2,     setFilter_pl_name2]     = useState('')
   const [filter_plid2,        setFilter_plid2]        = useState(() => sharedFilters.plid2?.value ?? '')
   const [filter_paid,         setFilter_paid]         = useState(() => sharedFilters.paid?.value ?? '')
   const [filter_involves_plid, setFilter_involves_plid] = useState(() => sharedFilters.plid?.value ?? '')
@@ -311,27 +314,27 @@ function PartnersTab({ sharedFilters, onKeyClick }: TabProps) {
     setSelectedPartner(row)
     onKeyClick({
       paid:  { value: String(row.pa_paid) },
-      plid1: { value: String(row.plid1), label: String(row.player1 ?? '') },
-      plid2: { value: String(row.plid2), label: String(row.player2 ?? '') },
+      plid1: { value: String(row.pa_plid1), label: String(row.pl_name1 ?? '') },
+      plid2: { value: String(row.pa_plid2), label: String(row.pl_name2 ?? '') },
     })
   }
 
   const filteredPartners = partners.filter(r => {
-    if (filter_player1 && !String(r.player1 ?? '').toLowerCase().includes(filter_player1.toLowerCase())) return false
-    if (filter_plid1   && !String(r.plid1   ?? '').includes(filter_plid1)) return false
-    if (filter_player2 && !String(r.player2 ?? '').toLowerCase().includes(filter_player2.toLowerCase())) return false
-    if (filter_plid2   && !String(r.plid2   ?? '').includes(filter_plid2)) return false
+    if (filter_pl_name1 && !String(r.pl_name1 ?? '').toLowerCase().includes(filter_pl_name1.toLowerCase())) return false
+    if (filter_plid1    && !String(r.pa_plid1 ?? '').includes(filter_plid1)) return false
+    if (filter_pl_name2 && !String(r.pl_name2 ?? '').toLowerCase().includes(filter_pl_name2.toLowerCase())) return false
+    if (filter_plid2    && !String(r.pa_plid2 ?? '').includes(filter_plid2)) return false
     if (filter_paid && !String(r.pa_paid ?? '').includes(filter_paid)) return false
-    if (filter_involves_plid && String(r.plid1 ?? '') !== filter_involves_plid && String(r.plid2 ?? '') !== filter_involves_plid) return false
+    if (filter_involves_plid && String(r.pa_plid1 ?? '') !== filter_involves_plid && String(r.pa_plid2 ?? '') !== filter_involves_plid) return false
     return true
   })
 
   const paFilters: Record<string, React.ReactNode> = {
     pa_paid:        <FText placeholder='paid…'  value={filter_paid}       onChange={setFilter_paid} />,
-    player1:        <FText placeholder='name…'  value={filter_player1}    onChange={setFilter_player1} />,
-    plid1:          <FText placeholder='id…'    value={filter_plid1}      onChange={setFilter_plid1} />,
-    player2:        <FText placeholder='name…'  value={filter_player2}    onChange={setFilter_player2} />,
-    plid2:          <FText placeholder='id…'    value={filter_plid2}      onChange={setFilter_plid2} />,
+    pl_name1:       <FText placeholder='name…'  value={filter_pl_name1}   onChange={setFilter_pl_name1} />,
+    pa_plid1:       <FText placeholder='id…'    value={filter_plid1}      onChange={setFilter_plid1} />,
+    pl_name2:       <FText placeholder='name…'  value={filter_pl_name2}   onChange={setFilter_pl_name2} />,
+    pa_plid2:       <FText placeholder='id…'    value={filter_plid2}      onChange={setFilter_plid2} />,
   }
 
   return (
@@ -361,7 +364,7 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [loading,  setLoading]  = useState(false)
   const [selected, setSelected] = useState<Row | null>(null)
 
-  const [filter_player,      setFilter_player]      = useState('')
+  const [filter_pl_name,     setFilter_pl_name]     = useState('')
   const [filter_plid,        setFilter_plid]        = useState(() => sharedFilters.plid?.value ?? '')
   const [filter_group,       setFilter_group]       = useState<string[]>([])
   const [filter_scoring,     setFilter_scoring]     = useState<string[]>([])
@@ -379,14 +382,14 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   function handleClick(row: Row) {
     if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
     setSelected(row)
-    onKeyClick({ plid: { value: String(row.a1_plid), label: String(row.player ?? '') } })
+    onKeyClick({ plid: { value: String(row.a1_plid), label: String(row.pl_name ?? '') } })
   }
 
   const groupOptions = Array.from(new Set(stats.map(r => String(r.a1_group ?? '')))).filter(Boolean).sort()
   const scoringOptions = Array.from(new Set(stats.map(r => String(r.a1_scoring ?? '')))).filter(Boolean).sort()
 
   const filteredStats = stats.filter(r => {
-    if (filter_player      && !String(r.player ?? '').toLowerCase().includes(filter_player.toLowerCase())) return false
+    if (filter_pl_name     && !String(r.pl_name ?? '').toLowerCase().includes(filter_pl_name.toLowerCase())) return false
     if (filter_plid        && !String(r.a1_plid ?? '').includes(filter_plid)) return false
     if (filter_group.length > 0 && !filter_group.includes(String(r.a1_group ?? ''))) return false
     if (filter_scoring.length > 0 && !filter_scoring.includes(String(r.a1_scoring ?? ''))) return false
@@ -397,7 +400,7 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   })
 
   const filters: Record<string, React.ReactNode> = {
-    player:      <FText placeholder='name…'     value={filter_player}   onChange={setFilter_player} />,
+    pl_name:     <FText placeholder='name…'     value={filter_pl_name}  onChange={setFilter_pl_name} />,
     a1_plid:     <FText placeholder='id…'       value={filter_plid}     onChange={setFilter_plid} />,
     a1_group:    <FMultiSelect options={groupOptions}   value={filter_group}   onChange={setFilter_group} />,
     a1_scoring:  <FMultiSelect options={scoringOptions} value={filter_scoring} onChange={setFilter_scoring} />,

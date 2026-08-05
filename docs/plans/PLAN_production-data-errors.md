@@ -6,9 +6,17 @@ production data errors
 ## Plan
 
 ### 1. Cron not populating although running
-- [ ] User checks Vercel dashboard Cron/Function logs for `/api/build/scrape` (14:00 UTC daily)
+- [ ] **Blocked, 2026-08-05**: user checked and the Vercel dashboard only retains Cron/Function log
+      history for the last 12 hours on the current (non-paid) plan — anything covering 2026-07-24
+      onward is no longer available without upgrading. Direct log confirmation of the 401 vs.
+      timeout vs. crash question is therefore not practically available going forward. Not yet
+      decided whether to (a) treat the existing indirect evidence (below) as sufficient to move
+      straight to a fix, (b) trigger a live diagnostic run (`vercel crons run /api/build/scrape`)
+      for fresh, current evidence, or (c) accept the gap and monitor only the next 12h window after
+      any future fix attempt
+- [ ] ~~User checks Vercel dashboard Cron/Function logs for `/api/build/scrape` (14:00 UTC daily)
       and `/api/build/scrape-tracked` (15:00 UTC daily) covering 2026-07-24 onward, to confirm
-      whether the daily failure is a 401 (CRON_SECRET mismatch), a timeout, or an unhandled crash
+      whether the daily failure is a 401 (CRON_SECRET mismatch), a timeout, or an unhandled crash~~
       — neither route has logged a completion row (success or error) since 2026-07-25 ~22:25 UTC,
       and the Sessions list confirms no session newer than 2026-07-24 has been scraped since.
       Leading theory (not yet confirmed): a serverless function timeout, not the CRON_SECRET —
@@ -158,7 +166,7 @@ production data errors
       needs the localprod-against-prod-DB check above to confirm
 
 ### 4. Historical XIMP data needs to be picked up
-- [ ] Confirmed baseline (prod query): zero sessions are currently classified as `XIMP` (or the
+- [x] Confirmed baseline (prod query): zero sessions are currently classified as `XIMP` (or the
       `UNK` sentinel) anywhere in `ts1_sessions` or `tse_sessions`, going all the way back to the
       earliest data (2024-01-02) — every historical session is currently `MP` or `VP` only. XIMP
       support already exists going forward in the scraper (`parseScore()` in `pipelineScrape.ts`
@@ -166,11 +174,166 @@ production data errors
       so this is specifically about *historical* sessions scraped before that support existed —
       any of them that were actually XIMP-scored on nzbridge.co.nz would have been captured as the
       wrong type (or possibly not captured at all)
-- [ ] Design discussion needed before any implementation (not yet decided): how to identify which
-      historical run_ids were actually XIMP-scored without re-scraping everything (currently
-      14,000+ sessions), whether re-scraping the full historical range is acceptable, and how
-      correcting an already-built session's scoring type should ripple through `tse_sessions`,
-      `tre_results`, and the dependent `ta1`/`ta2` stats tables
+- [x] **Design question resolved via direct investigation (local DB + git history), 2026-08-05.**
+      `git log -S"XIMP"` on `pipelineScrape.ts` shows the pre-fix `parseScore()` (commit
+      `1b5f52e`'s parent) matched only `/^([\d.]+)\s*(PCT|VP)$/i` and returned `null` for anything
+      else — including an `XIMP`/`XIMPS` suffix. In `parsePage()`, `if (!score) return` means that
+      row was dropped **before** ever being added to `rowsByRunId`, so `scrapeRunId()` saw
+      `rows.length === 0` for that run_id and never wrote a `ts1_sessions` header row at all. This
+      is confirmed as "never captured", not "captured as the wrong type" — there is no trace of a
+      dropped XIMP run_id anywhere in the DB to correct; it's a missing row, not a wrong one. That
+      resolves the "how does correcting an already-built session ripple through `tre_results`/
+      `ta1`/`ta2`" question from below — it doesn't apply, since nothing was ever built for these
+      run_ids in the first place
+- [x] **Also discovered while investigating: this has already partially self-healed in local.**
+      Local `tse_sessions` currently has 19 `XIMP` rows (`se_scoring = 'XIMP'`), all dated *before*
+      the `parseScore()` fix landed (Feb 25 / Mar 4 / Mar 11 / Mar 18 / Jul 3 / Jul 9 2026 — the fix
+      landed 2026-07-31). Reason: `scrapeTrackedPlayerSessions()` (pipeline step "Scrape Tracked
+      Players") has no date bound — it re-fetches each of the 27 tracked players' **entire** match
+      history every run. `batchCheckMissing()` only excludes run_ids already present in
+      `ts1_sessions`/`tse_sessions`; since a dropped XIMP run_id was never recorded anywhere, it
+      stayed "missing" indefinitely and got picked up automatically the next time this step ran
+      after the fix — no special backfill code needed for this path
+- [x] **Coverage analysis**: the other scrape path, `scrapeClubSessions()` (pipeline step "Scrape
+      AKBC"), is scoped to a single hardcoded club (`BRIDGE_CLUB_ID = 106`, confirmed = **Tokoroa**
+      via `tcl_clubs`) and only scans forward from `MAX(se_date)` in `tse_sessions` by default — it
+      will **not** auto-backfill historical Tokoroa-only sessions the way the tracked-player step
+      does. However `/api/build/scrape` (the route wrapping it) already accepts `from_date`/
+      `to_date` query params (confirmed in `route.ts`), so a manual call with a historical range
+      (e.g. `from_date=2024-01-02&to_date=2026-07-30`) would re-scan Tokoroa's date-search pages
+      the same way and pick up any dropped XIMP run_ids there too — no new code needed, just an
+      explicit historical-range invocation. The vast majority of clubs seen in `tse_sessions`
+      (East Coast Bays, Mt Albert, Christchurch, Wellington, etc.) are captured incidentally via
+      tracked-player *opponents*, not via the Tokoroa club scrape, so the tracked-player re-run is
+      expected to cover most of the gap on its own
+- [x] **Correction, 2026-08-05**: the "just re-run Scrape Tracked Players" conclusion above was
+      wrong — verified by live-fetching `online-points.html?mpsr=1&mp_user=X` for 3 real tracked
+      players. That endpoint (used by both `scrapeTrackedPlayerSessions()` and
+      `scrape/discover/nzb-by-flagged`) is capped to a rolling **~12-month window**, not a
+      player's full history — Aaron Starr's page only went back to 6 Aug 2025, Ant Hopkins to
+      8 Aug 2025, Ashley Bach to 11 Oct 2025. The 19 local XIMP sessions found earlier (Feb–Jul
+      2026) happened to fall inside that window; anything older will never surface through this
+      path no matter how many times it's re-run. Neither existing scrape mechanism
+      (tracked-player, ~12-month window; club-scoped `scrapeClubSessions`/Tokoroa-only) can reach
+      the full 2024-01-02 range
+- [x] **New capability confirmed**: `results.html?date_start=X&date_end=X&mp_results=Search` with
+      `mp_filter_club` **omitted entirely** returns nationwide results for that day (verified live
+      for 2025-03-04 — 5 events across 4 different clubs: Auckland, Tauranga, New Plymouth,
+      United), not scoped to any single club. No pagination markers found; row count for that day
+      matched exactly the sum of each event's full pairs list, consistent with one complete page
+      per day. This is the mechanism needed to reach genuinely historical dates for XIMP, since it
+      isn't scoped to a player's rolling window or a single club
+- [x] **Design agreed with user, 2026-08-05**: a one-off script (not committed app code, run
+      locally by the user — matches how the user wants scrape operations triggered, per their
+      earlier "I prefer to run it from the pipeline" note in this same session), scoped to
+      **XIMP-only** capture (not a general missing-session backfill — non-XIMP historical data is
+      already confirmed correctly captured, so broadening scope would be unbounded extra work for
+      no confirmed bug). For each day from **2024-01-02 to 2026-07-30** (day before the
+      `parseScore` fix landed): fetch the nationwide date search (no club filter), scan score
+      cells for an `XIMP`/`XIMPS` suffix; skip the day entirely if none found (no DB writes); for
+      any hit, run the matching run_id(s) through the same `scrapeRunId()`-equivalent logic
+      (already XIMP-aware) to write `ts1_sessions`/`ts2_results` for real. Script lives in the
+      scratchpad directory, not the repo, since standalone Node scripts can't import
+      `nextjs-shared`'s `'use server'` table functions — logic is inlined against `pg` directly
+      (same pattern as this session's earlier investigation scripts)
+- [x] **Testability added per user request**: date range is a CLI arg (`--from=`/`--to=`), default
+      is a small 2-week test window (2024-06-01 to 2024-06-14) rather than the full range, so
+      correctness can be checked on a small sample before committing to the full ~940-day sweep.
+      Each captured hit logs the involved player names, so a tracked player can be spotted directly
+      in the output and cross-checked against their `/player/[id]` page afterward
+- [x] Script written: `ximp_backfill.mjs` at the project root (untracked, not committed — delete
+      after use). Not run by Claude, per the user's earlier stated preference to trigger scrape
+      operations themselves
+- [x] **Run completed, 2026-08-05 (local), executed by Claude per explicit user authorization to
+      run unattended.** Test range (2024-06-01–2024-06-14, 14 days) came back clean: no errors, 0
+      XIMP hits (a valid result). Full range (2024-01-02–2026-07-30, 941 days) then run in the
+      background: **13 days had an XIMP hit, 28 run_ids newly captured (517 pairs), 11 already-
+      known run_ids correctly skipped** (idempotency check against `ts1_sessions`/`tse_sessions`
+      worked as designed — no duplicates). Full log: `ximp_backfill_full.log` (project root,
+      untracked).
+- [x] Build Sessions → Build Results → Build Partners → Update Stats run afterward via the same
+      API routes `/owner/pipeline`'s buttons call (`/api/build/sessions-nzb`,
+      `/api/build/results-nzb`, `/api/build/partners`, `/api/build/stats`), dev server on port
+      4040: 28 inserted/29 skipped (sessions), 517 inserted (results), stats rebuilt across all
+      groups (`player-all`: 16,053 rows, `partner-all`: 53,109 rows).
+- [x] **Verified via direct DB query**: `tse_sessions` XIMP count went from 19 (all dated
+      Feb–Jul 2026, inside the previously-known ~12-month window) to **47**, now spanning
+      **2024-01-10 to 2026-07-11** — genuinely reaching the historical gap. Spot-checked the
+      earliest recovered session (run_id 164822, 2024-01-10, Otago club, 7 pairs) — present in
+      `tse_sessions`/`tre_results` with correct row counts, and one of its players (Pip Weber) now
+      shows `a1_scoring='XIMP', a1_sessions=9` in `ta1_player_stats` (group `all` and group `C`),
+      confirming the stats rebuild picked it up correctly. No duplicate player rows created
+      despite heavy name reuse across the newly-captured sessions (spot-checked 4 names, each
+      `COUNT(*) = 1` in `tpl_players`). Score values for XIMP sessions are in a sane 0–100-ish
+      range, no clamping corruption.
+- [x] **Correction**: unlike the earlier assumption, this does not need to be separately repeated
+      against prod — user confirmed local will be copied to prod via the existing
+      `npm run copy:prod` once this backfill is verified locally, so item 1's cron/timeout
+      investigation is no longer a prerequisite for fixing prod's XIMP gap specifically (it's
+      still open for the separate "cron stopped populating new sessions" problem)
+- [x] `ximp_backfill.mjs` and `ximp_backfill_full.log` are still sitting in the project root,
+      untracked (`git status` confirms not staged). Left in place for the user to review — should
+      be deleted before any `git add`/commit
+- [x] **User asked to continue, 2026-08-05: extend to ALL sessions (not XIMP-only), up to current
+      date, in batches.** New script `session_backfill_all.mjs` (project root, untracked) reuses
+      the same proven nationwide (no club filter) date-search mechanism, but captures every
+      run_id found each day that isn't already in `ts1_sessions`/`tse_sessions`, regardless of
+      scoring type — not just XIMP hits. This is a broader operation than the confirmed XIMP bug:
+      it will also pick up any other session gap the two narrower existing mechanisms
+      (Tokoroa-only club scrape; ~12-month tracked-player window) never could have reached,
+      anywhere in NZ, for the full historical range. Run in 5 batches (2024-01-02–2024-06-30,
+      2024-07-01–2024-12-31, 2025-01-01–2025-06-30, 2025-07-01–2025-12-31,
+      2026-01-01–2026-08-05/today), executed sequentially by Claude per the user's standing
+      "continue without prompting" authorization
+- [x] **⚠️ Scale finding, flagged prominently — read before `npm run copy:prod`.** This turned out
+      far larger than the original XIMP-only fix: batch 1 alone (6 months) found 940 new sessions
+      (17,035 pairs) — more than the *entire* 2.5-year XIMP-only sweep found. **Total across all 5
+      batches: 6,028 run_ids found nationwide, 3,585 newly captured (61,937 pairs), 2,443
+      already-existing correctly skipped.** Root cause of the scale: the app's existing scrape
+      mechanisms were never comprehensive — they only ever captured sessions tied to the 27
+      tracked players (plus incidental opponents) or the single Tokoroa club. This nationwide
+      sweep is a genuine superset covering all of NZ bridge, which the app had never captured
+      before at all (not a bug — the app was never designed to be comprehensive; this is a
+      deliberate scope expansion the user requested).
+- [x] Build Sessions → Build Results → Build Partners → Update Stats run afterward: 3,572
+      sessions inserted (57 skipped — already built from the earlier XIMP-only run), 61,905
+      results inserted, stats rebuilt (`player-all`: 18,673 rows, `partner-all`: 66,446 rows).
+- [x] **Final verification via direct DB query**: `tse_sessions` grew from 14,316 to **17,916**
+      rows, now spanning 2024-01-02 to 2026-08-03 (nearly to today). Scoring breakdown: MP 14,445 /
+      VP 3,423 / XIMP 48. `tre_results` now 356,208 rows. `tpl_players` grew from ~11,170 to
+      **13,117** (+1,947 new players, 2,231 total with `pl_nz_bridge_number = 0` — new players
+      created by name-only lookup, as designed). **Distinct clubs in `tse_sessions` jumped from
+      ~20 to 119** — concrete confirmation this now covers nationwide NZ bridge activity, not just
+      the previously-tracked slice. All numbers cross-check consistently with no errors across
+      every batch and every pipeline step.
+- [ ] `session_backfill_all.mjs` and `backfill_batch1.log` through `backfill_batch5.log` are
+      sitting untracked in the project root alongside `ximp_backfill.mjs`/
+      `ximp_backfill_full.log` — all should be reviewed and deleted before any `git add`/commit.
+      **Given the scale of this expansion (119 clubs, +3,585 sessions, +1,947 players, all
+      previously never captured by this app at all), review the data carefully in `/owner/builddata`
+      before running `npm run copy:prod`** — this is a much bigger change to what the app's
+      database represents than the original XIMP bug fix was scoped to be
+
+### 6. Regression: `/owner/players` crashes — `players.filter is not a function`
+- [x] Root cause confirmed: item 3's pagination rewrite of `/api/admin/players` (this same plan)
+      changed its response shape from a bare array to `{ rows, totalPages, totalCount }`, with a
+      default `LIMIT ROWS_PER_PAGE`. `HomePageClient.tsx` was updated to match at the time, but
+      `PlayersAdmin.tsx` (`/owner/players` — the "manage which players are tracked" admin page)
+      was missed — it still does `setPlayers(rows)` on the raw response, so `players` becomes an
+      object and `players.filter(...)` at `PlayersAdmin.tsx:61` throws at runtime
+- [x] Second issue found while fixing the first: even after unwrapping `.rows`, the route now
+      defaults to `ROWS_PER_PAGE` (~20) rows per call — `PlayersAdmin.tsx` needs the *entire*
+      player list loaded for its existing client-side name/NZB# search and per-row tracked-toggle
+      checkboxes, so a naive unwrap would silently truncate the manageable list to one page
+- [x] Also found, not the cause of this crash: `TrackedPlayers.tsx` has the identical broken
+      `/api/admin/players` call shape, but it isn't imported/rendered anywhere (confirmed via
+      grep) — dead code, left as-is
+- [x] **Fix approach agreed**: convert `PlayersAdmin.tsx` to the same real server-side
+      search/pagination pattern this plan already applied to `HomePageClient.tsx`/
+      `RankingsPageClient.tsx` — debounced `name`/`nz` search sent as request params against the
+      existing `/api/admin/players` route (already supports both), paginated results via
+      `nextjs-shared/MyPaginationFooter`, instead of loading the full list client-side.
+- [x] Implemented and verified (`npx tsc --noEmit` + `npm run build` both pass)
 
 ### 5. Rankings tab filter/column misalignment
 - [x] Confirmed real bug (not just a style nit) in `RankingsPageClient.tsx`, both tables: per
@@ -294,6 +457,24 @@ production data errors
   searched term, matching the partnerships tab's existing wording. Placeholder text changed from
   "Find player…" to "Filter by player…" to match its new actual behavior.
 
+### src/ui/admin/PlayersAdmin.tsx
+- Fixed the `players.filter is not a function` crash: `/api/admin/players` now returns
+  `{ rows, totalPages, totalCount }` (from item 3's pagination work), not a bare array.
+- Converted to real server-side search/pagination, matching `HomePageClient.tsx`'s Players tab:
+  the single combined "Search by name or NZB#" box is split into two debounced inputs (`name`,
+  `nz`) sent as request params, since the route ANDs its `name`/`nz` filters separately rather
+  than OR-matching a single free-text term the way the old client-side filter did. Only the
+  current page's rows are fetched (`FILTER_DEBOUNCE_MS` debounce, `ROWS_PER_PAGE` default,
+  `nextjs-shared/MyPaginationFooter` for page/rows-per-page controls) instead of loading all
+  players into a client array.
+- The header's "N tracked" count previously came from `players.filter(p => p.pl_tracked).length`
+  over the full in-memory array — no longer possible once only one page is loaded. Replaced with
+  a one-time `tracked=true&itemsPerPage=1` fetch on mount (reusing the route's existing
+  `totalCount`) adjusted locally by `±1` inside `toggle()`, so the count still reflects the whole
+  roster regardless of the current page/filter.
+- `TrackedPlayers.tsx` has the identical broken response-shape assumption but is not imported
+  anywhere (confirmed via grep) — left untouched, out of scope as dead code.
+
 ## Testing
 - [ ] Open `/` (Home page) locally, Players tab: confirm the list loads, filters (name, NZ#,
       rank, grade, club, rating/A-points/sessions minimums, tracked-only, exclude-NZ#-0) narrow
@@ -319,3 +500,11 @@ production data errors
       for the players table Grade above Grade / Club above Club) for both the Players and
       Partnerships sub-tables, and confirm the "Group" toggle (now in the tab bar, not either
       table) still correctly switches which group's stats are shown
+- [ ] Open `/owner/players` and confirm it no longer crashes — the player list loads, the
+      "N tracked · M total" count shows correct numbers, and pagination works
+- [ ] On `/owner/players`, type into "Filter by name…" and separately into "Filter by NZB#…" and
+      confirm each narrows the list correctly (including for a player who wouldn't be on the
+      first page)
+- [ ] On `/owner/players`, toggle a player's Track checkbox on and off and confirm the "N tracked"
+      count updates immediately and correctly, and the row's highlight (green background) follows
+      the checkbox state

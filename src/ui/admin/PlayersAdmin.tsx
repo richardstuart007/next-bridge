@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { MyInput } from 'nextjs-shared/MyInput'
+import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { saveBackNav } from 'nextjs-shared/useBackNav'
-import { BACK_KEY } from '@/src/lib/constants'
+import { BACK_KEY, ROWS_PER_PAGE, FILTER_DEBOUNCE_MS } from '@/src/lib/constants'
 
 interface PlayerRow {
   pl_plid:             number
@@ -21,24 +22,53 @@ interface PlayerRow {
 }
 
 export default function PlayersAdmin() {
-  const [players, setPlayers]   = useState<PlayerRow[]>([])
-  const [loading, setLoading]   = useState(true)
-  const [nameFilter, setName]   = useState('')
-  const [toggling, setToggling] = useState<Set<number>>(new Set())
+  const [players,       setPlayers]       = useState<PlayerRow[]>([])
+  const [totalPages,    setTotalPages]    = useState(1)
+  const [totalCount,    setTotalCount]    = useState(0)
+  const [trackedCount,  setTrackedCount]  = useState(0)
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  const [nameFilter,    setNameFilter]    = useState('')
+  const [nzFilter,      setNzFilter]      = useState('')
+  const [page,          setPage]          = useState(1)
+  const [itemsPerPage,  setItemsPerPage]  = useState(ROWS_PER_PAGE)
+  const [toggling,      setToggling]      = useState<Set<number>>(new Set())
 
+  //
+  //  Overall tracked count, independent of the name/nz filter below — fetched once on mount
+  //  and adjusted locally by toggle() afterward, so the header always reflects the full roster
+  //
   useEffect(() => {
-    fetch('/api/admin/players')
+    fetch('/api/admin/players?tracked=true&itemsPerPage=1')
       .then(r => r.json())
-      .then(rows => { setPlayers(rows); setLoading(false) })
-      .catch(() => setLoading(false))
+      .then(data => setTrackedCount(data.totalCount ?? 0))
+      .catch(() => {})
   }, [])
 
-  const filtered = useMemo(() => {
-    const q = nameFilter.toLowerCase()
-    return q
-      ? players.filter(p => p.pl_name.toLowerCase().includes(q) || String(p.pl_nz_bridge_number ?? '').includes(q))
-      : players
-  }, [players, nameFilter])
+  // Reset to page 1 whenever a filter changes
+  useEffect(() => { setPage(1) }, [nameFilter, nzFilter])
+
+  // Fetch only the current page from the server (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      (async () => {
+        try {
+          const params = new URLSearchParams()
+          if (nameFilter) params.set('name', nameFilter)
+          if (nzFilter)   params.set('nz', nzFilter)
+          params.set('page', String(page))
+          params.set('itemsPerPage', String(itemsPerPage))
+
+          const r = await fetch(`/api/admin/players?${params.toString()}`)
+          const data = await r.json()
+          setPlayers(data.rows as PlayerRow[])
+          setTotalPages(data.totalPages ?? 1)
+          setTotalCount(data.totalCount ?? 0)
+        } catch { /* keep previously-loaded rows on a failed refresh */ }
+        finally { setHasLoadedOnce(true) }
+      })()
+    }, FILTER_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [nameFilter, nzFilter, page, itemsPerPage])
 
   async function toggle(plid: number, current: boolean) {
     setToggling(prev => new Set([...prev, plid]))
@@ -52,69 +82,82 @@ export default function PlayersAdmin() {
         setPlayers(prev => prev.map(p =>
           p.pl_plid === plid ? { ...p, pl_tracked: !current } : p
         ))
+        setTrackedCount(prev => prev + (current ? -1 : 1))
       }
     } finally {
       setToggling(prev => { const s = new Set(prev); s.delete(plid); return s })
     }
   }
 
-  const trackedCount = players.filter(p => p.pl_tracked).length
-
   return (
     <div className='space-y-4'>
       <div className='flex items-center gap-4'>
-        <MyInput type='text' value={nameFilter} onChange={e => setName(e.target.value)}
-          placeholder='Search by name or NZB#…'
-          overrideClass='rounded border border-gray-300 px-2.5 py-1 text-sm w-64 h-auto md:h-auto' />
+        <MyInput type='text' value={nameFilter} onChange={e => setNameFilter(e.target.value)}
+          placeholder='Filter by name…'
+          overrideClass='rounded border border-gray-300 px-2.5 py-1 text-sm w-56 h-auto md:h-auto' />
+        <MyInput type='text' value={nzFilter} onChange={e => setNzFilter(e.target.value)}
+          placeholder='Filter by NZB#…'
+          overrideClass='rounded border border-gray-300 px-2.5 py-1 text-sm w-40 h-auto md:h-auto' />
         <span className='text-sm text-gray-500'>
-          {trackedCount} tracked · {players.length} total
+          {trackedCount} tracked · {totalCount} total
         </span>
       </div>
 
-      {loading ? (
+      {!hasLoadedOnce ? (
         <p className='text-sm text-gray-400'>Loading…</p>
       ) : (
-        <div className='overflow-x-auto'>
-          <table className='w-full text-sm'>
-            <thead>
-              <tr className='border-b border-gray-200'>
-                <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-8'>Track</th>
-                <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Name</th>
-                <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>NZB#</th>
-                <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Club</th>
-                <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Rank</th>
-                <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Sessions</th>
-                <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Avg %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_club, pl_rank, a1_sessions, a1_avg_pct, pl_tracked }) => (
-                <tr key={pl_plid}
-                  className={`border-b border-gray-100 ${pl_tracked ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
-                  <td className='py-1.5'>
-                    <input type='checkbox' checked={pl_tracked}
-                      disabled={toggling.has(pl_plid)}
-                      onChange={() => toggle(pl_plid, pl_tracked)}
-                      className='cursor-pointer' />
-                  </td>
-                  <td className='py-1.5 font-medium'>
-                    <Link href={`/player/${pl_plid}`} className='text-blue-600 hover:underline'
-                      onClick={() => saveBackNav(BACK_KEY)}>
-                      {pl_name}
-                    </Link>
-                  </td>
-                  <td className='py-1.5 text-gray-500 text-xs'>{pl_nz_bridge_number || '—'}</td>
-                  <td className='py-1.5 text-gray-500 text-xs'>{pl_club || '—'}</td>
-                  <td className='py-1.5 text-gray-500 text-xs'>{pl_rank || '—'}</td>
-                  <td className='py-1.5 text-right text-gray-600'>{a1_sessions}</td>
-                  <td className='py-1.5 text-right text-gray-600'>
-                    {a1_avg_pct > 0 ? `${parseFloat(String(a1_avg_pct)).toFixed(2)}%` : '—'}
-                  </td>
+        <>
+          <div className='overflow-x-auto'>
+            <table className='w-full text-sm'>
+              <thead>
+                <tr className='border-b border-gray-200'>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-8'>Track</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Name</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>NZB#</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Club</th>
+                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Rank</th>
+                  <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Sessions</th>
+                  <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Avg %</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {players.map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_club, pl_rank, a1_sessions, a1_avg_pct, pl_tracked }) => (
+                  <tr key={pl_plid}
+                    className={`border-b border-gray-100 ${pl_tracked ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                    <td className='py-1.5'>
+                      <input type='checkbox' checked={pl_tracked}
+                        disabled={toggling.has(pl_plid)}
+                        onChange={() => toggle(pl_plid, pl_tracked)}
+                        className='cursor-pointer' />
+                    </td>
+                    <td className='py-1.5 font-medium'>
+                      <Link href={`/player/${pl_plid}`} className='text-blue-600 hover:underline'
+                        onClick={() => saveBackNav(BACK_KEY)}>
+                        {pl_name}
+                      </Link>
+                    </td>
+                    <td className='py-1.5 text-gray-500 text-xs'>{pl_nz_bridge_number || '—'}</td>
+                    <td className='py-1.5 text-gray-500 text-xs'>{pl_club || '—'}</td>
+                    <td className='py-1.5 text-gray-500 text-xs'>{pl_rank || '—'}</td>
+                    <td className='py-1.5 text-right text-gray-600'>{a1_sessions}</td>
+                    <td className='py-1.5 text-right text-gray-600'>
+                      {a1_avg_pct > 0 ? `${parseFloat(String(a1_avg_pct)).toFixed(2)}%` : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {totalPages > 1 && (
+            <MyPaginationFooter
+              totalPages={totalPages}
+              statecurrentPage={page}
+              setStateCurrentPage={setPage}
+              rowsPerPage={itemsPerPage}
+              setRowsPerPage={v => { setItemsPerPage(v); setPage(1) }}
+            />
+          )}
+        </>
       )}
     </div>
   )

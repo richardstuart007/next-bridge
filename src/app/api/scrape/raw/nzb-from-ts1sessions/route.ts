@@ -114,7 +114,7 @@ async function getRobotPlid(): Promise<number> {
 
   const inserted = await table_query({
     caller: 'scrape/nzb-from-ts1sessions/robot-create',
-    query: `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number) VALUES ($1, -1) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
+    query: `INSERT INTO tpl_players (pl_name, pl_nzb) VALUES ($1, -1) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
     params: [ROBOT_PLAYER_NAME]
   }) as { pl_plid: number }[]
   if (inserted.length > 0) return inserted[0].pl_plid
@@ -139,7 +139,7 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
 
   const inserted = await table_query({
     caller: 'scrape/nzb-from-ts1sessions/create',
-    query: `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number)
+    query: `INSERT INTO tpl_players (pl_name, pl_nzb)
             VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
     params: [name]
   }) as { pl_plid: number }[]

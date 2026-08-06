@@ -35,7 +35,7 @@ export async function GET(
         CASE WHEN se_scoring = 'XIMP' THEN re_score END AS ximp,
         CASE WHEN pa_plid1 = $1 THEN pa_plid2 ELSE pa_plid1 END AS partner_id,
         pl_name          AS partner_name,
-        pl_nz_bridge_number AS partner_nz_number,
+        pl_nzb AS partner_nzb,
         pl_tracked   AS partner_tracked
       FROM tre_results
       JOIN tse_sessions ON se_seid = re_seid

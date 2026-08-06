@@ -29,7 +29,7 @@ function NzbridgeSection() {
       </p>
       <ul className={UL}>
         <li><Code>results.html?mp_filter_club=&lt;id&gt;&amp;date_start=&amp;date_end=</Code> — one day&apos;s club results search — used by Scrape AKBC</li>
-        <li><Code>online-points.html?mp_user=&lt;nz_bridge_number&gt;</Code> — a tracked player&apos;s full match history (no date range — NZB returns everything) — used by Scrape Tracked Players</li>
+        <li><Code>online-points.html?mp_user=&lt;nzb&gt;</Code> — a tracked player&apos;s full match history (no date range — NZB returns everything) — used by Scrape Tracked Players</li>
         <li><Code>results.html?run_id=&lt;id&gt;</Code> — one session&apos;s results page (header + every pair&apos;s score) — used by both scrape steps once a run_id is found</li>
       </ul>
 

@@ -18,17 +18,17 @@ async function fetchNzBridgePage(searchTerm: string): Promise<string | null> {
  * Look up a player on nzbridge.co.nz by their NZ bridge number.
  * Uses mp_filter_number= parameter for an exact match.
  */
-export async function lookupPlayerByNumber(nzNumber: number): Promise<ParsedPlayer | null> {
+export async function lookupPlayerByNumber(nzb: number): Promise<ParsedPlayer | null> {
   try {
-    const url = `${NZBRIDGE_BASE}/online-points.html?mp_filter_name=&mp_filter_number=${nzNumber}&mp_search=Search`
+    const url = `${NZBRIDGE_BASE}/online-points.html?mp_filter_name=&mp_filter_number=${nzb}&mp_search=Search`
     const html = await fetchHtml(url, 'nzbridge')
     const result = parsePlayerTable(html)
     if (!result) {
-      await write_logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `No data returned for NZ# ${nzNumber}`, lg_severity: 'W' })
+      await write_logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `No data returned for NZ# ${nzb}`, lg_severity: 'W' })
     }
     return result
   } catch (err) {
-    await write_logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'lookupPlayerByNumber', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzb}: ${String(err)}`, lg_severity: 'E' })
     return null
   }
 }
@@ -80,12 +80,12 @@ export async function lookupPlayer(name: string): Promise<ParsedPlayer | null> {
  * Fetch the full results history for a player by their NZ bridge number.
  * URL: /online-points.html?mpsr=1&mp_user=NNN
  */
-export async function fetchPlayerResultsHistory(nzNumber: number): Promise<ParsedPlayerResult[]> {
+export async function fetchPlayerResultsHistory(nzb: number): Promise<ParsedPlayerResult[]> {
   try {
-    const url = `${NZBRIDGE_BASE}/online-points.html?mpsr=1&mp_user=${nzNumber}`
+    const url = `${NZBRIDGE_BASE}/online-points.html?mpsr=1&mp_user=${nzb}`
     return parsePlayerResultsHistory(await fetchHtml(url, 'nzbridge'))
   } catch (err) {
-    await write_logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzNumber}: ${String(err)}`, lg_severity: 'E' })
+    await write_logging({ lg_functionname: 'fetchPlayerResultsHistory', lg_caller: 'nzbridge', lg_msg: `Error for NZ# ${nzb}: ${String(err)}`, lg_severity: 'E' })
     return []
   }
 }
@@ -106,7 +106,7 @@ export async function fetchNzSessionPage(runId: number): Promise<ParsedSessionPa
 
 /**
  * Like lookupPlayer but returns ALL non-archive matches across all search strategies,
- * deduplicated by nz_bridge_number.
+ * deduplicated by nzb.
  * - Empty array  â†’ not found
  * - Length 1     â†’ unambiguous, safe to auto-assign
  * - Length > 1   â†’ ambiguous, needs manual review
@@ -118,8 +118,8 @@ export async function lookupPlayerCandidates(name: string): Promise<ParsedPlayer
 
     function addAll(candidates: ParsedPlayer[]) {
       for (const c of candidates) {
-        if (!seen.has(c.nz_bridge_number)) {
-          seen.add(c.nz_bridge_number)
+        if (!seen.has(c.nzb)) {
+          seen.add(c.nzb)
           results.push(c)
         }
       }

@@ -147,7 +147,7 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
 
   const inserted = await table_query({
     caller: 'scrape/nzb-by-date/create',
-    query: `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number)
+    query: `INSERT INTO tpl_players (pl_name, pl_nzb)
             VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
     params: [name]
   }) as { pl_plid: number }[]

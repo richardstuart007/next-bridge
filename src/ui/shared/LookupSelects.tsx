@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { getAllClubs, getAllGrades, getAllRanks, getAllEventTypes } from '@/src/lib/actions/lookup'
 import MySelectMulti from 'nextjs-shared/MySelectMulti'
 import { myMergeClasses } from 'nextjs-shared/MyMergeClasses'
-import { WIDTH_RANK, WIDTH_GRADE, WIDTH_CLUB } from '@/src/lib/constants'
+import { WIDTH_RANK, WIDTH_GRADE, WIDTH_CLUB, WIDTH_EVENT_TYPE } from '@/src/lib/constants'
 
 // Replicates the old hand-rolled DropdownPanel trigger button's exact styling — narrow enough
 // to fit a table filter-row cell, unlike MySelectMulti's own wider default
@@ -130,5 +130,5 @@ export function EventTypeSelect({ selected, onChange, onOptionsLoaded, overrideC
       } catch (err) { console.error(err) }
     })()
   }, [])
-  return <LookupBase options={options} selected={selected} onChange={onChange} overrideClass={overrideClass} />
+  return <LookupBase options={options} selected={selected} onChange={onChange} overrideClass={overrideClass ?? WIDTH_EVENT_TYPE} />
 }

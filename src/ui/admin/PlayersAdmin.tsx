@@ -2,14 +2,15 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { MyInput } from 'nextjs-shared/MyInput'
 import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { saveBackNav } from 'nextjs-shared/useBackNav'
-import { BACK_KEY, ROWS_PER_PAGE, FILTER_DEBOUNCE_MS } from '@/src/lib/constants'
+import { FilterName } from '@/src/ui/shared/FilterName'
+import { NumberFilterInput } from '@/src/ui/shared/NumberFilterInput'
+import { BACK_KEY, ROWS_PER_PAGE, FILTER_DEBOUNCE_MS, WIDTH_NAME, WIDTH_NZB, WIDTH_CLUB, WIDTH_RANK } from '@/src/lib/constants'
 
 interface PlayerRow {
   pl_plid:             number
-  pl_nz_bridge_number: number | null
+  pl_nzb: number | null
   pl_name:             string
   pl_club:             string
   pl_rank:             string
@@ -27,8 +28,8 @@ export default function PlayersAdmin() {
   const [totalCount,    setTotalCount]    = useState(0)
   const [trackedCount,  setTrackedCount]  = useState(0)
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
-  const [nameFilter,    setNameFilter]    = useState('')
-  const [nzFilter,      setNzFilter]      = useState('')
+  const [filter_name,   setFilter_name]   = useState('')
+  const [filter_nzb,    setFilter_nzb]    = useState('')
   const [page,          setPage]          = useState(1)
   const [itemsPerPage,  setItemsPerPage]  = useState(ROWS_PER_PAGE)
   const [toggling,      setToggling]      = useState<Set<number>>(new Set())
@@ -45,7 +46,7 @@ export default function PlayersAdmin() {
   }, [])
 
   // Reset to page 1 whenever a filter changes
-  useEffect(() => { setPage(1) }, [nameFilter, nzFilter])
+  useEffect(() => { setPage(1) }, [filter_name, filter_nzb])
 
   // Fetch only the current page from the server (debounced)
   useEffect(() => {
@@ -53,8 +54,8 @@ export default function PlayersAdmin() {
       (async () => {
         try {
           const params = new URLSearchParams()
-          if (nameFilter) params.set('name', nameFilter)
-          if (nzFilter)   params.set('nz', nzFilter)
+          if (filter_name) params.set('name', filter_name)
+          if (filter_nzb)  params.set('nzb', filter_nzb)
           params.set('page', String(page))
           params.set('itemsPerPage', String(itemsPerPage))
 
@@ -68,7 +69,7 @@ export default function PlayersAdmin() {
       })()
     }, FILTER_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [nameFilter, nzFilter, page, itemsPerPage])
+  }, [filter_name, filter_nzb, page, itemsPerPage])
 
   async function toggle(plid: number, current: boolean) {
     setToggling(prev => new Set([...prev, plid]))
@@ -92,12 +93,10 @@ export default function PlayersAdmin() {
   return (
     <div className='space-y-4'>
       <div className='flex items-center gap-4'>
-        <MyInput type='text' value={nameFilter} onChange={e => setNameFilter(e.target.value)}
-          placeholder='Filter by name…'
-          overrideClass='rounded border border-gray-300 px-2.5 py-1 text-sm w-56 h-auto md:h-auto' />
-        <MyInput type='text' value={nzFilter} onChange={e => setNzFilter(e.target.value)}
-          placeholder='Filter by NZB#…'
-          overrideClass='rounded border border-gray-300 px-2.5 py-1 text-sm w-40 h-auto md:h-auto' />
+        <FilterName value={filter_name} onChange={setFilter_name}
+          placeholder='Filter by name…' overrideClass={`${WIDTH_NAME} px-2.5 py-1 text-sm`} />
+        <NumberFilterInput value={filter_nzb} onChange={setFilter_nzb}
+          placeholder='Filter by NZB#…' overrideClass={`${WIDTH_NZB} px-2.5 py-1 text-sm`} />
         <span className='text-sm text-gray-500'>
           {trackedCount} tracked · {totalCount} total
         </span>
@@ -113,15 +112,15 @@ export default function PlayersAdmin() {
                 <tr className='border-b border-gray-200'>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-8'>Track</th>
                   <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Name</th>
-                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>NZB#</th>
-                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium'>Club</th>
-                  <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Rank</th>
+                  <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_NZB}`}>NZB#</th>
+                  <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_CLUB}`}>Club</th>
+                  <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_RANK}`}>Rank</th>
                   <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Sessions</th>
                   <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-20'>Avg %</th>
                 </tr>
               </thead>
               <tbody>
-                {players.map(({ pl_plid, pl_name, pl_nz_bridge_number, pl_club, pl_rank, a1_sessions, a1_avg_pct, pl_tracked }) => (
+                {players.map(({ pl_plid, pl_name, pl_nzb, pl_club, pl_rank, a1_sessions, a1_avg_pct, pl_tracked }) => (
                   <tr key={pl_plid}
                     className={`border-b border-gray-100 ${pl_tracked ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
                     <td className='py-1.5'>
@@ -136,7 +135,7 @@ export default function PlayersAdmin() {
                         {pl_name}
                       </Link>
                     </td>
-                    <td className='py-1.5 text-gray-500 text-xs'>{pl_nz_bridge_number || '—'}</td>
+                    <td className='py-1.5 text-gray-500 text-xs'>{pl_nzb || '—'}</td>
                     <td className='py-1.5 text-gray-500 text-xs'>{pl_club || '—'}</td>
                     <td className='py-1.5 text-gray-500 text-xs'>{pl_rank || '—'}</td>
                     <td className='py-1.5 text-right text-gray-600'>{a1_sessions}</td>

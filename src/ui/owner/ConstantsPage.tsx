@@ -20,7 +20,33 @@ import {
   EARLIEST_DATA_DATE,
   CHART_TOP_N_PRESELECTED,
   ROWS_PER_PAGE,
-  VALUE_DISPLAY_MAX_LENGTH
+  VALUE_DISPLAY_MAX_LENGTH,
+  MIN_RANKING_SESSIONS_MP,
+  MIN_RANKING_SESSIONS_VP,
+  MIN_RANKING_SESSIONS_XIMP,
+  MIN_RANKING_SESSIONS_PARTNER_MP,
+  MIN_RANKING_SESSIONS_PARTNER_VP,
+  MIN_RANKING_SESSIONS_PARTNER_XIMP,
+  WIDTH_RANK,
+  WIDTH_GRADE,
+  WIDTH_CLUB,
+  WIDTH_DAY_OF_WEEK,
+  WIDTH_TOURNAMENT_TYPE,
+  WIDTH_SCORING,
+  WIDTH_SESSIONS_MIN,
+  WIDTH_TOURNAMENT_NAME,
+  WIDTH_NZB,
+  WIDTH_PAID,
+  WIDTH_NAME,
+  WIDTH_TRACKED,
+  WIDTH_RATING_MIN,
+  WIDTH_A_POINTS_MIN,
+  WIDTH_DATE,
+  WIDTH_IS_SUMMARY,
+  WIDTH_PLID,
+  WIDTH_SEID,
+  WIDTH_RUN_ID,
+  WIDTH_EVENT_TYPE
 } from '@/src/lib/constants'
 
 //----------------------------------------------------------------------------------
@@ -67,6 +93,42 @@ const CONSTANTS_SECTIONS: ConstantSection[] = [
     heading: 'Pipeline',
     entries: [
       { name: 'PIPELINE_RECENT_RUN_IDS_LIMIT', value: PIPELINE_RECENT_RUN_IDS_LIMIT, description: "Number of most-recent run_ids offered in the Pipeline page's run-id picker.", consumers: ['pipelineLog.ts: getRecentRunIds'] }
+    ]
+  },
+  {
+    heading: 'Rankings',
+    entries: [
+      { name: 'MIN_RANKING_SESSIONS_MP', value: MIN_RANKING_SESSIONS_MP, description: 'Minimum MP sessions a player needs for a real precomputed rank (a1_avg_rank/a1_group_total/a1_pct_rank) — below this the rank is NULL rather than a number skewed by a small sample.', consumers: ['statsCompute.ts: computePlayerGroupStats', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'MIN_RANKING_SESSIONS_VP', value: MIN_RANKING_SESSIONS_VP, description: 'Same as MIN_RANKING_SESSIONS_MP, for VP scoring.', consumers: ['statsCompute.ts: computePlayerGroupStats', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'MIN_RANKING_SESSIONS_XIMP', value: MIN_RANKING_SESSIONS_XIMP, description: 'Same as MIN_RANKING_SESSIONS_MP, for XIMP scoring — much lower since XIMP sessions are far rarer than MP/VP.', consumers: ['statsCompute.ts: computePlayerGroupStats', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'MIN_RANKING_SESSIONS_PARTNER_MP', value: MIN_RANKING_SESSIONS_PARTNER_MP, description: 'Minimum MP sessions a partnership needs for a real precomputed rank (a2_avg_rank/a2_group_total) — separate, much lower floor than the player version, since a partnership only gains a session when the same two people play together.', consumers: ['statsCompute.ts: computePartnerGroupStats', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'MIN_RANKING_SESSIONS_PARTNER_VP', value: MIN_RANKING_SESSIONS_PARTNER_VP, description: 'Same as MIN_RANKING_SESSIONS_PARTNER_MP, for VP scoring.', consumers: ['statsCompute.ts: computePartnerGroupStats', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'MIN_RANKING_SESSIONS_PARTNER_XIMP', value: MIN_RANKING_SESSIONS_PARTNER_XIMP, description: 'Same as MIN_RANKING_SESSIONS_PARTNER_MP, for XIMP scoring.', consumers: ['statsCompute.ts: computePartnerGroupStats', 'RankingsPageClient.tsx: RankingsPageClient'] }
+    ]
+  },
+  {
+    heading: 'Widths',
+    entries: [
+      { name: 'WIDTH_RANK', value: WIDTH_RANK, description: 'Shared trigger width for the rk_rank filter dropdown (RankSelect) — one DD item, one width, wherever a rank filter appears.', consumers: ['PlayersAdmin.tsx: PlayersAdmin', 'HomePageClient.tsx: HomePageClient', 'LookupSelects.tsx: RankSelect'] },
+      { name: 'WIDTH_GRADE', value: WIDTH_GRADE, description: 'Shared trigger width for the gr_grade filter dropdown (GradeSelect).', consumers: ['HomePageClient.tsx: HomePageClient', 'LookupSelects.tsx: GradeSelect'] },
+      { name: 'WIDTH_CLUB', value: WIDTH_CLUB, description: 'Shared trigger width for the cl_club/pl_club/se_club filter dropdown (ClubSelect) — same DD item across every table it appears on.', consumers: ['PlayersAdmin.tsx: PlayersAdmin', 'HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'LookupSelects.tsx: ClubSelect'] },
+      { name: 'WIDTH_DAY_OF_WEEK', value: WIDTH_DAY_OF_WEEK, description: 'Shared width for the se_day_of_week filter (multi-select on Home, single-select FilterDayOfWeek elsewhere).', consumers: ['HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'FilterDayOfWeek.tsx: FilterDayOfWeek'] },
+      { name: 'WIDTH_TOURNAMENT_TYPE', value: WIDTH_TOURNAMENT_TYPE, description: 'Shared width for the tournament-group (A/B/C) filter/toggle — one value applied everywhere it appears, per explicit confirmation that a shared width change may affect multiple pages at once.', consumers: ['HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'WIDTH_SCORING', value: WIDTH_SCORING, description: 'Shared width for the se_scoring filter/toggle (ScoringTypeSelect/ScoringTypeToggle).', consumers: ['HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'RankingsPageClient.tsx: RankingsPageClient', 'ScoringTypeSelects.tsx: ScoringTypeSelect'] },
+      { name: 'WIDTH_SESSIONS_MIN', value: WIDTH_SESSIONS_MIN, description: "Shared width for a minimum-sessions filter/dropdown (Home's sessions-min filter, Rankings' Top-N/min-sessions select).", consumers: ['HomePageClient.tsx: HomePageClient', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'WIDTH_TOURNAMENT_NAME', value: WIDTH_TOURNAMENT_NAME, description: 'Width for the se_tournament free-text name filter on Home.', consumers: ['HomePageClient.tsx: HomePageClient'] },
+      { name: 'WIDTH_NZB', value: WIDTH_NZB, description: 'Shared width for the pl_nzb filter input, wherever an NZ Bridge number filter appears.', consumers: ['PlayersAdmin.tsx: PlayersAdmin', 'HomePageClient.tsx: HomePageClient', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'WIDTH_PAID', value: WIDTH_PAID, description: 'Shared width for the pa_paid filter input on Rankings.', consumers: ['RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'WIDTH_NAME', value: WIDTH_NAME, description: 'Shared width for any *_name text filter (pl_name, se_name) via FilterName.', consumers: ['PlayersAdmin.tsx: PlayersAdmin', 'HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'FilterName.tsx: FilterName'] },
+      { name: 'WIDTH_TRACKED', value: WIDTH_TRACKED, description: 'Shared width for the pl_tracked checkbox filter cell (FilterTracked).', consumers: ['HomePageClient.tsx: HomePageClient', 'RankingsPageClient.tsx: RankingsPageClient'] },
+      { name: 'WIDTH_RATING_MIN', value: WIDTH_RATING_MIN, description: "Width for Home's minimum-rating filter input.", consumers: ['HomePageClient.tsx: HomePageClient'] },
+      { name: 'WIDTH_A_POINTS_MIN', value: WIDTH_A_POINTS_MIN, description: "Width for Home's minimum-A-points filter input.", consumers: ['HomePageClient.tsx: HomePageClient'] },
+      { name: 'WIDTH_DATE', value: WIDTH_DATE, description: 'Shared width for a single bounded date input (FilterDate), used twice per date-range filter.', consumers: ['HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'FilterDate.tsx: FilterDate'] },
+      { name: 'WIDTH_IS_SUMMARY', value: WIDTH_IS_SUMMARY, description: 'Shared width for the se_is_summary filter (multi-select on Home, single-select FilterIsSummary elsewhere).', consumers: ['HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'FilterIsSummary.tsx: FilterIsSummary', 'SummaryTypeSelects.tsx: SummaryTypeMultiSelect'] },
+      { name: 'WIDTH_PLID', value: WIDTH_PLID, description: 'Shared width for the pl_plid player-picker multi-select (FilterPlid).', consumers: ['PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'FilterPlid.tsx: FilterPlid'] },
+      { name: 'WIDTH_SEID', value: WIDTH_SEID, description: 'Width for the internal se_seid primary-key filter (FilterSeid) — distinct from WIDTH_RUN_ID, the externally-visible run_id.', consumers: ['FilterSeid.tsx: FilterSeid'] },
+      { name: 'WIDTH_RUN_ID', value: WIDTH_RUN_ID, description: 'Shared width for the se_run_id/s1_run_id business-key filter (FilterRunId).', consumers: ['HomePageClient.tsx: HomePageClient', 'PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'FilterRunId.tsx: FilterRunId'] },
+      { name: 'WIDTH_EVENT_TYPE', value: WIDTH_EVENT_TYPE, description: 'Shared width for the et_event_type filter dropdown (EventTypeSelect).', consumers: ['PartnersTable.tsx: PartnersTable', 'PlayerPageClient.tsx: PlayerPageClient', 'LookupSelects.tsx: EventTypeSelect'] }
     ]
   },
   {
@@ -125,7 +187,20 @@ const FUNCTION_DESCRIPTIONS: Record<string, string> = {
   'nextjs-shared/src/UI/OwnerLayout.tsx: OwnerLayout': 'Dev-only guard layout wrapping every /owner page — redirects away in non-dev environments.',
   'api/build/scrape/route.ts: checkCronAuth': 'Checks the CRON_SECRET bearer token, bypassed in dev.',
   'api/cron/update-sessions/route.ts: checkCronAuth': "Checks the CRON_SECRET bearer token, bypassed in dev — same shape as the scrape route's own check.",
-  'nextjs-shared/src/tables/tableGeneric/write_logging.ts: write_logging': 'Inserts an application log row into xlg_logging (or falls back to console output).'
+  'nextjs-shared/src/tables/tableGeneric/write_logging.ts: write_logging': 'Inserts an application log row into xlg_logging (or falls back to console output).',
+  'LookupSelects.tsx: RankSelect': 'Lookup-backed rk_rank multi-select, self-loading its options from trk_ranks.',
+  'LookupSelects.tsx: GradeSelect': 'Lookup-backed gr_grade multi-select, self-loading its options from tgr_grades.',
+  'LookupSelects.tsx: ClubSelect': 'Lookup-backed cl_club multi-select, self-loading its options from tcl_clubs.',
+  'LookupSelects.tsx: EventTypeSelect': 'Lookup-backed et_event_type multi-select, self-loading its options from tet_event_types.',
+  'FilterDayOfWeek.tsx: FilterDayOfWeek': 'Single-value se_day_of_week dropdown filter.',
+  'FilterName.tsx: FilterName': 'Compact text filter for any *_name column.',
+  'FilterDate.tsx: FilterDate': 'Single bounded date input, used twice per date-range filter.',
+  'FilterIsSummary.tsx: FilterIsSummary': 'Single-value se_is_summary dropdown filter.',
+  'FilterPlid.tsx: FilterPlid': 'Multi-select dropdown over a list of players by pl_plid.',
+  'FilterSeid.tsx: FilterSeid': 'Partial-match filter for the internal se_seid primary key.',
+  'FilterRunId.tsx: FilterRunId': 'Partial-match filter for the externally-visible se_run_id/s1_run_id business key.',
+  'ScoringTypeSelects.tsx: ScoringTypeSelect': 'Single-value se_scoring dropdown filter, with an optional "all" option.',
+  'SummaryTypeSelects.tsx: SummaryTypeMultiSelect': "Multi-select se_is_summary filter (Home Sessions tab's Summary filter)."
 }
 
 //----------------------------------------------------------------------------------

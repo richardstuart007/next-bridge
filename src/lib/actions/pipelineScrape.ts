@@ -163,7 +163,7 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
     conflictColumn: 'pl_name',
     columnValuePairs: [
       { column: 'pl_name',             value: name },
-      { column: 'pl_nz_bridge_number', value: 0 },
+      { column: 'pl_nzb', value: 0 },
     ]
   }) as { pl_plid: number }[]
   if (inserted.length > 0) return { plid: inserted[0].pl_plid, created: true }
@@ -360,16 +360,16 @@ export async function scrapeTrackedPlayerSessions(): Promise<ScrapeSessionsResul
 
   const flagged = await table_query({
     caller: 'pipelineScrape/flagged',
-    query:  `SELECT pl_name, pl_nz_bridge_number FROM tpl_players WHERE pl_tracked = TRUE AND pl_nz_bridge_number > 0 ORDER BY pl_name ASC`,
+    query:  `SELECT pl_name, pl_nzb FROM tpl_players WHERE pl_tracked = TRUE AND pl_nzb > 0 ORDER BY pl_name ASC`,
     params: [],
     skipCache: true
-  }) as { pl_name: string; pl_nz_bridge_number: number }[]
+  }) as { pl_name: string; pl_nzb: number }[]
 
   const allMissingIds = new Set<number>()
   for (let i = 0; i < flagged.length; i++) {
     const player = flagged[i]
     const tPlayer = Date.now()
-    const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nz_bridge_number}`
+    const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nzb}`
     const res = await fetch(url, { headers: UA })
     if (!res.ok) continue
     const { runIds } = extractRunIds(await res.text())

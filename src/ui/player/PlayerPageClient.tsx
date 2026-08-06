@@ -6,18 +6,26 @@ import Link from 'next/link'
 import { getPlayerById, getPartnerStats, getPlayerAllGroupStats } from '@/src/lib/actions/players'
 import { StringMultiSelect, ClubSelect, EventTypeSelect } from '@/src/ui/shared/LookupSelects'
 import { TableEmptyRow } from '@/src/ui/shared/TableEmptyRow'
+import { FilterName } from '@/src/ui/shared/FilterName'
+import { FilterDate } from '@/src/ui/shared/FilterDate'
+import { FilterDayOfWeek } from '@/src/ui/shared/FilterDayOfWeek'
+import { FilterIsSummary } from '@/src/ui/shared/FilterIsSummary'
+import { FilterPlid } from '@/src/ui/shared/FilterPlid'
+import { FilterRunId } from '@/src/ui/shared/FilterRunId'
 import { ScoringTypeSelect, ScoringTypeToggle, formatScoringValue, scoringAvgLabel } from '@/src/ui/shared/ScoringTypeSelects'
 import PerformanceChart from './PerformanceChart'
 import PartnersTable from './PartnersTable'
 import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
 import { MyButton } from 'nextjs-shared/MyButton'
-import { MyInput } from 'nextjs-shared/MyInput'
-import MySelect from 'nextjs-shared/MySelect'
 import { MyTab } from 'nextjs-shared/MyTab'
 import { MyBackHomeNav } from 'nextjs-shared/MyBackHomeNav'
 import { useBackNav, saveBackNav } from 'nextjs-shared/useBackNav'
-import { isSelectionFiltering } from 'nextjs-shared/isSelectionFiltering'
-import { BACK_KEY, EARLIEST_DATA_DATE, ROWS_PER_PAGE, SCORING_TYPES, CONSISTENCY_LEVELS, TABLE_MIN_HEIGHT_PX } from '@/src/lib/constants'
+import { isSelectionFiltering, SELECTION_ALL, serializeSelection } from 'nextjs-shared/isSelectionFiltering'
+import {
+  BACK_KEY, ROWS_PER_PAGE, SCORING_TYPES, CONSISTENCY_LEVELS, TABLE_MIN_HEIGHT_PX, SESSION_STORAGE_PREFIX,
+  WIDTH_RUN_ID, WIDTH_DATE, WIDTH_DAY_OF_WEEK, WIDTH_PLID, WIDTH_NAME, WIDTH_CLUB, WIDTH_TOURNAMENT_TYPE,
+  WIDTH_EVENT_TYPE, WIDTH_SCORING, WIDTH_IS_SUMMARY
+} from '@/src/lib/constants'
 
 interface ResultRow {
   session_id:      number
@@ -35,13 +43,13 @@ interface ResultRow {
   ximp:            number | null
   partner_id:         number
   partner_name:       string
-  partner_nz_number:  number | null
+  partner_nzb:  number | null
   partner_tracked:    boolean
 }
 
 interface Player {
   pl_plid:             number
-  pl_nz_bridge_number: number
+  pl_nzb: number
   pl_name:             string
   pl_club:             string
   pl_rank:             string
@@ -53,82 +61,9 @@ interface Player {
   pl_tracked:      boolean
 }
 
-const playerStorageKey = (id: number) => `player_state_${id}`
+const playerStorageKey = (id: number) => `${SESSION_STORAGE_PREFIX}player_state_${id}`
 function loadPlayerSaved(id: number) {
   try { return JSON.parse(sessionStorage.getItem(playerStorageKey(id)) ?? 'null') } catch { return null }
-}
-
-// ── Partner multi-select dropdown ─────────────────────────────────────────────
-function PartnerSelect({
-  partners, selected, onChange
-}: {
-  partners: { id: number; name: string; count: number; tracked: boolean }[]
-  selected: Set<number>
-  onChange: (s: Set<number>) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handle)
-    return () => document.removeEventListener('mousedown', handle)
-  }, [open])
-
-  const allSelected = selected.size === partners.length
-  const trackedIds  = partners.filter(p => p.tracked).map(p => p.id)
-  const label = allSelected ? 'All' : `${selected.size} / ${partners.length}`
-
-  function toggleAll() {
-    onChange(new Set(partners.map(p => p.id)))
-  }
-
-  function selectTracked() {
-    onChange(new Set(trackedIds))
-  }
-
-  function toggle(id: number) {
-    if (allSelected) {
-      onChange(new Set([id]))
-    } else {
-      const next = new Set(selected)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      onChange(next)
-    }
-  }
-
-  return (
-    <div ref={ref} className='relative'>
-      <MyButton type='button' onClick={() => setOpen(v => !v)}
-        overrideClass='w-full text-left rounded border border-gray-300 px-1.5 py-0.5 text-xs bg-white truncate text-gray-700 justify-start h-auto md:h-auto'>
-        {label}
-      </MyButton>
-      {open && (
-        <div className='absolute left-0 top-full z-20 bg-white border border-gray-200 rounded shadow-lg min-w-max max-h-56 overflow-y-auto'>
-          <label className='flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs border-b border-gray-100 font-medium whitespace-nowrap'>
-            <input type='checkbox' checked={allSelected} onChange={toggleAll} />
-            All
-          </label>
-          {trackedIds.length > 0 && (
-            <MyButton type='button' onClick={selectTracked}
-              overrideClass='w-full text-left px-3 py-1 hover:bg-green-50 text-xs text-green-700 font-medium border-b border-gray-100 whitespace-nowrap bg-white justify-start h-auto md:h-auto rounded-none'>
-              ● Select tracked ({trackedIds.length})
-            </MyButton>
-          )}
-          {partners.map(p => (
-            <label key={p.id} className={`flex items-center gap-2 px-3 py-1 hover:bg-gray-50 cursor-pointer text-xs whitespace-nowrap ${p.tracked ? 'text-green-700' : ''}`}>
-              <input type='checkbox' checked={!allSelected && selected.has(p.id)} onChange={() => toggle(p.id)} />
-              {p.name} <span className='text-gray-400'>({p.count})</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -146,27 +81,28 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const [partnerStats, setPartnerStats] = useState<{ a2_scoring: string; a2_sessions: number; a2_avg: number; a2_stddev: number | null }[]>([])
   const [playerStats,  setPlayerStats]  = useState<{
     a1_group: string; a1_scoring: string; a1_sessions: number; a1_avg: number; a1_stddev: number | null
-    a1_pct_rank: number | null; a1_avg_rank: number; a1_group_total: number
+    a1_pct_rank: number | null; a1_avg_rank: number | null; a1_group_total: number | null
   }[]>([])
   const [loading,      setLoading]      = useState(true)
   const [error,        setError]        = useState<string | null>(null)
 
   // Filters
-  const [dateFrom,           setDateFrom]           = useState('')
-  const [dateTo,             setDateTo]             = useState('')
-  const [dayFilter,          setDayFilter]          = useState('')
-  const [selectedPartnerIds, setSelectedPartnerIds] = useState<Set<number>>(new Set())
+  const [filter_run_id,              setFilter_run_id]              = useState('')
+  const [filter_date_from,           setFilter_date_from]           = useState('')
+  const [filter_date_to,             setFilter_date_to]             = useState('')
+  const [filter_day_of_week,          setFilter_day_of_week]          = useState('')
+  const [filter_plid, setFilter_plid] = useState<Set<number>>(new Set())
   const [scoring,            setScoring]            = useState<(typeof SCORING_TYPES)[number]>('MP')
   const [statsScoring,       setStatsScoring]        = useState<(typeof SCORING_TYPES)[number]>('MP')
 
-  const [sessionNameFilter,  setSessionNameFilter]  = useState('')
-  const [selectedClubs,      setSelectedClubs]      = useState<Set<string>>(new Set())
+  const [filter_name,  setFilter_name]  = useState('')
+  const [filter_club,      setFilter_club]      = useState<Set<string>>(new Set())
   const [clubOptions,        setClubOptions]        = useState<string[]>([])
-  const [selectedTournaments,setSelectedTournaments]= useState<Set<string>>(new Set(['A', 'B', 'C']))
-  const [selectedEventTypes, setSelectedEventTypes] = useState<Set<string>>(new Set())
+  const [filter_tournament,setFilter_tournament]= useState<Set<string>>(new Set(['A', 'B', 'C']))
+  const [filter_event_type, setFilter_event_type] = useState<Set<string>>(new Set())
   const [eventTypeOptions,   setEventTypeOptions]   = useState<string[]>([])
-  const [summaryFilter,        setSummaryFilter]        = useState<'all' | 'summary' | 'session'>('all')
-  const [scoringFilter,      setScoringFilter]      = useState<'all' | (typeof SCORING_TYPES)[number]>('all')
+  const [filter_is_summary,        setFilter_is_summary]        = useState<'all' | 'summary' | 'session'>('all')
+  const [filter_scoring,      setFilter_scoring]      = useState<'all' | (typeof SCORING_TYPES)[number]>('all')
   const [activeTab,    setActiveTab]    = useState<'stats' | 'history' | 'partners'>('history')
   const [historyView,  setHistoryView]  = useState<'data' | 'graph'>('data')
   const [currentPage,  setCurrentPage]  = useState(1)
@@ -179,15 +115,16 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (s) {
       if (s.activeTab === 'stats' || s.activeTab === 'history' || s.activeTab === 'partners') setActiveTab(s.activeTab)
       if (s.historyView === 'data' || s.historyView === 'graph') setHistoryView(s.historyView)
-      if (s.dateFrom)               setDateFrom(s.dateFrom as string)
-      if (s.dateTo)                 setDateTo(s.dateTo as string)
-      if (s.dayFilter)              setDayFilter(s.dayFilter as string)
+      if (s.filter_run_id)                  setFilter_run_id(s.filter_run_id as string)
+      if (s.filter_date_from)               setFilter_date_from(s.filter_date_from as string)
+      if (s.filter_date_to)                 setFilter_date_to(s.filter_date_to as string)
+      if (s.filter_day_of_week)              setFilter_day_of_week(s.filter_day_of_week as string)
       if (s.scoring)                setScoring(s.scoring as (typeof SCORING_TYPES)[number])
       if (s.statsScoring)           setStatsScoring(s.statsScoring as (typeof SCORING_TYPES)[number])
-      if (s.sessionNameFilter)      setSessionNameFilter(s.sessionNameFilter as string)
-      if ((s.selectedTournaments as string[])?.length) setSelectedTournaments(new Set(s.selectedTournaments as string[]))
-      if (s.summaryFilter)            setSummaryFilter(s.summaryFilter as 'all' | 'summary' | 'session')
-      if (s.scoringFilter)          setScoringFilter(s.scoringFilter as 'all' | (typeof SCORING_TYPES)[number])
+      if (s.filter_name)      setFilter_name(s.filter_name as string)
+      if (Array.isArray(s.filter_tournament) && s.filter_tournament.length) setFilter_tournament(new Set(s.filter_tournament as string[]))
+      if (s.filter_is_summary)            setFilter_is_summary(s.filter_is_summary as 'all' | 'summary' | 'session')
+      if (s.filter_scoring)          setFilter_scoring(s.filter_scoring as 'all' | (typeof SCORING_TYPES)[number])
       if (s.currentPage)            setCurrentPage(s.currentPage as number)
       if (s.itemsPerPage)           setItemsPerPage(s.itemsPerPage as number)
     }
@@ -198,17 +135,17 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (!restoredRef.current) return
     try {
       sessionStorage.setItem(playerStorageKey(playerId), JSON.stringify({
-        activeTab, historyView, dateFrom, dateTo, dayFilter, scoring, statsScoring, sessionNameFilter,
-        selectedTournaments: [...selectedTournaments],
-        selectedClubs: [...selectedClubs],
-        selectedEventTypes: [...selectedEventTypes],
-        selectedPartnerIds: [...selectedPartnerIds],
-        summaryFilter, scoringFilter, currentPage, itemsPerPage,
+        activeTab, historyView, filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, scoring, statsScoring, filter_name,
+        filter_tournament: serializeSelection([...filter_tournament], 3),
+        filter_club: serializeSelection([...filter_club], clubOptions.length),
+        filter_event_type: serializeSelection([...filter_event_type], eventTypeOptions.length),
+        filter_plid: serializeSelection([...filter_plid].map(String), new Set(results.map(r => r.partner_id)).size),
+        filter_is_summary, filter_scoring, currentPage, itemsPerPage,
       }))
     } catch {}
-  }, [playerId, activeTab, dateFrom, dateTo, dayFilter, scoring, statsScoring, sessionNameFilter,
-      selectedTournaments, selectedClubs, selectedEventTypes, selectedPartnerIds,
-      summaryFilter, scoringFilter, currentPage, itemsPerPage])
+  }, [playerId, activeTab, filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, scoring, statsScoring, filter_name,
+      filter_tournament, filter_club, clubOptions.length, filter_event_type, eventTypeOptions.length, filter_plid, results,
+      filter_is_summary, filter_scoring, currentPage, itemsPerPage])
 
   // ── Mark restoration complete (declared after save so save is blocked on first render) ──
   useEffect(() => {
@@ -216,14 +153,14 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   }, [playerId])
 
   const uniquePartners = useMemo(() => {
-    const seen = new Map<number, { name: string; nz_number: number | null; count: number; tracked: boolean }>()
+    const seen = new Map<number, { name: string; nzb: number | null; count: number; tracked: boolean }>()
     results.forEach(r => {
       const entry = seen.get(r.partner_id)
       if (entry) entry.count++
-      else seen.set(r.partner_id, { name: r.partner_name, nz_number: r.partner_nz_number ?? null, count: 1, tracked: Boolean(r.partner_tracked) })
+      else seen.set(r.partner_id, { name: r.partner_name, nzb: r.partner_nzb ?? null, count: 1, tracked: Boolean(r.partner_tracked) })
     })
     return [...seen.entries()]
-      .map(([id, { name, nz_number, count, tracked }]) => ({ id, name, nz_number, count, tracked }))
+      .map(([plid, { name, nzb, count, tracked }]) => ({ plid, name, nzb, count, tracked }))
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [results])
 
@@ -231,42 +168,43 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   // Initialise partners to all on load, or restore saved subset
   useEffect(() => {
     const all = new Set(results.map(r => r.partner_id))
-    const saved = savedRef.current?.selectedPartnerIds as number[] | undefined
-    if (saved?.length) {
-      const valid = new Set(saved.filter(id => all.has(id)))
-      setSelectedPartnerIds(valid.size > 0 ? valid : all)
+    const saved = savedRef.current?.filter_plid as string[] | typeof SELECTION_ALL | undefined
+    if (Array.isArray(saved) && saved.length) {
+      const valid = new Set(saved.map(Number).filter(id => all.has(id)))
+      setFilter_plid(valid.size > 0 ? valid : all)
     } else {
-      setSelectedPartnerIds(all)
+      setFilter_plid(all)
     }
   }, [results])
 
   const sessionsSorted = useMemo(() => {
     let rows = [...results].sort((a, b) => (a.date > b.date ? -1 : 1))
-    if (dateFrom)         rows = rows.filter(r => r.date.slice(0, 10) >= dateFrom)
-    if (dateTo)           rows = rows.filter(r => r.date.slice(0, 10) <= dateTo)
-    if (dayFilter)        rows = rows.filter(r => r.day_of_week === dayFilter)
-    if (selectedPartnerIds.size < uniquePartners.length)
-                          rows = rows.filter(r => selectedPartnerIds.has(r.partner_id))
-    if (scoringFilter !== 'all') rows = rows.filter(r => r.scoring === scoringFilter)
+    if (filter_run_id)            rows = rows.filter(r => String(r.run_id).includes(filter_run_id))
+    if (filter_date_from)         rows = rows.filter(r => r.date.slice(0, 10) >= filter_date_from)
+    if (filter_date_to)           rows = rows.filter(r => r.date.slice(0, 10) <= filter_date_to)
+    if (filter_day_of_week)        rows = rows.filter(r => r.day_of_week === filter_day_of_week)
+    if (filter_plid.size < uniquePartners.length)
+                          rows = rows.filter(r => filter_plid.has(r.partner_id))
+    if (filter_scoring !== 'all') rows = rows.filter(r => r.scoring === filter_scoring)
 
-    if (sessionNameFilter)     rows = rows.filter(r => r.session_name.toLowerCase().includes(sessionNameFilter.toLowerCase()))
-    if (isSelectionFiltering([...selectedClubs], clubOptions.length))
-                               rows = rows.filter(r => selectedClubs.has(r.club))
-    if (isSelectionFiltering([...selectedTournaments], 3))
-                               rows = rows.filter(r => selectedTournaments.has((r.tournament ?? '').match(/[ABC]$/i)?.[0]?.toUpperCase() ?? ''))
-    if (isSelectionFiltering([...selectedEventTypes], eventTypeOptions.length))
-                               rows = rows.filter(r => selectedEventTypes.has(r.event_type))
-    if (summaryFilter === 'summary') rows = rows.filter(r => r.is_summary === true)
-    if (summaryFilter === 'session') rows = rows.filter(r => r.is_summary !== true)
+    if (filter_name)     rows = rows.filter(r => r.session_name.toLowerCase().includes(filter_name.toLowerCase()))
+    if (isSelectionFiltering([...filter_club], clubOptions.length))
+                               rows = rows.filter(r => filter_club.has(r.club))
+    if (isSelectionFiltering([...filter_tournament], 3))
+                               rows = rows.filter(r => filter_tournament.has((r.tournament ?? '').match(/[ABC]$/i)?.[0]?.toUpperCase() ?? ''))
+    if (isSelectionFiltering([...filter_event_type], eventTypeOptions.length))
+                               rows = rows.filter(r => filter_event_type.has(r.event_type))
+    if (filter_is_summary === 'summary') rows = rows.filter(r => r.is_summary === true)
+    if (filter_is_summary === 'session') rows = rows.filter(r => r.is_summary !== true)
     return rows
-  }, [results, dateFrom, dateTo, dayFilter, selectedPartnerIds, uniquePartners.length,
-      scoringFilter, sessionNameFilter,
-      selectedClubs, clubOptions.length, selectedTournaments,
-      selectedEventTypes, eventTypeOptions.length, summaryFilter])
+  }, [results, filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_plid, uniquePartners.length,
+      filter_scoring, filter_name,
+      filter_club, clubOptions.length, filter_tournament,
+      filter_event_type, eventTypeOptions.length, filter_is_summary])
 
 useEffect(() => { setCurrentPage(1) },
-    [dateFrom, dateTo, dayFilter, selectedPartnerIds, scoringFilter, sessionNameFilter,
-     selectedClubs, selectedTournaments, selectedEventTypes, summaryFilter])
+    [filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_plid, filter_scoring, filter_name,
+     filter_club, filter_tournament, filter_event_type, filter_is_summary])
 
   useEffect(() => {
     if (isNaN(playerId)) { setError('Invalid player ID'); setLoading(false); return }
@@ -297,22 +235,22 @@ useEffect(() => { setCurrentPage(1) },
   if (error)   return <div className='rounded bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700'>{error}</div>
   if (!player) return null
 
-  const hasFilter = !!(dateFrom || dateTo || dayFilter ||
-    sessionNameFilter ||
-    selectedPartnerIds.size < uniquePartners.length ||
-    isSelectionFiltering([...selectedClubs], clubOptions.length) ||
-    isSelectionFiltering([...selectedTournaments], 3) ||
-    isSelectionFiltering([...selectedEventTypes], eventTypeOptions.length) ||
-    scoringFilter !== 'all')
+  const hasFilter = !!(filter_run_id || filter_date_from || filter_date_to || filter_day_of_week ||
+    filter_name ||
+    filter_plid.size < uniquePartners.length ||
+    isSelectionFiltering([...filter_club], clubOptions.length) ||
+    isSelectionFiltering([...filter_tournament], 3) ||
+    isSelectionFiltering([...filter_event_type], eventTypeOptions.length) ||
+    filter_scoring !== 'all')
 
   function clearFilters() {
-    setDateFrom(''); setDateTo(''); setDayFilter('')
-    setSelectedPartnerIds(new Set(results.map(r => r.partner_id)))
-    setSessionNameFilter('')
-    setSelectedClubs(new Set(clubOptions))
-    setSelectedTournaments(new Set(['A', 'B', 'C']))
-    setSelectedEventTypes(new Set(eventTypeOptions))
-    setScoringFilter('all')
+    setFilter_date_from(''); setFilter_date_to(''); setFilter_day_of_week('')
+    setFilter_plid(new Set(results.map(r => r.partner_id)))
+    setFilter_name('')
+    setFilter_club(new Set(clubOptions))
+    setFilter_tournament(new Set(['A', 'B', 'C']))
+    setFilter_event_type(new Set(eventTypeOptions))
+    setFilter_scoring('all')
   }
 
   function buildCSV(rows: ResultRow[]) {
@@ -323,12 +261,12 @@ useEffect(() => { setCurrentPage(1) },
     const header = ['Player','NZB#','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP','XIMP']
     const dataRows = rows.map(r => [
       player!.pl_name,
-      player!.pl_nz_bridge_number,
+      player!.pl_nzb,
       r.run_id,
       r.date.slice(0, 10),
       r.day_of_week,
       r.partner_name,
-      r.partner_nz_number ?? '',
+      r.partner_nzb ?? '',
       r.session_name,
       r.club,
       r.tournament,
@@ -398,7 +336,7 @@ useEffect(() => { setCurrentPage(1) },
         </div>
         <div className='flex items-baseline gap-3'>
           <h1 className='text-xl font-bold text-gray-900'>{player.pl_name}</h1>
-          <span className='text-xs text-gray-400'>NZ Bridge #{player.pl_nz_bridge_number}</span>
+          <span className='text-xs text-gray-400'>NZ Bridge #{player.pl_nzb}</span>
           {player.pl_tracked && (
             <span className='rounded-full bg-green-100 border border-green-300 px-2 py-0.5 text-xs font-medium text-green-700'>Tracked</span>
           )}
@@ -464,7 +402,9 @@ useEffect(() => { setCurrentPage(1) },
                             {sessions > 0 ? formatScoringValue(statsScoring, r.a1_avg) : '—'}
                           </td>
                           <td className='text-right text-xs text-gray-400 py-0.5 px-4'>
-                            {sessions > 0 ? `${r.a1_avg_rank} of ${r.a1_group_total}` : ''}
+                            {sessions > 0
+                              ? (r.a1_avg_rank != null ? `${r.a1_avg_rank} of ${r.a1_group_total}` : 'Not enough sessions')
+                              : ''}
                           </td>
                           <td className='text-right text-gray-500 py-0.5 px-4'>
                             {sessions > 0 ? sessions : ''}
@@ -527,95 +467,83 @@ useEffect(() => { setCurrentPage(1) },
               <table className='w-full text-sm'>
                 <thead>
                   <tr className='border-b border-gray-200'>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Run ID</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Date</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Day</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-36'>Partner</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-36'>Session</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium min-w-28'>Club</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Tournament</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-24'>Event Type</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-16'>Scoring</th>
-                    <th className='py-1.5 text-left text-xs text-gray-500 font-medium w-20'>Summary</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_RUN_ID}`}>Run ID</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_DATE}`}>Date</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_DAY_OF_WEEK}`}>Day</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_PLID}`}>Partner</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_NAME}`}>Session</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_CLUB}`}>Club</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_TOURNAMENT_TYPE}`}>Tournament</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_EVENT_TYPE}`}>Event Type</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_SCORING}`}>Scoring</th>
+                    <th className={`py-1.5 text-left text-xs text-gray-500 font-medium ${WIDTH_IS_SUMMARY}`}>Summary</th>
                     <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>%</th>
                     <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>VP</th>
                     <th className='py-1.5 text-right text-xs text-gray-500 font-medium w-16'>XIMP</th>
                   </tr>
                   <tr className='border-b border-gray-100 bg-gray-50 align-top'>
-                    {/* Source — no filter */}
-                    <td className='py-1' />
+                    {/* Run ID */}
+                    <td className='py-1 pr-1'>
+                      <FilterRunId value={filter_run_id} onChange={setFilter_run_id} />
+                    </td>
                     {/* Date: from on top, to below */}
                     <td className='py-1 pr-1'>
                       <div className='flex flex-col gap-0.5'>
-                        <MyInput type='date' value={dateFrom} min={EARLIEST_DATA_DATE} max={new Date().toISOString().slice(0, 10)} onChange={e => setDateFrom(e.target.value)}
-                          overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='From' />
-                        <MyInput type='date' value={dateTo} min={EARLIEST_DATA_DATE} max={new Date().toISOString().slice(0, 10)} onChange={e => setDateTo(e.target.value)}
-                          overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto' title='To' />
+                        <FilterDate value={filter_date_from} onChange={setFilter_date_from} />
+                        <FilterDate value={filter_date_to} onChange={setFilter_date_to} />
                       </div>
                     </td>
                     {/* Day */}
                     <td className='py-1 pr-1'>
-                      <MySelect value={dayFilter} onChange={e => setDayFilter(e.target.value)}
-                        overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
-                        <option value=''>All</option>
-                        {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d =>
-                          <option key={d}>{d}</option>)}
-                      </MySelect>
+                      <FilterDayOfWeek value={filter_day_of_week} onChange={setFilter_day_of_week} />
                     </td>
                     {/* Partner multi-select */}
                     <td className='py-1 pr-1'>
-                      <PartnerSelect partners={uniquePartners} selected={selectedPartnerIds} onChange={setSelectedPartnerIds} />
+                      <FilterPlid players={uniquePartners} selected={filter_plid} onChange={setFilter_plid} />
                     </td>
                     {/* Session name */}
                     <td className='py-1 pr-1'>
-                      <MyInput type='text' value={sessionNameFilter} onChange={e => setSessionNameFilter(e.target.value)}
-                        placeholder='Search…'
-                        overrideClass='w-full rounded border border-gray-300 px-1.5 py-0.5 text-xs font-normal h-auto md:h-auto' />
+                      <FilterName value={filter_name} onChange={setFilter_name} placeholder='Search…' />
                     </td>
                     {/* Club */}
                     <td className='py-1 pr-1'>
-                      <ClubSelect selected={selectedClubs} onChange={setSelectedClubs}
+                      <ClubSelect selected={filter_club} onChange={setFilter_club}
                         onOptionsLoaded={opts => {
                           setClubOptions(opts)
-                          const saved = savedRef.current?.selectedClubs as string[] | undefined
-                          if (saved?.length) {
+                          const saved = savedRef.current?.filter_club as string[] | typeof SELECTION_ALL | undefined
+                          if (Array.isArray(saved) && saved.length) {
                             const valid = new Set(saved.filter(o => opts.includes(o)))
-                            setSelectedClubs(valid.size > 0 ? valid : new Set(opts))
+                            setFilter_club(valid.size > 0 ? valid : new Set(opts))
                           } else {
-                            setSelectedClubs(new Set(opts))
+                            setFilter_club(new Set(opts))
                           }
                         }} />
                     </td>
                     {/* Tournament */}
                     <td className='py-1 pr-1'>
-                      <StringMultiSelect options={['A', 'B', 'C']} selected={selectedTournaments} onChange={setSelectedTournaments} />
+                      <StringMultiSelect options={['A', 'B', 'C']} selected={filter_tournament} onChange={setFilter_tournament} />
                     </td>
                     {/* Event type */}
                     <td className='py-1 pr-1'>
-                      <EventTypeSelect selected={selectedEventTypes} onChange={setSelectedEventTypes}
+                      <EventTypeSelect selected={filter_event_type} onChange={setFilter_event_type}
                         onOptionsLoaded={opts => {
                           setEventTypeOptions(opts)
-                          const saved = savedRef.current?.selectedEventTypes as string[] | undefined
-                          if (saved?.length) {
+                          const saved = savedRef.current?.filter_event_type as string[] | typeof SELECTION_ALL | undefined
+                          if (Array.isArray(saved) && saved.length) {
                             const valid = new Set(saved.filter(o => opts.includes(o)))
-                            setSelectedEventTypes(valid.size > 0 ? valid : new Set(opts))
+                            setFilter_event_type(valid.size > 0 ? valid : new Set(opts))
                           } else {
-                            setSelectedEventTypes(new Set(opts))
+                            setFilter_event_type(new Set(opts))
                           }
                         }} />
                     </td>
                     {/* Scoring filter */}
                     <td className='py-1 pr-1'>
-                      <ScoringTypeSelect value={scoringFilter} onChange={v => setScoringFilter(v as 'all' | (typeof SCORING_TYPES)[number])} includeAll />
+                      <ScoringTypeSelect value={filter_scoring} onChange={v => setFilter_scoring(v as 'all' | (typeof SCORING_TYPES)[number])} includeAll />
                     </td>
                     {/* Summary filter */}
                     <td className='py-1 pr-1'>
-                      <MySelect value={summaryFilter} onChange={e => setSummaryFilter(e.target.value as 'all' | 'summary' | 'session')}
-                        overrideClass='w-full rounded border border-gray-300 px-1 py-0.5 text-xs font-normal h-auto md:h-auto'>
-                        <option value='all'>All</option>
-                        <option value='summary'>Summary</option>
-                        <option value='session'>Session</option>
-                      </MySelect>
+                      <FilterIsSummary value={filter_is_summary} onChange={setFilter_is_summary} />
                     </td>
                     {/* %, VP, XIMP — no filter */}
                     <td className='py-1' />

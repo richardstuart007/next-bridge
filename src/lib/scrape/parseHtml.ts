@@ -34,7 +34,7 @@ const MONTH_MAP: Record<string, string> = {
 // -----------------------------------------------------------------------
 
 export interface ParsedPlayer {
-  nz_bridge_number: number
+  nzb: number
   name: string
   club: string
   rank: string
@@ -69,8 +69,8 @@ export function parsePlayerTableByName(html: string, name: string | null): Parse
     if (cells.length < 10) return
 
     const numberStr = $(cells[1]).text().trim()
-    const nz_bridge_number = parseInt(numberStr, 10)
-    if (isNaN(nz_bridge_number)) return
+    const nzb = parseInt(numberStr, 10)
+    if (isNaN(nzb)) return
 
     const rowName = $(cells[0]).text().trim()
 
@@ -78,7 +78,7 @@ export function parsePlayerTableByName(html: string, name: string | null): Parse
     if (normTarget && rowName.toLowerCase().replace(/\s+/g, ' ').trim() !== normTarget) return
 
     candidates.push({
-      nz_bridge_number,
+      nzb,
       name: rowName || '',
       club: normaliseClub($(cells[2]).text().trim()),
       rank: $(cells[3]).text().trim(),
@@ -93,7 +93,7 @@ export function parsePlayerTableByName(html: string, name: string | null): Parse
   if (candidates.length === 0) return null
 
   // When multiple matches, prefer the lowest NZ bridge number
-  return candidates.reduce((best, c) => c.nz_bridge_number < best.nz_bridge_number ? c : best)
+  return candidates.reduce((best, c) => c.nzb < best.nzb ? c : best)
 }
 
 /**
@@ -110,14 +110,14 @@ export function parseAllPlayerMatches(html: string, name: string): ParsedPlayer[
     if (cells.length < 10) return
 
     const numberStr = $(cells[1]).text().trim()
-    const nz_bridge_number = parseInt(numberStr, 10)
-    if (isNaN(nz_bridge_number)) return
+    const nzb = parseInt(numberStr, 10)
+    if (isNaN(nzb)) return
 
     const rowName = $(cells[0]).text().trim()
     if (rowName.toLowerCase().replace(/\s+/g, ' ').trim() !== normTarget) return
 
     candidates.push({
-      nz_bridge_number,
+      nzb,
       name: rowName || '',
       club: normaliseClub($(cells[2]).text().trim()),
       rank: $(cells[3]).text().trim(),
@@ -146,10 +146,10 @@ function parseAllRows(html: string): ParsedPlayer[] {
   $('table tr').each((_i, row) => {
     const cells = $(row).find('td')
     if (cells.length < 10) return
-    const nz_bridge_number = parseInt($(cells[1]).text().trim(), 10)
-    if (isNaN(nz_bridge_number)) return
+    const nzb = parseInt($(cells[1]).text().trim(), 10)
+    if (isNaN(nzb)) return
     rows.push({
-      nz_bridge_number,
+      nzb,
       name: $(cells[0]).text().trim(),
       club: normaliseClub($(cells[2]).text().trim()),
       rank: $(cells[3]).text().trim(),

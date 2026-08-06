@@ -21,10 +21,10 @@ interface ResultRow {
   re_score: number | null
   plid: number
   pl_name: string
-  pl_nz_bridge_number: number
+  pl_nzb: number
   partner_plid: number
   partner_name: string
-  partner_nz_bridge_number: number
+  partner_nzb: number
 }
 
 export default function SessionPageClient({ sessionId }: { sessionId: number }) {
@@ -141,14 +141,14 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
                       {r.pl_name}
                     </Link>
                   </td>
-                  <td className='py-1.5 text-xs text-gray-400'>{r.pl_nz_bridge_number || '—'}</td>
+                  <td className='py-1.5 text-xs text-gray-400'>{r.pl_nzb || '—'}</td>
                   <td className='py-1.5'>
                     <Link href={`/player/${r.partner_plid}`} className='text-blue-600 hover:underline'
                       onClick={e => { e.stopPropagation(); saveBackNav(BACK_KEY) }}>
                       {r.partner_name}
                     </Link>
                   </td>
-                  <td className='py-1.5 text-xs text-gray-400'>{r.partner_nz_bridge_number || '—'}</td>
+                  <td className='py-1.5 text-xs text-gray-400'>{r.partner_nzb || '—'}</td>
                   <td className='py-1.5 text-right font-medium'>
                     {session.se_scoring === 'VP'
                       ? parseFloat(String(r.re_score)).toFixed(2)

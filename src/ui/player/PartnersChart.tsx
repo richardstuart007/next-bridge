@@ -13,7 +13,7 @@ import { BACK_KEY, CHART_TOP_N_PRESELECTED, SCORING_TYPES } from '@/src/lib/cons
 interface PartnerRef {
   id: number
   name: string
-  nz_number?: number | null
+  nzb?: number | null
 }
 
 interface ResultRow {
@@ -32,7 +32,7 @@ interface ResultRow {
   ximp:              number | null
   partner_id:        number
   partner_name:      string | null
-  partner_nz_number: number | null
+  partner_nzb: number | null
 }
 
 const SELF_COLOR = 'rgba(0, 0, 0, 1)'
@@ -225,12 +225,12 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
       rows.forEach(r => {
         dataRows.push([
           entry.name,
-          entry.nz_number ?? '',
+          entry.nzb ?? '',
           r.run_id,
           r.date.slice(0, 10),
           r.day_of_week,
           r.partner_name ?? '',
-          r.partner_nz_number ?? '',
+          r.partner_nzb ?? '',
           r.session_name,
           r.club,
           r.tournament,

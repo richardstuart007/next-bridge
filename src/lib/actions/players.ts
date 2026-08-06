@@ -19,11 +19,11 @@ export async function getPlayerById(plPlid: number) {
   return rows[0] ?? null
 }
 
-export async function getPlayerByNzNumber(nzNumber: number) {
+export async function getPlayerByNzb(nzb: number) {
   const rows = await table_fetch({
-    caller: 'getPlayerByNzNumber',
+    caller: 'getPlayerByNzb',
     table: PLAYERS_TABLE,
-    whereColumnValuePairs: [{ column: 'pl_nz_bridge_number', value: nzNumber }]
+    whereColumnValuePairs: [{ column: 'pl_nzb', value: nzb }]
   })
   return rows[0] ?? null
 }
@@ -50,7 +50,7 @@ export async function searchPlayers(query: string) {
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [
       { column: 'pl_name', value: `%${titleCased}%`, operator: 'LIKE' },
-      { column: 'pl_nz_bridge_number', value: 0, operator: '>' }
+      { column: 'pl_nzb', value: 0, operator: '>' }
     ],
     orderBy: 'pl_name ASC',
     limit: PLAYER_SEARCH_LIMIT
@@ -76,11 +76,11 @@ export async function getAllPlayers() {
   })
 }
 
-export async function getPlayersWithoutNzNumber() {
+export async function getPlayersWithoutNzb() {
   return table_fetch({
-    caller: 'getPlayersWithoutNzNumber',
+    caller: 'getPlayersWithoutNzb',
     table: PLAYERS_TABLE,
-    whereColumnValuePairs: [{ column: 'pl_nz_bridge_number', value: 0 }],
+    whereColumnValuePairs: [{ column: 'pl_nzb', value: 0 }],
     orderBy: 'pl_name ASC'
   })
 }
@@ -99,7 +99,7 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
   })
   const withNumber = await table_count({
     table: PLAYERS_TABLE,
-    whereColumnValuePairs: [{ column: 'pl_nz_bridge_number', value: 0, operator: '>' }],
+    whereColumnValuePairs: [{ column: 'pl_nzb', value: 0, operator: '>' }],
     caller: 'getPlayerCounts'
   })
   return { withNumber, withoutNumber: total - withNumber }
@@ -127,14 +127,14 @@ export async function getPlayerAllGroupStats(plid: number) {
     a1_avg:         number
     a1_stddev:      number | null
     a1_pct_rank:    number | null
-    a1_avg_rank:    number
-    a1_group_total: number
+    a1_avg_rank:    number | null
+    a1_group_total: number | null
   }[]
 }
 
 /** Upsert full player data including NZ bridge number. */
 export async function upsertPlayer(data: {
-  nz_bridge_number: number
+  nzb: number
   name: string
   club?: string
   rank?: string
@@ -145,7 +145,7 @@ export async function upsertPlayer(data: {
   c_points?: number
 }) {
   const statsCols = [
-    { column: 'pl_nz_bridge_number', value: data.nz_bridge_number },
+    { column: 'pl_nzb', value: data.nzb },
     { column: 'pl_name',             value: data.name },
     { column: 'pl_club',             value: data.club      ?? '' },
     { column: 'pl_rank',             value: data.rank      ?? '' },
@@ -168,13 +168,13 @@ export async function upsertPlayer(data: {
   }
 
   // If a different player already holds this NZ number, update them
-  const byNz = data.nz_bridge_number > 0 ? await getPlayerByNzNumber(data.nz_bridge_number) : null
-  if (byNz) {
+  const byNzb = data.nzb > 0 ? await getPlayerByNzb(data.nzb) : null
+  if (byNzb) {
     return table_update({
       caller: 'upsertPlayer',
       table: PLAYERS_TABLE,
       columnValuePairs: statsCols,
-      whereColumnValuePairs: [{ column: 'pl_plid', value: byNz.pl_plid }]
+      whereColumnValuePairs: [{ column: 'pl_plid', value: byNzb.pl_plid }]
     })
   }
 

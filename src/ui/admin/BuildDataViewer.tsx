@@ -44,7 +44,7 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
   const [selectedPlayer, setSelectedPlayer] = useState<Row | null>(null)
   const [filter_plid,         setFilter_plid]         = useState(() => sharedFilters.plid?.value ?? '')
   const [filter_name,         setFilter_name]         = useState('')
-  const [filter_nz_bridge_number, setFilter_nz_bridge_number] = useState('')
+  const [filter_nzb, setFilter_nzb] = useState('')
   const [filter_club,         setFilter_club]         = useState<string[]>([])
   const [filter_rank,         setFilter_rank]         = useState('')
   const [filter_grade,        setFilter_grade]        = useState<string[]>([])
@@ -69,7 +69,7 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
   const filteredPlayers = players.filter(r => {
     if (filter_plid && !String(r.pl_plid ?? '').includes(filter_plid)) return false
     if (filter_name && !String(r.pl_name ?? '').toLowerCase().includes(filter_name.toLowerCase())) return false
-    if (filter_nz_bridge_number && !String(r.pl_nz_bridge_number ?? '').includes(filter_nz_bridge_number)) return false
+    if (filter_nzb && !String(r.pl_nzb ?? '').includes(filter_nzb)) return false
     if (filter_club.length > 0 && !filter_club.includes(String(r.pl_club ?? ''))) return false
     if (filter_rank && !String(r.pl_rank ?? '').toLowerCase().includes(filter_rank.toLowerCase())) return false
     if (filter_grade.length > 0 && !filter_grade.includes(String(r.pl_grade ?? ''))) return false
@@ -83,7 +83,7 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
   const playerFilters: Record<string, React.ReactNode> = {
     pl_plid:             <FText placeholder='id…'    value={filter_plid} onChange={setFilter_plid} />,
     pl_name:             <FText placeholder='name…'  value={filter_name} onChange={setFilter_name} />,
-    pl_nz_bridge_number: <FText placeholder='nz#…'   value={filter_nz_bridge_number} onChange={setFilter_nz_bridge_number} />,
+    pl_nzb: <FText placeholder='nzb#…'  value={filter_nzb} onChange={setFilter_nzb} />,
     pl_club:             <FMultiSelect options={clubOptions} value={filter_club} onChange={setFilter_club} />,
     pl_rank:             <FText placeholder='rank…'  value={filter_rank} onChange={setFilter_rank} />,
     pl_grade:            <FMultiSelect options={gradeOptions} value={filter_grade} onChange={setFilter_grade} />,
@@ -118,6 +118,7 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [sessLoading,        setSessLoading]        = useState(false)
   const [selectedSess,       setSelectedSess]       = useState<Row | null>(null)
   const [sessResults,        setSessResults]        = useState<Row[]>([])
+  const [filter_seid,        setFilter_seid]        = useState(() => sharedFilters.seid?.value ?? '')
   const [filter_run_id,      setFilter_run_id]      = useState(() => sharedFilters.run_id?.value ?? '')
   const [filter_date,        setFilter_date]        = useState('')
   const [filter_scoring,     setFilter_scoring]     = useState<string[]>([])
@@ -155,6 +156,7 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
     if (filter_name      && !String(r.se_name       ?? '').toLowerCase().includes(filter_name.toLowerCase()))  return false
     if (filter_date      && dateKey(r.se_date) !== filter_date) return false
     if (filter_club.length > 0 && !filter_club.includes(String(r.se_club ?? ''))) return false
+    if (filter_seid      && !String(r.se_seid    ?? '').includes(filter_seid))                              return false
     if (filter_run_id    && !String(r.se_run_id  ?? '').includes(filter_run_id))                            return false
     if (filter_scoring.length > 0 && !filter_scoring.includes(String(r.se_scoring ?? '')))   return false
     if (isSelectionFiltering([...filter_event_type], eventTypeOptions.length) && !filter_event_type.has(String(r.se_event_type ?? ''))) return false
@@ -168,6 +170,7 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
   })
 
   const sessFilters: Record<string, React.ReactNode> = {
+    se_seid:      <FText placeholder='seid…' value={filter_seid}     onChange={setFilter_seid} />,
     se_run_id:    <FText placeholder='id…'   value={filter_run_id}   onChange={setFilter_run_id} />,
     se_date:      <FDate value={filter_date} onChange={setFilter_date} />,
     se_day_of_week:  <FMultiSelect options={dayNames} value={filter_day_of_week} onChange={setFilter_day_of_week} />,

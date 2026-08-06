@@ -1,4 +1,15 @@
+import { SessionStorageKeyPrefix } from 'nextjs-shared/constants'
+
 export const ROBOT_PLAYER_NAME = 'Robot'
+
+//
+//  This project's own sessionStorage sub-prefix, per nextjs-shared/CONSUMING_PROJECTS.md's
+//  "Session Storage tab" section — every key this project writes directly (not via
+//  useBackNav/saveBackNav, which already prefix under nextjs-shared's own rs7_shr_) must start
+//  with this so /owner's Session Storage tab picks it up, and so it can never collide with a
+//  key another project or nextjs-shared itself writes in the same browser origin.
+//
+export const SESSION_STORAGE_PREFIX = `${SessionStorageKeyPrefix}br_`
 
 //
 //  Default span (in days) the Pipeline page's "To" date defaults to, ahead of the
@@ -119,6 +130,33 @@ export const FILTER_DEBOUNCE_MS = 300
 export const SCORING_TYPES = ['MP', 'VP', 'XIMP'] as const
 
 //
+//  se_day_of_week values — single source of truth so it isn't hand-typed at every filter call
+//  site (Home Sessions tab, PlayerPageClient/PartnersTable's FilterDayOfWeek)
+//
+export const DAYS_OF_WEEK: string[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+//
+//  Minimum sessions a player needs, per scoring type, to receive a real precomputed rank
+//  (a1_avg_rank/a1_group_total/a1_pct_rank) in statsCompute.ts — below this they get NULL rank
+//  rather than a number skewed by low-sample-size averages. XIMP sessions are far rarer than
+//  MP/VP, so it needs its own much lower floor.
+//
+export const MIN_RANKING_SESSIONS_MP = 30
+export const MIN_RANKING_SESSIONS_VP = 30
+export const MIN_RANKING_SESSIONS_XIMP = 1
+
+//
+//  Same idea, but for partnerships (a2_avg_rank/a2_group_total) — a partnership only accumulates
+//  a session when the exact same two people play together, so partnerships reach far fewer
+//  sessions than an individual player does (confirmed against local data: ~4.5 avg MP sessions
+//  per partnership vs. an individual player's much higher volume). Using the player thresholds
+//  for partnerships left almost none of them ever ranked, hence separate, much lower constants.
+//
+export const MIN_RANKING_SESSIONS_PARTNER_MP = 5
+export const MIN_RANKING_SESSIONS_PARTNER_VP = 5
+export const MIN_RANKING_SESSIONS_PARTNER_XIMP = 1
+
+//
 //  Recognized session-summary types (Home Sessions tab's Summary filter — se_is_summary is a
 //  boolean column; both selected = no filter, matching the standard MySelectMulti convention)
 //
@@ -167,10 +205,20 @@ export const TABLE_MIN_HEIGHT_PX = TABLE_HEADER_HEIGHT_PX + TABLE_MIN_VISIBLE_RO
 export const WIDTH_RANK = 'w-40'
 export const WIDTH_GRADE = 'w-40'
 export const WIDTH_CLUB = 'w-96'
-export const WIDTH_DAY = 'w-40'
-export const WIDTH_TOURNAMENT_TYPE = 'w-40'
-export const WIDTH_SCORING = 'w-40'
-export const WIDTH_SUMMARY = 'w-40'
+export const WIDTH_DAY_OF_WEEK = 'w-40'
+export const WIDTH_TOURNAMENT_TYPE = 'w-24'
+export const WIDTH_SCORING = 'w-24'
 export const WIDTH_SESSIONS_MIN = 'w-32'
-export const WIDTH_SCORING_RANKINGS = 'w-32'
 export const WIDTH_TOURNAMENT_NAME = 'w-96'
+export const WIDTH_NZB = 'w-32'
+export const WIDTH_PAID = 'w-32'
+export const WIDTH_NAME = 'w-40'
+export const WIDTH_TRACKED = 'w-16'
+export const WIDTH_RATING_MIN = 'w-24'
+export const WIDTH_A_POINTS_MIN = 'w-24'
+export const WIDTH_DATE = 'w-32'
+export const WIDTH_IS_SUMMARY = 'w-40'
+export const WIDTH_PLID = 'w-40'
+export const WIDTH_SEID = 'w-20'
+export const WIDTH_RUN_ID = 'w-20'
+export const WIDTH_EVENT_TYPE = 'w-24'

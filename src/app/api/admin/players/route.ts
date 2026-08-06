@@ -9,21 +9,21 @@ import { ROWS_PER_PAGE } from '@/src/lib/constants'
 //----------------------------------------------------------------------------------
 function buildWhere(searchParams: URLSearchParams): { where: string; params: (string | number | boolean)[] } {
   const name       = searchParams.get('name')?.trim()  ?? ''
-  const nz         = searchParams.get('nz')?.trim()    ?? ''
+  const nzb        = searchParams.get('nzb')?.trim()   ?? ''
   const ranks      = searchParams.get('ranks')?.split(',').filter(Boolean)  ?? []
   const grades     = searchParams.get('grades')?.split(',').filter(Boolean) ?? []
   const clubs      = searchParams.get('clubs')?.split(',').filter(Boolean)  ?? []
-  const ratingMin  = searchParams.get('ratingMin')
-  const aMin       = searchParams.get('aMin')
-  const sessMin    = searchParams.get('sessMin')
+  const ratingMin  = searchParams.get('rating_min')
+  const aMin       = searchParams.get('a_points_min')
+  const sessMin    = searchParams.get('sessions_min')
   const tracked    = searchParams.get('tracked') === 'true'
-  const excludeNz0 = searchParams.get('excludeNz0') !== 'false'
+  const excludeNzb0 = searchParams.get('excludeNzb0') !== 'false'
 
   const conditions: string[] = []
   const params: (string | number | boolean)[] = []
 
   if (name) { params.push(`%${name}%`); conditions.push(`pl_name ILIKE $${params.length}`) }
-  if (nz)   { params.push(`%${nz}%`);   conditions.push(`pl_nz_bridge_number::text ILIKE $${params.length}`) }
+  if (nzb)  { params.push(`%${nzb}%`);  conditions.push(`pl_nzb::text ILIKE $${params.length}`) }
   if (ranks.length > 0) {
     // Matches the normalization in populateRanks()/normalizeRank() — pl_rank itself may still
     // hold raw 'n/a'/'unknown'/'' values that the "No Rank" lookup option represents
@@ -45,7 +45,7 @@ function buildWhere(searchParams: URLSearchParams): { where: string; params: (st
   if (aMin)      { params.push(parseFloat(aMin));      conditions.push(`pl_a_points >= $${params.length}`) }
   if (sessMin)   { params.push(parseFloat(sessMin));   conditions.push(`COALESCE(s.a1_sessions, 0) >= $${params.length}`) }
   if (tracked)   conditions.push(`pl_tracked = true`)
-  if (excludeNz0) conditions.push(`pl_nz_bridge_number > 0`)
+  if (excludeNzb0) conditions.push(`pl_nzb > 0`)
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   return { where, params }
@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
                  pl_a_points, pl_rating,
                  COALESCE(s.a1_sessions, 0) AS a1_sessions,
                  COALESCE(s.a1_avg_pct, 0)  AS a1_avg_pct,
-                 pl_tracked, pl_nz_bridge_number
+                 pl_tracked, pl_nzb
           ${fromJoin}
           ORDER BY pl_name ASC
           LIMIT ${itemsPerPage} OFFSET ${offset}

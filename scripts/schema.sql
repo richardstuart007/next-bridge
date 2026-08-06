@@ -197,7 +197,7 @@ ALTER TABLE ONLY public.tpip_pipelinelog
 CREATE TABLE public.tpl_players (
     pl_plid integer NOT NULL,
     pl_name character varying(100) NOT NULL,
-    pl_nz_bridge_number integer DEFAULT 0 NOT NULL,
+    pl_nzb integer DEFAULT 0 NOT NULL,
     pl_club character varying(100) DEFAULT ''::character varying NOT NULL,
     pl_rank character varying(100) DEFAULT ''::character varying NOT NULL,
     pl_grade character varying(50) DEFAULT ''::character varying NOT NULL,
@@ -223,7 +223,7 @@ ALTER TABLE ONLY public.tpl_players
 ALTER TABLE ONLY public.tpl_players
     ADD CONSTRAINT tpl_players_pl_name_key UNIQUE (pl_name);
 
-CREATE UNIQUE INDEX uq_pl_nz_bridge_number ON public.tpl_players USING btree (pl_nz_bridge_number) WHERE (pl_nz_bridge_number > 0);
+CREATE UNIQUE INDEX uq_pl_nzb ON public.tpl_players USING btree (pl_nzb) WHERE (pl_nzb > 0);
 
 --
 -- Name: tre_results; Type: TABLE;

@@ -51,7 +51,7 @@
 |-------------------------|---------|--------------------------------------------------|
 | `pl_plid`               | PK      | Primary key                                      |
 | `pl_name`               | varchar | Canonical name (title-cased, handles Mc/Mac/O')  |
-| `pl_nz_bridge_number`   | integer | NZ Bridge national number (0 until filled)       |
+| `pl_nzb`   | integer | NZ Bridge national number (0 until filled)       |
 | `pl_session_count`      | integer | Total sessions (all scoring types)               |
 | `pl_avg_percentage`     | numeric | Overall average %                                |
 | `pl_mp_session_count`   | integer | MP-only session count                            |
@@ -316,23 +316,23 @@ FROM tfl_fetch_log ORDER BY fl_fetched_at DESC LIMIT 20;
 > **Location:** Admin → Stage 4  
 > **Route:** `POST /api/players/refresh?mode=missing` (streaming SSE)
 
-**Purpose:** For every player with `pl_nz_bridge_number = 0`, searches nzbridge.co.nz by name.
+**Purpose:** For every player with `pl_nzb = 0`, searches nzbridge.co.nz by name.
 
 | Result      | Action                                                    |
 |-------------|-----------------------------------------------------------|
-| 1 match     | Updates `pl_nz_bridge_number` immediately                 |
+| 1 match     | Updates `pl_nzb` immediately                 |
 | 0 matches   | Records as failed (no update)                             |
 | 2+ matches  | Writes candidates to `tam_ambiguous` for manual review    |
 
 #### Tables written
 
-`tpl_players` (`pl_nz_bridge_number`) · `tam_ambiguous`
+`tpl_players` (`pl_nzb`) · `tam_ambiguous`
 
 #### Verify
 
 ```sql
 -- Players still missing NZ#
-SELECT pl_plid, pl_name FROM tpl_players WHERE pl_nz_bridge_number = 0 ORDER BY pl_name;
+SELECT pl_plid, pl_name FROM tpl_players WHERE pl_nzb = 0 ORDER BY pl_name;
 
 -- Ambiguous cases waiting for manual review
 SELECT am_search_name, am_nz_number, am_nz_name, am_club FROM tam_ambiguous ORDER BY am_search_name;
@@ -351,18 +351,18 @@ SELECT am_search_name, am_nz_number, am_nz_name, am_club FROM tam_ambiguous ORDE
 #### Request body
 
 ```json
-{ "search_name": "John Smith", "nz_number": 12345 }
+{ "search_name": "John Smith", "nzb": 12345 }
 ```
 
 #### What it does
 
-1. `UPDATE tpl_players SET pl_nz_bridge_number = nz_number WHERE pl_name = search_name`
+1. `UPDATE tpl_players SET pl_nzb = nzb WHERE pl_name = search_name`
 2. `DELETE FROM tam_ambiguous WHERE am_search_name = search_name`
 
 #### Verify
 
 ```sql
-SELECT pl_plid, pl_name, pl_nz_bridge_number FROM tpl_players WHERE pl_name = 'John Smith';
+SELECT pl_plid, pl_name, pl_nzb FROM tpl_players WHERE pl_name = 'John Smith';
 SELECT COUNT(*) AS remaining FROM tam_ambiguous;
 ```
 
@@ -421,12 +421,12 @@ FROM tpl_players WHERE pl_name ILIKE '%kerrie%mccrae%';
 #### Request body (POST)
 
 ```json
-{ "pl_name": "Jane Doe", "nz_number": 99999 }
+{ "pl_name": "Jane Doe", "nzb": 99999 }
 ```
 
 #### Tables written
 
-`tpl_players` (`pl_nz_bridge_number`)
+`tpl_players` (`pl_nzb`)
 
 ---
 
@@ -445,8 +445,8 @@ FROM tpl_players WHERE pl_name ILIKE '%kerrie%mccrae%';
 #### Verify
 
 ```sql
-SELECT pl_name, pl_nz_bridge_number, pl_grade, pl_rating
-FROM tpl_players WHERE pl_nz_bridge_number > 0
+SELECT pl_name, pl_nzb, pl_grade, pl_rating
+FROM tpl_players WHERE pl_nzb > 0
 ORDER BY pl_rating DESC LIMIT 20;
 ```
 

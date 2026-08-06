@@ -145,12 +145,12 @@ export async function POST(request: NextRequest) {
 
         const flagged = await table_query({
           caller: 'scrape/discover/nzb-by-flagged/flagged',
-          query: `SELECT pl_plid, pl_name, pl_nz_bridge_number
+          query: `SELECT pl_plid, pl_name, pl_nzb
                   FROM tpl_players
-                  WHERE pl_tracked = TRUE AND pl_nz_bridge_number > 0
+                  WHERE pl_tracked = TRUE AND pl_nzb > 0
                   ORDER BY pl_name ASC`,
           params: []
-        }) as { pl_plid: number; pl_name: string; pl_nz_bridge_number: number }[]
+        }) as { pl_plid: number; pl_name: string; pl_nzb: number }[]
 
         if (flagged.length === 0) {
           send({ done: true, total_sessions: 0 })
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
         for (const player of flagged) {
           send({ player: player.pl_name })
 
-          const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nz_bridge_number}`
+          const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nzb}`
 
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }

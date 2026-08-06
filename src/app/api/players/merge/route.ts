@@ -80,14 +80,14 @@ export async function POST(request: NextRequest) {
       params: [discard_plid]
     })
 
-    // 4. Transfer nz_bridge_number if kept player has none
+    // 4. Transfer nzb if kept player has none
     await table_query({
-      caller: 'players/merge/transfer-nz-number',
+      caller: 'players/merge/transfer-nzb',
       query: `UPDATE tpl_players
-              SET pl_nz_bridge_number = (SELECT pl_nz_bridge_number FROM tpl_players WHERE pl_plid = $1)
+              SET pl_nzb = (SELECT pl_nzb FROM tpl_players WHERE pl_plid = $1)
               WHERE pl_plid = $2
-                AND pl_nz_bridge_number = 0
-                AND (SELECT pl_nz_bridge_number FROM tpl_players WHERE pl_plid = $1) > 0`,
+                AND pl_nzb = 0
+                AND (SELECT pl_nzb FROM tpl_players WHERE pl_plid = $1) > 0`,
       params: [discard_plid, keep_plid]
     })
 

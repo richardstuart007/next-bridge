@@ -16,6 +16,7 @@ export type SessionFilters = {
   days?:             string[]
   scoring?:          string[]
   name?:             string
+  runId?:            string
   clubs?:            string[]
   eventTypes?:       string[]
   summaryTypes?:     string[]
@@ -51,6 +52,7 @@ function buildSessionFilters(f: SessionFilters): Filter[] {
   if (f.scoring && f.scoring.length > 0)
     result.push({ column: 'se_scoring', operator: 'IN', value: f.scoring })
   if (f.name)    result.push({ column: 'se_name', operator: 'LIKE', value: f.name })
+  if (f.runId)   result.push({ column: 'se_run_id::text', operator: 'LIKE', value: f.runId })
   if (f.clubs && f.clubs.length > 0)
     result.push({ column: 'se_club', operator: 'IN', value: f.clubs })
   if (f.eventTypes && f.eventTypes.length > 0)

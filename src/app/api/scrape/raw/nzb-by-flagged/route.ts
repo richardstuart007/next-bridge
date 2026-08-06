@@ -127,7 +127,7 @@ async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; creat
 
   const inserted = await table_query({
     caller: 'scrape/nzb-by-flagged/create',
-    query: `INSERT INTO tpl_players (pl_name, pl_nz_bridge_number)
+    query: `INSERT INTO tpl_players (pl_name, pl_nzb)
             VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
     params: [name]
   }) as { pl_plid: number }[]
@@ -173,12 +173,12 @@ export async function POST(request: NextRequest) {
         // Get all flagged players with a valid NZ bridge number
         const flagged = await table_query({
           caller: 'scrape/nzb-by-flagged/flagged',
-          query: `SELECT pl_plid, pl_name, pl_nz_bridge_number
+          query: `SELECT pl_plid, pl_name, pl_nzb
                   FROM tpl_players
-                  WHERE pl_tracked = TRUE AND pl_nz_bridge_number > 0
+                  WHERE pl_tracked = TRUE AND pl_nzb > 0
                   ORDER BY pl_name ASC`,
           params: []
-        }) as { pl_plid: number; pl_name: string; pl_nz_bridge_number: number }[]
+        }) as { pl_plid: number; pl_name: string; pl_nzb: number }[]
 
         if (flagged.length === 0) {
           send({ done: true, total_found: 0, total_missing: 0, pairs_inserted: 0, players_created: 0, skipped_rows: 0 })
@@ -189,9 +189,9 @@ export async function POST(request: NextRequest) {
         const allMissingIds = new Set<number>()
 
         for (const player of flagged) {
-          send({ player: player.pl_name, nz_number: player.pl_nz_bridge_number })
+          send({ player: player.pl_name, nzb: player.pl_nzb })
 
-          const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nz_bridge_number}`
+          const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nzb}`
 
           const response = await fetch(url, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }

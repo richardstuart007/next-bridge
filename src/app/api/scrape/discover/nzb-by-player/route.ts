@@ -5,18 +5,18 @@ import { extractRunIds } from '@/src/lib/scrapeUtils'
 const NZB_BASE = 'https://www.nzbridge.co.nz'
 
 export async function POST(request: NextRequest) {
-  let body: { nz_bridge_number?: number }
+  let body: { nzb?: number }
   try { body = await request.json() } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400 })
   }
 
-  const { nz_bridge_number } = body
-  if (!nz_bridge_number) {
-    return new Response(JSON.stringify({ error: 'nz_bridge_number is required' }), { status: 400 })
+  const { nzb } = body
+  if (!nzb) {
+    return new Response(JSON.stringify({ error: 'nzb is required' }), { status: 400 })
   }
 
   try {
-    const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${nz_bridge_number}`
+    const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${nzb}`
     const response = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; next-bridge-bot/1.0)' }
     })

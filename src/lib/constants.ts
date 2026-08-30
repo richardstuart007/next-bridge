@@ -44,9 +44,26 @@ export const TOURNAMENT_GROUP_SQL_EXPR =
 export const BRIDGE_CLUB_ID = 106
 
 //
-//  Request timeout for scrape HTML fetches (fetchHtml.ts) before aborting and retrying once
+//  Request timeout for a single scrape HTML fetch before aborting. Used by fetchHtml.ts and by
+//  the pipeline scrape's own fetchWithTimeout. Overrideable per run via ?fetch_timeout_ms=
 //
 export const FETCH_TIMEOUT_MS = 15_000
+
+//
+//  Hard per-invocation ceiling (Vercel `export const maxDuration`, seconds) for the long-running
+//  pipeline routes — scrape, scrape-tracked, stats, cron/update-sessions. 300 is Vercel Pro's max
+//  on the default runtime without Fluid Compute. Deploy-time only, not runtime-overrideable.
+//  Canonical value / documentation: Next.js route segment config must be a literal, so each route
+//  writes `export const maxDuration = 300` directly and keeps it in sync with this.
+//
+export const SCRAPE_MAX_DURATION_SECONDS = 300
+
+//
+//  Soft time budget (ms) the scrape loops self-enforce: once past it they stop between run_ids /
+//  days and commit what they have, so an overflowing catch-up window resumes on the next run
+//  instead of being killed at SCRAPE_MAX_DURATION_SECONDS. Overrideable per run via ?time_budget_ms=
+//
+export const SCRAPE_TIME_BUDGET_MS = 240_000
 
 //
 //  When no session has ever been built yet, how many days back the automatic "From" date
@@ -99,6 +116,12 @@ export const PLAYER_SEARCH_ALL_LIMIT = 30
 //  Number of most-recent run_ids offered in the Pipeline page's run-id picker (pipelineLog.ts)
 //
 export const PIPELINE_RECENT_RUN_IDS_LIMIT = 10
+
+//
+//  How often (ms) the Pipeline page's Overview refreshes its Jobs summary while a full
+//  "Run All Cron" request is in flight, so the new run_id and each completing step show live
+//
+export const PIPELINE_RUN_POLL_MS = 2500
 
 //
 //  Earliest date the app's data begins — the min bound on every session/result date picker

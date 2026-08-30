@@ -161,4 +161,21 @@ stats to see what's actually stored." Two things follow from that purpose:
   `docs/PLAN_data-investigation-bill-leach.md` — see this commit's git history for the full text
   if it's needed again.
 
+- **`src/app/api/build/*` routes were never in git until 2026-08-30** — `~/.gitignore_global`'s
+  bare `build/` rule matched `src/app/api/build/`, so `scrape`, `scrape-tracked`, `stats`, and the
+  new `start-run` route files had never been committed. This is the likely reason the production
+  `/api/build/*` cron jobs (in `vercel.json`) have been dead — Vercel deploys from git, so those
+  routes returned 404 with no log trace. Fixed by adding `!src/app/api/build/` to the project
+  `.gitignore` and committing all four. **Verify after the next prod deploy** that `/api/build/scrape`
+  etc. now respond (Vercel Cron Jobs tab / Logs — Phase 1 of `PLAN_prod-cron-pipeline-not-running`).
+
+- **`ALTER TABLE tpip_pipelinelog ADD COLUMN pip_to_date date;` pending on prod** — run on local
+  already; needed on prod before/at the next deploy or `startPipelineRun` / every `logPipelineStep`
+  call will fail with "column does not exist".
+
+- **Not yet done from `PLAN_prod-cron-pipeline-not-running` (archived):** Phase 4 (make prod
+  `write_logging('E')` actually persist so cron failures aren't invisible — never triggered);
+  Phase 5 (the ~4-week prod session backlog backfill from `npm run localprod`); `pipelineToDate`
+  browser persistence via `localStorage` (deferred).
+
 

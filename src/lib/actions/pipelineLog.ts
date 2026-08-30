@@ -17,6 +17,7 @@ export type PipelineStatus = {
   pip_output_recs:  number
   pip_duration_ms:  number
   pip_created:      string
+  pip_to_date:      string | Date | null
 }
 
 //----------------------------------------------------------------------------------
@@ -48,7 +49,9 @@ export async function resolvePipRunId(step: number, forceNewRun: boolean): Promi
 }
 
 //----------------------------------------------------------------------------------
-//  logPipelineStep — writes a single completion row once a step has finished running
+//  logPipelineStep — writes a single completion row once a step has finished running.
+//  `to_date` is the run's process-nothing-past cap and is only ever set on the step-0
+//  "Start Run" row (NULL everywhere else) — read it back via the step-0 row of a run.
 //----------------------------------------------------------------------------------
 export async function logPipelineStep(args: {
   run_id:        number
@@ -61,6 +64,7 @@ export async function logPipelineStep(args: {
   output_table?: string
   output_recs?:  number
   duration_ms:   number
+  to_date?:      string
 }): Promise<void> {
   await table_write({
     caller: 'pipelineLog/logPipelineStep',
@@ -76,8 +80,29 @@ export async function logPipelineStep(args: {
       { column: 'pip_output_table', value: args.output_table ?? null },
       { column: 'pip_output_recs',  value: args.output_recs ?? 0 },
       { column: 'pip_duration_ms',  value: args.duration_ms },
+      { column: 'pip_to_date',      value: args.to_date ?? null },
     ]
   })
+}
+
+//----------------------------------------------------------------------------------
+//  startPipelineRun — allocates the day's fresh pip_run_id (MAX+1) and writes the
+//  step-0 "Start Run" marker row that every later step reuses via
+//  resolvePipRunId(step, false). This is the only place a new run is created — the
+//  AKBC scrape no longer forces one, so run_id allocation never depends on a heavy
+//  step completing. `toDate` (ISO YYYY-MM-DD) is the run's process-nothing-past cap;
+//  it is recorded on this step-0 row only. Returns the new run_id.
+//----------------------------------------------------------------------------------
+export async function startPipelineRun(toDate?: string): Promise<{ run_id: number }> {
+  const t0 = Date.now()
+  const run_id = await resolvePipRunId(0, true)
+  await logPipelineStep({
+    run_id, step: 0, sub_step: 'a', step_name: 'Start Run',
+    duration_ms: Date.now() - t0,
+    to_date: toDate
+  })
+  const result = { run_id }
+  return result
 }
 
 //----------------------------------------------------------------------------------

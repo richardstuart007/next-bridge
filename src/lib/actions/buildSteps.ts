@@ -9,9 +9,10 @@ export type BuildResultsResult  = { inserted: number }
 
 //----------------------------------------------------------------------------------
 //  buildSessionsFromStaging — ts1_sessions → tse_sessions (skip existing). Optional
-//  fromDate/toDate scopes it to a date range (e.g. matching the Scrape step that fed
-//  it) — an explicit safeguard, not just relying on staging-truncate timing. Omitted,
-//  it processes every ts1_sessions row with a date, as before. `group` selects which
+//  fromDate/toDate scopes it (e.g. matching the Scrape step that fed it) — an explicit
+//  safeguard, not just relying on staging-truncate timing. Both given → BETWEEN; only
+//  toDate → date <= toDate (the catch-up "cap"); only fromDate → date >= fromDate;
+//  neither → every ts1_sessions row with a date, as before. `group` selects which
 //  top-level pipeline step this run belongs to — step 1 (AKBC) or step 2 (Tracked
 //  Players) — since this one function logs for both batches.
 //----------------------------------------------------------------------------------
@@ -20,8 +21,7 @@ export async function buildSessionsFromStaging(forceNewRun = false, fromDate?: s
   const step = group === 'akbc' ? 1 : 2
   const run_id = await resolvePipRunId(step, forceNewRun)
 
-  const dateFilter = (fromDate && toDate) ? ` AND s1_date BETWEEN $1 AND $2` : ''
-  const dateParams = (fromDate && toDate) ? [fromDate, toDate] : []
+  const { dateFilter, dateParams } = dateRangeFilter('s1_date', fromDate, toDate)
 
   const result = await table_query({
     caller: 'buildSteps/sessions/insert',
@@ -68,17 +68,16 @@ export async function buildSessionsFromStaging(forceNewRun = false, fromDate?: s
 
 //----------------------------------------------------------------------------------
 //  buildResultsFromStaging — ts2_results → tpa_partners + tre_results. Optional
-//  fromDate/toDate scopes it (via the joined tse_sessions.se_date) to a date range —
-//  same explicit-safeguard reasoning as buildSessionsFromStaging. Same `group` meaning
-//  as buildSessionsFromStaging.
+//  fromDate/toDate scopes it (via the joined tse_sessions.se_date) — same
+//  both/to-only/from-only/neither semantics as buildSessionsFromStaging. Same `group`
+//  meaning as buildSessionsFromStaging.
 //----------------------------------------------------------------------------------
 export async function buildResultsFromStaging(forceNewRun = false, fromDate?: string, toDate?: string, group: 'akbc' | 'tracked' = 'akbc'): Promise<BuildResultsResult> {
   const t0 = Date.now()
   const step = group === 'akbc' ? 1 : 2
   const run_id = await resolvePipRunId(step, forceNewRun)
 
-  const dateFilter = (fromDate && toDate) ? ` AND se_date BETWEEN $1 AND $2` : ''
-  const dateParams = (fromDate && toDate) ? [fromDate, toDate] : []
+  const { dateFilter, dateParams } = dateRangeFilter('se_date', fromDate, toDate)
 
   await table_query({
     caller: 'buildSteps/results/upsert-partners',
@@ -123,4 +122,17 @@ export async function buildResultsFromStaging(forceNewRun = false, fromDate?: st
   })
 
   return { inserted }
+}
+
+//----------------------------------------------------------------------------------
+//  dateRangeFilter — the ` AND <column> …` SQL fragment + positional params for an
+//  optional from/to window. both → BETWEEN $1 AND $2; toDate only → <= $1; fromDate
+//  only → >= $1; neither → '' with no params. `column` is a bare, already-unique
+//  column name (s1_date / se_date), never user input.
+//----------------------------------------------------------------------------------
+function dateRangeFilter(column: string, fromDate?: string, toDate?: string): { dateFilter: string; dateParams: string[] } {
+  if (fromDate && toDate) return { dateFilter: ` AND ${column} BETWEEN $1 AND $2`, dateParams: [fromDate, toDate] }
+  if (toDate)             return { dateFilter: ` AND ${column} <= $1`,             dateParams: [toDate] }
+  if (fromDate)           return { dateFilter: ` AND ${column} >= $1`,             dateParams: [fromDate] }
+  return { dateFilter: '', dateParams: [] }
 }

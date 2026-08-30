@@ -4,6 +4,26 @@ import { table_query } from 'nextjs-shared/table_query'
 
 export type StepStatus = { remaining: number }
 
+export type StagingCounts = { ts1_sessions: number; ts2_results: number }
+
+//----------------------------------------------------------------------------------
+//  getStagingCounts — raw row counts of ts1_sessions / ts2_results, for the Pipeline
+//  Overview's "run in progress" strip: the scrape fills these long before it logs a
+//  pipeline step, so they give visible movement while a full "Run All Cron" runs
+//----------------------------------------------------------------------------------
+export async function getStagingCounts(): Promise<StagingCounts> {
+  const rows = await table_query({
+    caller: 'pipelineStatus/staging',
+    query: `SELECT
+              (SELECT COUNT(*)::int FROM ts1_sessions) AS ts1_sessions,
+              (SELECT COUNT(*)::int FROM ts2_results)  AS ts2_results`,
+    params: [],
+    skipCache: true
+  }) as StagingCounts[]
+  const result = rows[0] ?? { ts1_sessions: 0, ts2_results: 0 }
+  return result
+}
+
 //----------------------------------------------------------------------------------
 //  refreshSessionsStatus — ts1_sessions rows not yet built into tse_sessions
 //----------------------------------------------------------------------------------

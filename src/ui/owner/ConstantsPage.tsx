@@ -20,6 +20,8 @@ import {
   TOURNAMENT_GROUP_SQL_EXPR,
   BRIDGE_CLUB_ID,
   FETCH_TIMEOUT_MS,
+  SCRAPE_MAX_DURATION_SECONDS,
+  SCRAPE_TIME_BUDGET_MS,
   SCRAPE_FALLBACK_LOOKBACK_DAYS,
   MP_PERCENTAGE_MIN,
   MP_PERCENTAGE_MAX,
@@ -29,6 +31,7 @@ import {
   PLAYER_SEARCH_LIMIT,
   PLAYER_SEARCH_ALL_LIMIT,
   PIPELINE_RECENT_RUN_IDS_LIMIT,
+  PIPELINE_RUN_POLL_MS,
   EARLIEST_DATA_DATE,
   CHART_TOP_N_PRESELECTED,
   ROWS_PER_PAGE,
@@ -70,9 +73,11 @@ const CONSTANTS_SECTIONS: ConstantSection[] = [
     heading: 'Scrape / Club',
     entries: [
       { name: 'BRIDGE_CLUB_ID', value: BRIDGE_CLUB_ID, description: 'NZB club id for AKBC — filters nzbridge.co.nz results pages to this club during discovery/scrape.', consumers: ['pipelineScrape.ts: scrapeClubSessions', 'scrape/discover/nzb-by-date/route.ts: POST', 'scrape/raw/nzb-by-date/route.ts: POST', 'PipelineTable.tsx: PipelineTable'] },
-      { name: 'FETCH_TIMEOUT_MS', value: FETCH_TIMEOUT_MS, description: 'Abort timeout for each scrape HTML fetch before retrying once.', consumers: ['fetchHtml.ts: fetchWithTimeout'] },
+      { name: 'FETCH_TIMEOUT_MS', value: FETCH_TIMEOUT_MS, description: "Abort timeout for a single scrape HTML fetch. Default for the Pipeline page's 'Fetch timeout (s)' input; overrideable per run via ?fetch_timeout_ms=.", consumers: ['fetchHtml.ts: fetchWithTimeout', 'pipelineScrape.ts: fetchWithTimeout', 'PipelineTable.tsx: PipelineTable'] },
+      { name: 'SCRAPE_MAX_DURATION_SECONDS', value: SCRAPE_MAX_DURATION_SECONDS, description: 'Canonical value for the hard Vercel `export const maxDuration` on the long-running pipeline routes (scrape, scrape-tracked, stats, cron/update-sessions). Next.js route config must be a literal, so each route writes `= 300` directly and keeps it in sync with this — no code imports it.', consumers: [] },
+      { name: 'SCRAPE_TIME_BUDGET_MS', value: SCRAPE_TIME_BUDGET_MS, description: "Soft time budget the scrape loops self-enforce — once past it they stop between run_ids/days and commit, so an overflowing catch-up window resumes on the next run. Default for the Pipeline page's 'Time budget (s)' input; overrideable per run via ?time_budget_ms=.", consumers: ['pipelineScrape.ts: scrapeClubSessions', 'pipelineScrape.ts: scrapeTrackedPlayerSessions', 'PipelineTable.tsx: PipelineTable'] },
       { name: 'SCRAPE_FALLBACK_LOOKBACK_DAYS', value: SCRAPE_FALLBACK_LOOKBACK_DAYS, description: "Days back the automatic scrape 'From' date falls back to when no session has ever been built yet.", consumers: ['pipelineScrape.ts: getDateRange'] },
-      { name: 'SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS', value: SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS, description: "Default span (in days) the Pipeline page's 'To' date defaults to, ahead of the automatic 'From' date.", consumers: ['PipelineTable.tsx: doRefreshAll'] }
+      { name: 'SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS', value: SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS, description: '(Currently unused — the Pipeline page’s shared "To date" is now opt-in with no default. Retained for possible reuse.)', consumers: [] }
     ]
   },
   {
@@ -104,7 +109,8 @@ const CONSTANTS_SECTIONS: ConstantSection[] = [
   {
     heading: 'Pipeline',
     entries: [
-      { name: 'PIPELINE_RECENT_RUN_IDS_LIMIT', value: PIPELINE_RECENT_RUN_IDS_LIMIT, description: "Number of most-recent run_ids offered in the Pipeline page's run-id picker.", consumers: ['pipelineLog.ts: getRecentRunIds'] }
+      { name: 'PIPELINE_RECENT_RUN_IDS_LIMIT', value: PIPELINE_RECENT_RUN_IDS_LIMIT, description: "Number of most-recent run_ids offered in the Pipeline page's run-id picker.", consumers: ['pipelineLog.ts: getRecentRunIds'] },
+      { name: 'PIPELINE_RUN_POLL_MS', value: PIPELINE_RUN_POLL_MS, description: "How often (ms) the Pipeline Overview reloads its Jobs summary while a 'Run All Cron' request is in flight, so the new run_id and each completing step show live.", consumers: ['PipelineTable.tsx: PipelineTable'] }
     ]
   },
   {
@@ -165,9 +171,11 @@ const FUNCTION_DESCRIPTIONS: Record<string, string> = {
   'scrape/discover/nzb-by-date/route.ts: POST': 'Legacy manual route: finds missing run_ids for a given club/date range and writes them to ts1_sessions.',
   'scrape/raw/nzb-by-date/route.ts: POST': 'Legacy manual route: scrapes a club/date range directly from nzbridge.co.nz into ts2_results.',
   'PipelineTable.tsx: PipelineTable': 'Owner Pipeline page — runs and monitors every pipeline step (AKBC scrape, tracked players, build partners, update stats).',
-  'fetchHtml.ts: fetchWithTimeout': 'Fetches a URL with an abort timeout, used by every scrape HTML request.',
+  'fetchHtml.ts: fetchWithTimeout': 'Fetches a URL with an abort timeout, used by the legacy scrape HTML requests.',
+  'pipelineScrape.ts: fetchWithTimeout': "The pipeline scrape's own abort-timeout fetch wrapper (default FETCH_TIMEOUT_MS, overrideable per run), used for every discovery page and run_id results page.",
+  'pipelineScrape.ts: scrapeTrackedPlayerSessions': "Step 2 (Tracked Players): scrapes every flagged tracked player's history into ts1_sessions + ts2_results; honours the shared To-date, soft time budget, and fetch timeout.",
   'pipelineScrape.ts: getDateRange': "Resolves the scrape step's From/To date range, falling back to the automatic MAX(se_date) or a fixed lookback when no sessions exist yet.",
-  'PipelineTable.tsx: doRefreshAll': "Refreshes every step's status counts and defaults the From/To date inputs when empty.",
+  'PipelineTable.tsx: doRefreshAll': "Refreshes every step's status counts and defaults the AKBC 'From' date input when empty.",
   'pipelineScrape.ts: normaliseScore': 'Clamps/resets an out-of-range raw scraped score before it is written to ts2_results.',
   'scrape/raw/nzb-by-date/route.ts: normaliseScore': "Legacy route's own copy of the same score sanity-check logic.",
   'buildSteps.ts: buildResultsFromStaging': 'ts2_results → tpa_partners + tre_results — clamps/caps re_score on insert.',

@@ -3,6 +3,7 @@
     "deploymentEnabled": true
   },
   "crons": [
+    { "path": "/api/build/start-run",                    "schedule": "50 13 * * *" },
     { "path": "/api/build/scrape",                       "schedule": "0 14 * * *" },
     { "path": "/api/build/sessions-nzb?group=akbc",      "schedule": "20 14 * * *" },
     { "path": "/api/build/results-nzb?group=akbc",       "schedule": "40 14 * * *" },

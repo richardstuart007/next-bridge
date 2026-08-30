@@ -4,7 +4,15 @@ import { scrapeClubSessions, scrapeTrackedPlayerSessions } from '@/src/lib/actio
 import { buildSessionsFromStaging, buildResultsFromStaging } from '@/src/lib/actions/buildSteps'
 import { buildAllPartnerStats } from '@/src/lib/actions/players'
 import { rebuildAllStats } from '@/src/lib/actions/stats'
-import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
+import { logPipelineStep, resolvePipRunId, startPipelineRun } from '@/src/lib/actions/pipelineLog'
+
+//
+//  Hard Vercel per-invocation ceiling for the whole-pipeline run — the scrape steps
+//  self-enforce a shorter soft budget (?time_budget_ms=) and resume on the next run.
+//  Next.js route config must be a literal — keep in sync with
+//  SCRAPE_MAX_DURATION_SECONDS in src/lib/constants.ts
+//
+export const maxDuration = 300
 
 //----------------------------------------------------------------------------------
 //  checkCronAuth — returns a 401 NextResponse when CRON_SECRET is set, the env is
@@ -21,11 +29,14 @@ function checkCronAuth(request: NextRequest): NextResponse | null {
 }
 
 //----------------------------------------------------------------------------------
-//  run — runs the whole pipeline in one request (scrape AKBC → build → scrape
-//  tracked → build → partners → stats), logging each stage, and returns a summary
-//  JSON (500 with { error } on failure)
+//  run — runs the whole pipeline in one request (start run → scrape AKBC → build →
+//  scrape tracked → build → partners → stats), logging each stage, and returns a
+//  summary JSON (500 with { error } on failure). toDate caps every processed date —
+//  the club scrape window, the tracked scrape (via scrapeRunId's date check), and both
+//  tracked build steps; timeBudgetMs / fetchTimeoutMs are passed to each scrape step
+//  (defaults apply when omitted).
 //----------------------------------------------------------------------------------
-async function run(): Promise<NextResponse> {
+async function run(toDate?: string, timeBudgetMs?: number, fetchTimeoutMs?: number): Promise<NextResponse> {
   //----------------------------------------------------------------------------------------------
   //  log — write_logging bound to this route's functionname/caller (default severity 'I')
   //----------------------------------------------------------------------------------------------
@@ -37,18 +48,26 @@ async function run(): Promise<NextResponse> {
   try {
     await log('START full pipeline run')
 
-    const clubResult = await scrapeClubSessions()
-    await log(`Scrape AKBC: ${clubResult.run_ids_new} new run_ids, ${clubResult.pairs_total} pairs, ${clubResult.players_created} new players`)
+    const { run_id: startRunId } = await startPipelineRun(toDate)
+    await log(`Start Run: new pipeline run_id ${startRunId}${toDate ? ` (to_date ${toDate})` : ''}`)
+
+    const clubResult = await scrapeClubSessions(undefined, toDate, timeBudgetMs, fetchTimeoutMs)
+    await log(`Scrape AKBC: ${clubResult.run_ids_new} new run_ids, ${clubResult.pairs_total} pairs, ${clubResult.players_created} new players${clubResult.timed_out ? ' (stopped at time budget)' : ''}`)
 
     const clubSessionsResult = await buildSessionsFromStaging(false, clubResult.from_date, clubResult.to_date)
     const clubResultsResult  = await buildResultsFromStaging(false, clubResult.from_date, clubResult.to_date)
     await log(`Build (AKBC): ${clubSessionsResult.inserted} sessions, ${clubResultsResult.inserted} results`)
 
-    const trackedResult = await scrapeTrackedPlayerSessions()
-    await log(`Scrape Tracked Players: ${trackedResult.run_ids_new} new run_ids, ${trackedResult.pairs_total} pairs, ${trackedResult.players_created} new players`)
+    const trackedResult = await scrapeTrackedPlayerSessions(toDate, timeBudgetMs, fetchTimeoutMs)
+    await log(`Scrape Tracked Players: ${trackedResult.run_ids_new} new run_ids, ${trackedResult.pairs_total} pairs, ${trackedResult.players_created} new players${trackedResult.timed_out ? ' (stopped at time budget)' : ''}`)
 
-    const trackedSessionsResult = await buildSessionsFromStaging(false, undefined, undefined, 'tracked')
-    const trackedResultsResult  = await buildResultsFromStaging(false, undefined, undefined, 'tracked')
+    //
+    //  Cap both tracked build steps at toDate too — belt and braces alongside the
+    //  scrape's own date check, so anything already staged past the cap stays unprocessed
+    //  until it is lifted
+    //
+    const trackedSessionsResult = await buildSessionsFromStaging(false, undefined, toDate, 'tracked')
+    const trackedResultsResult  = await buildResultsFromStaging(false, undefined, toDate, 'tracked')
     await log(`Build (Tracked): ${trackedSessionsResult.inserted} sessions, ${trackedResultsResult.inserted} results`)
 
     const t0Partners = Date.now()
@@ -71,6 +90,7 @@ async function run(): Promise<NextResponse> {
       sessions_built:  clubSessionsResult.inserted + trackedSessionsResult.inserted,
       results_built:   clubResultsResult.inserted + trackedResultsResult.inserted,
       partner_pairs,
+      timed_out:       clubResult.timed_out || trackedResult.timed_out,
     }
     await log(`DONE: ${summary.run_ids_new} run_ids, ${summary.sessions_built} sessions, ${summary.results_built} results`)
     return NextResponse.json(summary)
@@ -82,12 +102,26 @@ async function run(): Promise<NextResponse> {
 }
 
 //----------------------------------------------------------------------------------
-//  GET — Vercel Cron entry: cron-auth-checks, then runs the full pipeline
+//  params — pulls [to_date, time_budget_ms, fetch_timeout_ms] out of the request
+//  query string (the two _ms values parsed to a number, or undefined)
+//----------------------------------------------------------------------------------
+function params(request: NextRequest): [string | undefined, number | undefined, number | undefined] {
+  const toDate          = request.nextUrl.searchParams.get('to_date') ?? undefined
+  const timeBudgetRaw   = request.nextUrl.searchParams.get('time_budget_ms')
+  const fetchTimeoutRaw = request.nextUrl.searchParams.get('fetch_timeout_ms')
+  const timeBudgetMs    = timeBudgetRaw   != null ? Number(timeBudgetRaw)   : undefined
+  const fetchTimeoutMs  = fetchTimeoutRaw != null ? Number(fetchTimeoutRaw) : undefined
+  return [toDate, timeBudgetMs, fetchTimeoutMs]
+}
+
+//----------------------------------------------------------------------------------
+//  GET — Vercel Cron entry: cron-auth-checks, then runs the full pipeline for the
+//  optional to_date/time_budget_ms/fetch_timeout_ms query params
 //----------------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const unauthorized = checkCronAuth(request)
   if (unauthorized) return unauthorized
-  return run()
+  return run(...params(request))
 }
 
 //----------------------------------------------------------------------------------
@@ -96,5 +130,5 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const unauthorized = checkCronAuth(request)
   if (unauthorized) return unauthorized
-  return run()
+  return run(...params(request))
 }

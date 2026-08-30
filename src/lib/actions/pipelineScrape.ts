@@ -10,6 +10,8 @@ import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
 import {
   BRIDGE_CLUB_ID,
   SCRAPE_FALLBACK_LOOKBACK_DAYS,
+  SCRAPE_TIME_BUDGET_MS,
+  FETCH_TIMEOUT_MS,
   MP_PERCENTAGE_MIN,
   MP_PERCENTAGE_MAX,
   VP_SCORE_SANITY_MAX,
@@ -29,11 +31,29 @@ export type ScrapeSessionsResult = {
   run_ids_new:     number
   pairs_total:     number
   players_created: number
+  timed_out:       boolean
 }
 
 export type ScrapeClubSessionsResult = ScrapeSessionsResult & {
   from_date: string
   to_date:   string
+}
+
+//----------------------------------------------------------------------------------
+//  fetchWithTimeout — fetch(url) aborted by an AbortController after timeoutMs
+//  (default FETCH_TIMEOUT_MS). The pipeline scrape's raw fetches had no timeout at
+//  all, so one stalled nzbridge connection could burn the whole function budget.
+//  Overrideable per run via the routes' ?fetch_timeout_ms= query param.
+//----------------------------------------------------------------------------------
+async function fetchWithTimeout(url: string, timeoutMs: number = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(url, { headers: UA, signal: controller.signal })
+    return response
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 //----------------------------------------------------------------------------------
@@ -230,10 +250,22 @@ async function batchCheckMissing(runIds: number[]): Promise<number[]> {
 //----------------------------------------------------------------------------------
 //  scrapeRunId — fetches one run_id's results page, upserts its ts1_sessions header
 //  row and every ts2_results pair row (creating players as needed), and deletes the
-//  ts1_sessions header again when the page yielded no valid pair rows
+//  ts1_sessions header again when the page yielded no valid pair rows. `toDate` (ISO
+//  YYYY-MM-DD) caps it: a session dated after toDate is skipped without any write —
+//  this is how the tracked scrape gets a To-date bound (its discovery yields run_ids
+//  with no date), and a harmless safeguard for the already-bounded AKBC scrape.
 //----------------------------------------------------------------------------------
-async function scrapeRunId(run_id: number): Promise<{ pairs: number; created: number }> {
-  const response = await fetch(`${NZB_BASE}/results.html?run_id=${run_id}`, { headers: UA })
+async function scrapeRunId(run_id: number, fetchTimeoutMs?: number, toDate?: string): Promise<{ pairs: number; created: number }> {
+  let response: Response
+  try {
+    response = await fetchWithTimeout(`${NZB_BASE}/results.html?run_id=${run_id}`, fetchTimeoutMs)
+  } catch {
+    //
+    //  Timed out / network error on this one run_id — skip it (like a non-OK response)
+    //  rather than failing the whole batch; a later run re-fetches it via batchCheckMissing
+    //
+    return { pairs: 0, created: 0 }
+  }
   if (!response.ok) return { pairs: 0, created: 0 }
 
   const rowsByRunId = parsePage(await response.text())
@@ -241,6 +273,14 @@ async function scrapeRunId(run_id: number): Promise<{ pairs: number; created: nu
   if (rows.length === 0) return { pairs: 0, created: 0 }
 
   const headerRow = rows.find(r => r.player_names.length === 2 || r.player_names.length === 4)
+
+  //
+  //  To-date cap — this session is past the cutoff, so write nothing (ISO date strings
+  //  compare lexicographically). A later run picks it up once the cap is lifted / advanced.
+  //
+  const sessionDate = headerRow?.date ?? rows[0]?.date ?? null
+  if (toDate && sessionDate && sessionDate > toDate) return { pairs: 0, created: 0 }
+
   if (headerRow) {
     const event_type = headerRow.player_names.length === 4 ? 'teams' : 'pairs'
     await table_upsert({
@@ -306,16 +346,19 @@ async function scrapeRunId(run_id: number): Promise<{ pairs: number; created: nu
 
 //----------------------------------------------------------------------------------
 //  scrapeRunIds — fetches and writes every run_id in the given set; shared by both
-//  the club and tracked-player scrape steps
+//  the club and tracked-player scrape steps. Stops before starting a new run_id once
+//  past `deadline` (epoch ms) — never mid-run_id, so each run_id is either fully
+//  written or not started, and the next run resumes the rest via batchCheckMissing.
 //----------------------------------------------------------------------------------
-async function scrapeRunIds(missingIds: Set<number>): Promise<{ pairs_total: number; players_created: number }> {
-  let pairs_total = 0, players_created = 0
+async function scrapeRunIds(missingIds: Set<number>, deadline: number, fetchTimeoutMs?: number, toDate?: string): Promise<{ pairs_total: number; players_created: number; timed_out: boolean }> {
+  let pairs_total = 0, players_created = 0, timed_out = false
   for (const missingRunId of missingIds) {
-    const { pairs, created } = await scrapeRunId(missingRunId)
+    if (Date.now() > deadline) { timed_out = true; break }
+    const { pairs, created } = await scrapeRunId(missingRunId, fetchTimeoutMs, toDate)
     pairs_total      += pairs
     players_created  += created
   }
-  return { pairs_total, players_created }
+  return { pairs_total, players_created, timed_out }
 }
 
 //----------------------------------------------------------------------------------
@@ -359,11 +402,19 @@ export async function getScrapeFromDate(): Promise<string | null> {
 //  been pushed forward by tracked-player sessions and a historical backlog still needs
 //  processing; or toDateOverride, if capping a catch-up run to a smaller range),
 //  writing ts1_sessions + ts2_results. Truncates staging first, since this is the start
-//  of a new coordinated run.
+//  of a new coordinated run. timeBudgetMs / fetchTimeoutMs default to
+//  SCRAPE_TIME_BUDGET_MS / FETCH_TIMEOUT_MS; once past the budget the discovery and
+//  fetch loops stop and commit what they have, and the next run resumes the rest.
 //----------------------------------------------------------------------------------
-export async function scrapeClubSessions(fromDateOverride?: string, toDateOverride?: string): Promise<ScrapeClubSessionsResult> {
+export async function scrapeClubSessions(fromDateOverride?: string, toDateOverride?: string, timeBudgetMs?: number, fetchTimeoutMs?: number): Promise<ScrapeClubSessionsResult> {
   const t0 = Date.now()
-  const run_id = await resolvePipRunId(1, true)
+  const deadline = Date.now() + (timeBudgetMs ?? SCRAPE_TIME_BUDGET_MS)
+  //
+  //  The run_id is now created by the dedicated /api/build/start-run step (step 0),
+  //  which runs first — both as the earliest Vercel cron and at the front of every
+  //  "Run All" sequence — so this step just reuses the current run like the rest.
+  //
+  const run_id = await resolvePipRunId(1, false)
 
   const { from_date, to_date } = await getDateRange(fromDateOverride, toDateOverride)
 
@@ -371,24 +422,32 @@ export async function scrapeClubSessions(fromDateOverride?: string, toDateOverri
   await table_truncate('ts2_results',  'pipelineScrape/truncate-ts2')
 
   const allMissingIds = new Set<number>()
+  let timed_out = false
   for (const day of datesInRange(from_date, to_date)) {
+    if (Date.now() > deadline) { timed_out = true; break }
     const url = `${NZB_BASE}/results.html?mp_filter_club=${BRIDGE_CLUB_ID}&date_start=${day}&date_end=${day}&mp_results=Search`
-    const res = await fetch(url, { headers: UA })
+    let res: Response
+    try {
+      res = await fetchWithTimeout(url, fetchTimeoutMs)
+    } catch {
+      continue
+    }
     if (!res.ok) continue
     const { runIds } = extractRunIds(await res.text())
     const missing = await batchCheckMissing(runIds)
     missing.forEach(id => allMissingIds.add(id))
   }
 
-  const { pairs_total, players_created } = await scrapeRunIds(allMissingIds)
+  const runIdsResult = await scrapeRunIds(allMissingIds, deadline, fetchTimeoutMs, toDateOverride)
+  timed_out = timed_out || runIdsResult.timed_out
 
   await logPipelineStep({
     run_id, step: 1, sub_step: 'a', step_name: 'Scrape AKBC',
-    output_table: 'ts2_results', output_recs: pairs_total,
+    output_table: 'ts2_results', output_recs: runIdsResult.pairs_total,
     duration_ms: Date.now() - t0
   })
 
-  return { from_date, to_date, run_ids_new: allMissingIds.size, pairs_total, players_created }
+  return { from_date, to_date, run_ids_new: allMissingIds.size, pairs_total: runIdsResult.pairs_total, players_created: runIdsResult.players_created, timed_out }
 }
 
 //----------------------------------------------------------------------------------
@@ -398,9 +457,15 @@ export async function scrapeClubSessions(fromDateOverride?: string, toDateOverri
 //  batchCheckMissing() to skip anything already in tse_sessions/ts1_sessions, so
 //  re-running this never re-fetches sessions already captured by a previous run
 //  (including this same session's Scrape AKBC step, once Build Sessions has run).
+//  toDateOverride (ISO YYYY-MM-DD) caps it: a discovered run_id whose session is dated
+//  after toDateOverride is fetched but not written (scrapeRunId skips it), since the
+//  online-points discovery yields run_ids with no date. timeBudgetMs / fetchTimeoutMs
+//  behave as in scrapeClubSessions — the player loop and the run_id fetch loop stop and
+//  commit once past the budget, next run resumes.
 //----------------------------------------------------------------------------------
-export async function scrapeTrackedPlayerSessions(): Promise<ScrapeSessionsResult> {
+export async function scrapeTrackedPlayerSessions(toDateOverride?: string, timeBudgetMs?: number, fetchTimeoutMs?: number): Promise<ScrapeSessionsResult> {
   const t0 = Date.now()
+  const deadline = Date.now() + (timeBudgetMs ?? SCRAPE_TIME_BUDGET_MS)
   const run_id = await resolvePipRunId(2, false)
 
   const flagged = await table_query({
@@ -411,11 +476,18 @@ export async function scrapeTrackedPlayerSessions(): Promise<ScrapeSessionsResul
   }) as { pl_name: string; pl_nzb: number }[]
 
   const allMissingIds = new Set<number>()
+  let timed_out = false
   for (let i = 0; i < flagged.length; i++) {
+    if (Date.now() > deadline) { timed_out = true; break }
     const player = flagged[i]
     const tPlayer = Date.now()
     const url = `${NZB_BASE}/online-points.html?mpsr=1&mp_user=${player.pl_nzb}`
-    const res = await fetch(url, { headers: UA })
+    let res: Response
+    try {
+      res = await fetchWithTimeout(url, fetchTimeoutMs)
+    } catch {
+      continue
+    }
     if (!res.ok) continue
     const { runIds } = extractRunIds(await res.text())
     const missing = await batchCheckMissing(runIds)
@@ -427,13 +499,14 @@ export async function scrapeTrackedPlayerSessions(): Promise<ScrapeSessionsResul
     })
   }
 
-  const { pairs_total, players_created } = await scrapeRunIds(allMissingIds)
+  const runIdsResult = await scrapeRunIds(allMissingIds, deadline, fetchTimeoutMs, toDateOverride)
+  timed_out = timed_out || runIdsResult.timed_out
 
   await logPipelineStep({
     run_id, step: 2, sub_step: 'a', step_name: 'Scrape Tracked Players',
-    output_table: 'ts2_results', output_recs: pairs_total,
+    output_table: 'ts2_results', output_recs: runIdsResult.pairs_total,
     duration_ms: Date.now() - t0
   })
 
-  return { run_ids_new: allMissingIds.size, pairs_total, players_created }
+  return { run_ids_new: allMissingIds.size, pairs_total: runIdsResult.pairs_total, players_created: runIdsResult.players_created, timed_out }
 }

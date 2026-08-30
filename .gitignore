@@ -1,2 +1,7 @@
 # Project-specific ignores only — common patterns in ~/.gitignore_global
 !.env.example
+
+# ~/.gitignore_global has a bare `build/` rule (for CRA/Vite output dirs) that also
+# matches this Next.js app's src/app/api/build/ route folder — un-ignore it so the
+# scrape / scrape-tracked / stats / start-run route files are tracked and deploy.
+!src/app/api/build/

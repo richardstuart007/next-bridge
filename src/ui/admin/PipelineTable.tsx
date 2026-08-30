@@ -24,10 +24,10 @@ import { MyHelpStep } from 'nextjs-shared/MyHelpStep'
 import { getRecentRunIds, getPipelineRunStatus, type PipelineStatus } from '@/src/lib/actions/pipelineLog'
 import { getScrapeFromDate } from '@/src/lib/actions/pipelineScrape'
 import {
-  refreshSessionsStatus, refreshResultsStatus, refreshPartnersStatus,
-  type StepStatus
+  refreshSessionsStatus, refreshResultsStatus, refreshPartnersStatus, getStagingCounts,
+  type StepStatus, type StagingCounts
 } from '@/src/lib/actions/pipelineStatus'
-import { SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS, TOURNAMENT_GROUP_SQL_EXPR, BRIDGE_CLUB_ID } from '@/src/lib/constants'
+import { SCRAPE_TIME_BUDGET_MS, FETCH_TIMEOUT_MS, PIPELINE_RUN_POLL_MS, TOURNAMENT_GROUP_SQL_EXPR, BRIDGE_CLUB_ID } from '@/src/lib/constants'
 
 type StepResult = { data: Record<string, unknown> | null; error: string | null }
 
@@ -43,15 +43,17 @@ const TABS: { id: Tab; label: string }[] = [
 type SubStep = { subStep: string; label: string }
 
 //
-//  4 real top-level pipeline steps written to tpip_pipelinelog. Steps 1/2 each have
-//  their own Scrape/Build Sessions/Build Results sub-steps; step 3 is a single row
-//  (no sub-steps); step 4 keeps its existing 8 stats sub-steps.
+//  Step 0 is the run-marker written by /api/build/start-run (single row, no
+//  sub-steps). Then 4 real top-level pipeline steps written to tpip_pipelinelog:
+//  steps 1/2 each have their own Scrape/Build Sessions/Build Results sub-steps;
+//  step 3 is a single row; step 4 keeps its existing 8 stats sub-steps.
 //
 const STEP_LABELS: Record<number, string> = {
-  1: 'AKBC', 2: 'Tracked Players', 3: 'Build Partners', 4: 'Update Stats',
+  0: 'Start Run', 1: 'AKBC', 2: 'Tracked Players', 3: 'Build Partners', 4: 'Update Stats',
 }
 
 const STEP_SUBSTEPS: Record<number, SubStep[] | null> = {
+  0: null,
   1: [
     { subStep: 'a', label: 'Scrape' },
     { subStep: 'b', label: 'Build Sessions' },
@@ -157,12 +159,46 @@ function formatDuration(ms: number): string {
 }
 
 //----------------------------------------------------------------------------------------------
-//  addDays — an ISO date string advanced by `days` days, back as ISO YYYY-MM-DD
+//  formatElapsed — milliseconds as "M:SS" for the run-in-progress strip
 //----------------------------------------------------------------------------------------------
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr)
-  d.setDate(d.getDate() + days)
-  return d.toISOString().slice(0, 10)
+function formatElapsed(ms: number): string {
+  const total = Math.floor(ms / 1000)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+//----------------------------------------------------------------------------------------------
+//  formatPipToDate — a pip_to_date value (the run's To-date cap, only on the step-0 row) as
+//  "YYYY-MM-DD", or an em-dash when null. The pg driver hands a `date` column back as a Date at
+//  *local* midnight, so read local components — .toISOString() (UTC) would shift it a day.
+//----------------------------------------------------------------------------------------------
+function formatPipToDate(v: string | Date | null): string {
+  if (!v) return '—'
+  if (v instanceof Date) {
+    const y = v.getFullYear()
+    const m = String(v.getMonth() + 1).padStart(2, '0')
+    const d = String(v.getDate()).padStart(2, '0')
+    const date = `${y}-${m}-${d}`
+    return date
+  }
+  const date = String(v).slice(0, 10)
+  return date
+}
+
+
+//----------------------------------------------------------------------------------------------
+//  formatPipDate — a pip_created timestamp as "YYYY/MM/DD HH:MM:SS" (24-hour, local time),
+//  replacing the locale-dependent toLocaleString() format
+//----------------------------------------------------------------------------------------------
+function formatPipDate(value: string): string {
+  const d = new Date(value)
+  function pad(num: number): string {
+    const padded = String(num).padStart(2, '0')
+    return padded
+  }
+  const formatted = `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return formatted
 }
 
 //----------------------------------------------------------------------------------------------
@@ -203,6 +239,7 @@ function JobsTable({ steps, runs }: { steps: number[]; runs: PipelineStatus[] })
             <th className='font-medium px-2 py-1 text-center'>Step</th>
             <th className='font-medium px-2 py-1'>Job</th>
             <th className='font-medium px-2 py-1'>Last Run</th>
+            <th className='font-medium px-2 py-1'>To date</th>
             <th className='font-medium px-2 py-1'>Input Table</th>
             <th className='font-medium px-2 py-1 text-right'>Input Recs</th>
             <th className='font-medium px-2 py-1'>Output Table</th>
@@ -220,7 +257,8 @@ function JobsTable({ steps, runs }: { steps: number[]; runs: PipelineStatus[] })
                 <tr key={step} className='border-t border-gray-100 font-bold'>
                   <td className='px-2 py-1 text-center text-gray-800'>{step}</td>
                   <td className='px-2 py-1 text-gray-800'>{STEP_LABELS[step]}</td>
-                  <td className='px-2 py-1 text-gray-500'>{run ? new Date(run.pip_created).toLocaleString() : '—'}</td>
+                  <td className='px-2 py-1 text-gray-500'>{run ? formatPipDate(run.pip_created) : '—'}</td>
+                  <td className='px-2 py-1 text-gray-500'>{run ? formatPipToDate(run.pip_to_date) : '—'}</td>
                   <td className='px-2 py-1 text-gray-500'>{run ? run.pip_input_table : '—'}</td>
                   <td className='px-2 py-1 text-right'>{run ? run.pip_input_recs.toLocaleString() : '—'}</td>
                   <td className='px-2 py-1 text-gray-500'>{run ? run.pip_output_table : '—'}</td>
@@ -235,7 +273,7 @@ function JobsTable({ steps, runs }: { steps: number[]; runs: PipelineStatus[] })
                 <tr className='border-t border-gray-100 font-bold'>
                   <td className='px-2 py-1 text-center text-gray-800'>{step}</td>
                   <td className='px-2 py-1 text-gray-800'>{STEP_LABELS[step]}</td>
-                  <td className='px-2 py-1' colSpan={7}></td>
+                  <td className='px-2 py-1' colSpan={8}></td>
                 </tr>
                 {subSteps.map(sub => {
                   const run = runs.find(r => r.pip_step === step && r.pip_sub_step === sub.subStep && r.pip_sub_sub === null)
@@ -258,7 +296,8 @@ function JobsTable({ steps, runs }: { steps: number[]; runs: PipelineStatus[] })
                         <td className='px-2 py-1 pl-4 text-gray-800'>
                           {sub.label}{isPlayerRow && playerRuns.length > 0 ? ` (${playerRuns.length} players)` : ''}
                         </td>
-                        <td className='px-2 py-1 text-gray-500'>{run ? new Date(run.pip_created).toLocaleString() : '—'}</td>
+                        <td className='px-2 py-1 text-gray-500'>{run ? formatPipDate(run.pip_created) : '—'}</td>
+                        <td className='px-2 py-1 text-gray-500'>{run ? formatPipToDate(run.pip_to_date) : '—'}</td>
                         <td className='px-2 py-1 text-gray-500'>{run ? run.pip_input_table : '—'}</td>
                         <td className='px-2 py-1 text-right'>{run ? run.pip_input_recs.toLocaleString() : '—'}</td>
                         <td className='px-2 py-1 text-gray-500'>{run ? run.pip_output_table : '—'}</td>
@@ -270,7 +309,8 @@ function JobsTable({ steps, runs }: { steps: number[]; runs: PipelineStatus[] })
                         <tr key={p.pip_sub_sub} className='border-t border-gray-50 bg-gray-50'>
                           <td className='px-2 py-1 text-center text-gray-400'></td>
                           <td className='px-2 py-1 pl-8 text-gray-600'>{p.pip_step_name}</td>
-                          <td className='px-2 py-1 text-gray-500'>{new Date(p.pip_created).toLocaleString()}</td>
+                          <td className='px-2 py-1 text-gray-500'>{formatPipDate(p.pip_created)}</td>
+                          <td className='px-2 py-1 text-gray-300'>—</td>
                           <td className='px-2 py-1 text-gray-300'>—</td>
                           <td className='px-2 py-1 text-gray-300'>—</td>
                           <td className='px-2 py-1 text-gray-300'>—</td>
@@ -421,7 +461,7 @@ function OverviewSummary({ refreshKey }: { refreshKey: number }) {
         </MyButton>
       </div>
 
-      <JobsTable steps={[1, 2, 3, 4]} runs={runs} />
+      <JobsTable steps={[0, 1, 2, 3, 4]} runs={runs} />
     </>
   )
 }
@@ -441,10 +481,53 @@ export default function PipelineTable() {
   const [partnersLoading, setPartnersLoading] = useState(false)
   const [refreshAllLoading, setRefreshAllLoading] = useState(false)
 
+  //
+  //  pipelineToDate — one shared "process nothing past this date" cap for the whole page,
+  //  rendered above the tab bar and threaded into every scrape/build action on every tab as
+  //  ?to_date=. Opt-in — empty means "up to today", as before. scrapeFromDate stays
+  //  AKBC-only (winds the discovery start point back for historical reprocessing).
+  //
   const [scrapeFromDate, setScrapeFromDate] = useState('')
-  const [scrapeToDate,   setScrapeToDate]   = useState('')
+  const [pipelineToDate, setPipelineToDate] = useState('')
+
+  //
+  //  Overview "Run All Cron" soft-limit overrides, entered in seconds, sent as
+  //  ?time_budget_ms= / ?fetch_timeout_ms= (× 1000). Seeded from the constants so the
+  //  current defaults are visible; clearing a field falls back to the constant.
+  //
+  const [cronTimeBudgetSec,   setCronTimeBudgetSec]   = useState(String(SCRAPE_TIME_BUDGET_MS / 1000))
+  const [cronFetchTimeoutSec, setCronFetchTimeoutSec] = useState(String(FETCH_TIMEOUT_MS / 1000))
+
+  //
+  //  "Run in progress" strip state — the coarse pipeline steps only log when their function
+  //  finishes, so during a long AKBC scrape the Jobs summary sits on "step 0 only". These
+  //  give visible movement: elapsed time from fullCronStartedAt + live staging row counts.
+  //
+  const [fullCronStartedAt, setFullCronStartedAt] = useState<number | null>(null)
+  const [stagingCounts,     setStagingCounts]     = useState<StagingCounts | null>(null)
 
   useEffect(() => { doRefreshAll() }, [])
+
+  //
+  //  While a full "Run All Cron" request is in flight, poll on a timer:
+  //  /api/cron/update-sessions is one long request with no intermediate state, so bump
+  //  refreshKey (OverviewSummary picks up the new run_id once Start Run has logged, then
+  //  each step as it completes) and reload the staging counts for the progress strip. The
+  //  end-of-run refresh is handled by run()'s finally block.
+  //
+  useEffect(() => {
+    if (running !== 'full-cron') {
+      setStagingCounts(null)
+      return
+    }
+    async function poll() {
+      setRefreshKey(k => k + 1)
+      setStagingCounts(await getStagingCounts())
+    }
+    poll()
+    const timer = setInterval(poll, PIPELINE_RUN_POLL_MS)
+    return () => clearInterval(timer)
+  }, [running])
 
   //----------------------------------------------------------------------------------------------
   //  doRefreshSessions / doRefreshResults / doRefreshPartners — reload one step's "remaining"
@@ -456,7 +539,7 @@ export default function PipelineTable() {
 
   //----------------------------------------------------------------------------------------------
   //  doRefreshAll — reloads all three status counts and the auto scrape "From" date in parallel,
-  //  seeding the From/To date inputs (only while still empty) for the catch-up workflow
+  //  seeding the AKBC "From" input (only while still empty) for the catch-up workflow
   //----------------------------------------------------------------------------------------------
   async function doRefreshAll() {
     setRefreshAllLoading(true)
@@ -466,14 +549,12 @@ export default function PipelineTable() {
     ])
     setSessionsStatus(rSessions); setResultsStatus(rResults); setPartnersStatus(rPartners)
     //
-    //  Default "From" to the automatic MAX(se_date), and "To" to 1 week after that — a
-    //  starting point for the incremental catch-up workflow (advance both forward each
-    //  run). Only when empty, so this never clobbers a date you're actively overriding
-    //  on a later refresh — e.g. winding "From" backwards to reprocess a historical
-    //  backlog once tracked-player sessions have pushed the automatic value forward.
+    //  Default the AKBC "From" to the automatic MAX(se_date). Only when empty, so this
+    //  never clobbers a date you're actively overriding on a later refresh — e.g. winding
+    //  "From" backwards to reprocess a historical backlog once tracked-player sessions
+    //  have pushed the automatic value forward. The shared To-date is left empty (opt-in).
     //
     setScrapeFromDate(prev => prev || (rFromDate ?? ''))
-    setScrapeToDate(prev => prev || (rFromDate ? addDays(rFromDate, SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS) : ''))
     setSessionsLoading(false); setResultsLoading(false); setPartnersLoading(false)
     setRefreshAllLoading(false)
   }
@@ -499,13 +580,13 @@ export default function PipelineTable() {
   }
 
   //----------------------------------------------------------------------------------------------
-  //  handleScrapeClub — runs the AKBC scrape step, passing the From/To date inputs as query
-  //  params when set
+  //  handleScrapeClub — runs the AKBC scrape step, passing the AKBC "From" input and the shared
+  //  pipelineToDate as query params when set
   //----------------------------------------------------------------------------------------------
   function handleScrapeClub() {
     const params = new URLSearchParams()
     if (scrapeFromDate) params.set('from_date', scrapeFromDate)
-    if (scrapeToDate)   params.set('to_date',   scrapeToDate)
+    if (pipelineToDate) params.set('to_date',   pipelineToDate)
     const query = params.toString()
     const url = query ? `/api/build/scrape?${query}` : '/api/build/scrape'
     return run('scrape-club', url, async () => {})
@@ -534,17 +615,49 @@ export default function PipelineTable() {
 
   //----------------------------------------------------------------------------------------------
   //  handleScrapeTracked / handleSessionsTracked / handleResultsTracked — run the three
-  //  tracked-player pipeline steps
+  //  tracked-player pipeline steps, each passing the shared pipelineToDate as ?to_date= when set
   //----------------------------------------------------------------------------------------------
-  function handleScrapeTracked()   { return run('scrape-tracked',   '/api/build/scrape-tracked', async () => {}) }
-  function handleSessionsTracked() { return run('sessions-tracked', '/api/build/sessions-nzb?group=tracked',   doRefreshSessions) }
-  function handleResultsTracked()  { return run('results-tracked',  '/api/build/results-nzb?group=tracked',    doRefreshResults) }
+  function handleScrapeTracked() {
+    const url = pipelineToDate ? `/api/build/scrape-tracked?to_date=${pipelineToDate}` : '/api/build/scrape-tracked'
+    return run('scrape-tracked', url, async () => {})
+  }
+  function handleSessionsTracked() {
+    const url = pipelineToDate ? `/api/build/sessions-nzb?group=tracked&to_date=${pipelineToDate}` : '/api/build/sessions-nzb?group=tracked'
+    return run('sessions-tracked', url, doRefreshSessions)
+  }
+  function handleResultsTracked() {
+    const url = pipelineToDate ? `/api/build/results-nzb?group=tracked&to_date=${pipelineToDate}` : '/api/build/results-nzb?group=tracked'
+    return run('results-tracked', url, doRefreshResults)
+  }
+
+  //----------------------------------------------------------------------------------------------
+  //  handleStartRun — creates a new pipeline run_id (+ step-0 marker row) via /api/build/start-run,
+  //  recording the shared To-date on that step-0 row when set
+  //----------------------------------------------------------------------------------------------
+  function handleStartRun() {
+    const url = pipelineToDate ? `/api/build/start-run?to_date=${pipelineToDate}` : '/api/build/start-run'
+    return run('start-run', url, async () => {})
+  }
 
   //----------------------------------------------------------------------------------------------
   //  handlePartners / handleRunFullCron — run the Build Partners step / the whole cron pipeline
   //----------------------------------------------------------------------------------------------
   function handlePartners()    { return run('partners', '/api/build/partners', doRefreshPartners) }
-  function handleRunFullCron() { return run('full-cron', '/api/cron/update-sessions', async () => {}) }
+
+  //----------------------------------------------------------------------------------------------
+  //  handleRunFullCron — runs the whole cron pipeline, passing the Overview overrides
+  //  (to_date cap, soft time budget, per-fetch timeout) as query params when set
+  //----------------------------------------------------------------------------------------------
+  function handleRunFullCron() {
+    const params = new URLSearchParams()
+    if (pipelineToDate)      params.set('to_date', pipelineToDate)
+    if (cronTimeBudgetSec)   params.set('time_budget_ms',   String(Number(cronTimeBudgetSec) * 1000))
+    if (cronFetchTimeoutSec) params.set('fetch_timeout_ms', String(Number(cronFetchTimeoutSec) * 1000))
+    const query = params.toString()
+    const url = query ? `/api/cron/update-sessions?${query}` : '/api/cron/update-sessions'
+    setFullCronStartedAt(Date.now())
+    return run('full-cron', url, async () => {})
+  }
 
   //----------------------------------------------------------------------------------------------
   //  handleStats — runs the Update Stats step, then fans its per-group counts out into the
@@ -572,6 +685,7 @@ export default function PipelineTable() {
   //----------------------------------------------------------------------------------------------
   async function runAllAkbc() {
     setRunningAll('akbc')
+    await handleStartRun()
     const clubData = await handleScrapeClub()
     await handleSessionsClub(clubData)
     await handleResultsClub(clubData)
@@ -597,6 +711,15 @@ export default function PipelineTable() {
 
   return (
     <div className='space-y-4 relative'>
+      <div className='flex items-center gap-1'>
+        <span className='text-xs text-gray-500'>To date (caps every step, all tabs):</span>
+        <MyInput type='date' value={pipelineToDate} onChange={e => setPipelineToDate(e.target.value)}
+          overrideClass='rounded border border-gray-300 px-1 py-0.5 text-xs h-auto md:h-auto' />
+        {pipelineToDate && (
+          <button type='button' onClick={() => setPipelineToDate('')}
+            className='text-xs text-blue-600 hover:text-blue-800 ml-1'>clear</button>
+        )}
+      </div>
       <div className='flex gap-0 border-b border-gray-200'>
         {TABS.map(t => (
           <MyTab key={t.id} active={activeTab === t.id} onClick={() => setActiveTab(t.id)}>
@@ -608,11 +731,35 @@ export default function PipelineTable() {
       {activeTab === 'overview' && (
       <>
       <div className='flex items-center gap-2'>
+        <MyButton onClick={handleStartRun} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${running === 'start-run' ? 'bg-red-700 hover:bg-red-700 animate-pulse' : 'bg-red-500 hover:bg-red-600'}`}>
+          {running === 'start-run' ? 'Running…' : 'Start Run'}
+        </MyButton>
         <MyButton onClick={handleRunFullCron} disabled={anyRunning} overrideClass={`h-auto md:h-auto px-1.5 py-0.5 leading-none font-medium ${running === 'full-cron' ? 'bg-red-700 hover:bg-red-700 animate-pulse' : 'bg-red-500 hover:bg-red-600'}`}>
           {running === 'full-cron' ? 'Running…' : 'Run All Cron'}
         </MyButton>
+        {results['start-run']?.error && <p className='text-xs text-red-600'>{results['start-run'].error}</p>}
         {results['full-cron']?.error && <p className='text-xs text-red-600'>{results['full-cron'].error}</p>}
       </div>
+      <div className='flex items-center gap-4'>
+        <div className='flex items-center gap-1'>
+          <span className='text-xs text-gray-500'>Time budget (s):</span>
+          <MyInput type='number' value={cronTimeBudgetSec} onChange={e => setCronTimeBudgetSec(e.target.value)}
+            overrideClass='rounded border border-gray-300 px-1 py-0.5 text-xs h-auto md:h-auto w-20' />
+        </div>
+        <div className='flex items-center gap-1'>
+          <span className='text-xs text-gray-500'>Fetch timeout (s):</span>
+          <MyInput type='number' value={cronFetchTimeoutSec} onChange={e => setCronFetchTimeoutSec(e.target.value)}
+            overrideClass='rounded border border-gray-300 px-1 py-0.5 text-xs h-auto md:h-auto w-20' />
+        </div>
+      </div>
+      {running === 'full-cron' && (
+        <div className='flex items-center gap-3 text-xs text-gray-600'>
+          <span className='animate-pulse font-medium'>Run in progress</span>
+          {fullCronStartedAt !== null && <span>elapsed {formatElapsed(Date.now() - fullCronStartedAt)}</span>}
+          {stagingCounts && <span>ts1_sessions {stagingCounts.ts1_sessions.toLocaleString()}</span>}
+          {stagingCounts && <span>ts2_results {stagingCounts.ts2_results.toLocaleString()}</span>}
+        </div>
+      )}
       <OverviewSummary refreshKey={refreshKey} />
       </>
       )}
@@ -629,11 +776,7 @@ export default function PipelineTable() {
             <MyInput type='date' value={scrapeFromDate} onChange={e => setScrapeFromDate(e.target.value)}
               overrideClass='rounded border border-gray-300 px-1 py-0.5 text-xs h-auto md:h-auto' />
           </div>
-          <div className='flex items-center gap-1'>
-            <span className='text-xs text-gray-500'>To:</span>
-            <MyInput type='date' value={scrapeToDate} onChange={e => setScrapeToDate(e.target.value)}
-              overrideClass='rounded border border-gray-300 px-1 py-0.5 text-xs h-auto md:h-auto' />
-          </div>
+          <span className='text-xs text-gray-400'>To: the shared "To date" above</span>
         </div>
         <table className='w-full text-xs'>
           <thead>

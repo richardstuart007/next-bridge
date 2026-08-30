@@ -1,4 +1,22 @@
-﻿import { NextResponse } from 'next/server'
+﻿//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/admin/backfill-finals route handler. Streams (SSE) a backfill that, for up to
+//    `limit` tse_sessions rows with se_is_summary still NULL, fetches each session's NZB
+//    results page and sets se_is_summary TRUE/FALSE from whether its run_id is a "Final"
+//    (summary) session; unreachable pages are marked FALSE.
+//
+//    Parameters:
+//      request — optional JSON body { limit?: number } (default 500)
+//
+//    Returns:
+//      a text/event-stream Response; each `data:` frame carries progress
+//      ({ processed, finals_found, failed, total }) then a final { done: true, …, remaining }
+//
+//  2) NOTES
+//    GET on this route is a stub that only returns usage text.
+//==============================================================================================
+
+import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
@@ -12,8 +30,12 @@ export async function POST(request: Request) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: object) =>
+      //----------------------------------------------------------------------------------------------
+      //  send — enqueues one SSE `data:` frame carrying the JSON of `data`
+      //----------------------------------------------------------------------------------------------
+      function send(data: object): void {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
 
       let processed    = 0
       let finals_found = 0
@@ -101,6 +123,9 @@ export async function POST(request: Request) {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  GET — usage stub: returns { info } text pointing at POST
+//----------------------------------------------------------------------------------
 export async function GET() {
   return NextResponse.json({ info: 'POST to run the backfill' })
 }

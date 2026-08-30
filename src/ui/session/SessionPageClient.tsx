@@ -1,5 +1,15 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    SessionPageClient — the /session/[id] page body. Loads the session row (getSessionById)
+//    and its pair results (/api/sessions/[id]/results) on mount, then renders a header plus a
+//    client-paginated results table; each row links through to the player page.
+//
+//    Parameters:
+//      sessionId — the se_seid to display
+//==============================================================================================
+
 import { useState, useEffect } from 'react'
 import { getSessionById } from '@/src/lib/actions/sessions'
 import Link from 'next/link'
@@ -43,6 +53,9 @@ export default function SessionPageClient({ sessionId }: { sessionId: number }) 
       return
     }
 
+    //------------------------------------------------------------------------------------------
+    //  load — fetches the session row + its results in parallel, into `session` / `results`
+    //------------------------------------------------------------------------------------------
     async function load() {
       try {
         const [sessionData, res] = await Promise.all([

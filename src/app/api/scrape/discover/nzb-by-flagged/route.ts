@@ -1,4 +1,19 @@
-﻿import { NextRequest } from 'next/server'
+//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/scrape/discover/nzb-by-flagged route handler. Streams (SSE) a discovery run
+//    over every tracked player: reads each player's NZB match history, collects run_ids missing
+//    from tse_sessions, then fetches each missing session page, and — when its date falls
+//    inside the requested range — upserts a header row into ts1_sessions.
+//
+//    Parameters:
+//      request — JSON body { date_from, date_end, skip_truncate? (default false) }
+//
+//    Returns:
+//      a text/event-stream Response; per-player / per-run_id progress frames then a final
+//      { done: true, total_sessions }
+//==============================================================================================
+
+import { NextRequest } from 'next/server'
 import * as cheerio from 'cheerio'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
@@ -8,40 +23,6 @@ const NZB_BASE = 'https://www.nzbridge.co.nz'
 const MONTH: Record<string, string> = {
   Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
   Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12'
-}
-
-function parseDate(raw: string): string | null {
-  const m = raw.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{2,4})$/)
-  if (!m) return null
-  const month = MONTH[m[2]]
-  if (!month) return null
-  const year = m[3].length === 2 ? `20${m[3]}` : m[3]
-  return `${year}-${month}-${m[1].padStart(2, '0')}`
-}
-
-function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
-  const m = raw.trim().match(/^([\d.]+)\s*(PCT|VP|XIMPS)$/i)
-  if (!m) return null
-  const type = m[2].toUpperCase() === 'XIMPS' ? 'VP' : m[2].toUpperCase() as 'PCT' | 'VP'
-  return { value: parseFloat(m[1]), type }
-}
-
-function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {
-  if (isSummary) return value
-  if (type === 'PCT' && (value < 25 || value > 75)) return 50
-  if (type === 'VP' && value > 20) return 10
-  return value
-}
-
-function extractRunIds(html: string): number[] {
-  const $ = cheerio.load(html)
-  const runIds = new Set<number>()
-  $('a[href*="run_id="]').each((_, el) => {
-    const href = $(el).attr('href') ?? ''
-    const m = href.match(/run_id=(\d+)/)
-    if (m) runIds.add(parseInt(m[1], 10))
-  })
-  return [...runIds]
 }
 
 interface ParsedRow {
@@ -54,68 +35,6 @@ interface ParsedRow {
   score_value: number
   score_type: 'PCT' | 'VP'
   tournament: string
-}
-
-function parsePage(html: string): Map<number, ParsedRow[]> {
-  const $ = cheerio.load(html)
-  const rowsByRunId = new Map<number, ParsedRow[]>()
-
-  $('table').each((_, table) => {
-    const headerRow = $(table).find('tr').first()
-    const headerCells = headerRow.find('th, td').toArray().map(th => $(th).text().trim().toLowerCase())
-
-    if (!headerCells.some(h => h.includes('event')) || !headerCells.some(h => h.includes('player'))) return
-
-    const colDate    = headerCells.findIndex(h => h === 'date')
-    const colClub    = headerCells.findIndex(h => h.includes('club'))
-    const colEvent   = headerCells.findIndex(h => h.includes('event'))
-    const colPlace   = headerCells.findIndex(h => h.includes('place'))
-    const colPlayers = headerCells.findIndex(h => h.includes('player'))
-    const colMpts    = headerCells.findIndex(h => h.includes('mpt') || h === 'mp' || h.includes('point'))
-    const colScore   = headerCells.findIndex(h => h.includes('score'))
-
-    if (colEvent < 0 || colPlayers < 0 || colScore < 0) return
-
-    $(table).find('tr').each((rowIdx, tr) => {
-      if (rowIdx === 0) return
-      const cells = $(tr).find('td').toArray()
-      if (cells.length < Math.max(colEvent, colPlayers, colScore) + 1) return
-
-      const get = (idx: number) => idx >= 0 ? $(cells[idx]).text().trim() : ''
-
-      const eventCell = colEvent >= 0 ? $(cells[colEvent]) : null
-      const eventHref = eventCell?.find('a').attr('href') ?? ''
-      const runMatch  = eventHref.match(/run_id=(\d+)/)
-      if (!runMatch) return
-
-      const run_id     = parseInt(runMatch[1], 10)
-      const event_name = eventCell?.find('a').text().trim() || get(colEvent)
-      const dateRaw    = get(colDate)
-      const clubText   = get(colClub)
-      const placeRaw   = get(colPlace)
-      const playersRaw = get(colPlayers)
-      const mpts       = get(colMpts)
-      const scoreRaw   = get(colScore)
-
-      const parsedDate = parseDate(dateRaw)
-      const score      = parseScore(scoreRaw)
-      if (!score) return
-
-      const player_names = playersRaw.split(',').map(s => s.trim()).filter(Boolean)
-
-      const existing = rowsByRunId.get(run_id) ?? []
-      existing.push({
-        run_id, event_name, date: parsedDate, club: clubText, place: placeRaw,
-        player_names,
-        score_value: normaliseScore(score.value, score.type),
-        score_type: score.type,
-        tournament: mpts
-      })
-      rowsByRunId.set(run_id, existing)
-    })
-  })
-
-  return rowsByRunId
 }
 
 export async function POST(request: NextRequest) {
@@ -132,8 +51,12 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: object) =>
+      //----------------------------------------------------------------------------------------------
+      //  send — enqueues one SSE `data:` frame carrying the JSON of `data`
+      //----------------------------------------------------------------------------------------------
+      function send(data: object): void {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
 
       let total_sessions = 0
 
@@ -257,4 +180,125 @@ export async function POST(request: NextRequest) {
       'Connection': 'keep-alive',
     }
   })
+}
+
+//----------------------------------------------------------------------------------
+//  parseDate — "D MMM YY(YY)" → ISO YYYY-MM-DD; null when the string doesn't match
+//  that shape or the month abbreviation is unknown. 2-digit years become 20xx
+//----------------------------------------------------------------------------------
+function parseDate(raw: string): string | null {
+  const m = raw.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{2,4})$/)
+  if (!m) return null
+  const month = MONTH[m[2]]
+  if (!month) return null
+  const year = m[3].length === 2 ? `20${m[3]}` : m[3]
+  return `${year}-${month}-${m[1].padStart(2, '0')}`
+}
+
+//----------------------------------------------------------------------------------
+//  parseScore — splits a score cell into { value, type }, reading a PCT/VP/XIMPS
+//  suffix (XIMPS is folded to VP); null when the cell doesn't match that shape
+//----------------------------------------------------------------------------------
+function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' } | null {
+  const m = raw.trim().match(/^([\d.]+)\s*(PCT|VP|XIMPS)$/i)
+  if (!m) return null
+  const type = m[2].toUpperCase() === 'XIMPS' ? 'VP' : m[2].toUpperCase() as 'PCT' | 'VP'
+  return { value: parseFloat(m[1]), type }
+}
+
+//----------------------------------------------------------------------------------
+//  normaliseScore — resets an out-of-range PCT to 50 and an over-20 VP to 10;
+//  passes summary-row values and everything else through unchanged
+//----------------------------------------------------------------------------------
+function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): number {
+  if (isSummary) return value
+  if (type === 'PCT' && (value < 25 || value > 75)) return 50
+  if (type === 'VP' && value > 20) return 10
+  return value
+}
+
+//----------------------------------------------------------------------------------
+//  extractRunIds — every distinct run_id linked from an href on the page
+//----------------------------------------------------------------------------------
+function extractRunIds(html: string): number[] {
+  const $ = cheerio.load(html)
+  const runIds = new Set<number>()
+  $('a[href*="run_id="]').each((_, el) => {
+    const href = $(el).attr('href') ?? ''
+    const m = href.match(/run_id=(\d+)/)
+    if (m) runIds.add(parseInt(m[1], 10))
+  })
+  return [...runIds]
+}
+
+//----------------------------------------------------------------------------------
+//  parsePage — parses an NZB results HTML page into ParsedRow[] grouped by run_id,
+//  scanning only tables with both an "event" and a "player" header column and
+//  keeping only rows whose event link carries a run_id and whose score parses
+//----------------------------------------------------------------------------------
+function parsePage(html: string): Map<number, ParsedRow[]> {
+  const $ = cheerio.load(html)
+  const rowsByRunId = new Map<number, ParsedRow[]>()
+
+  $('table').each((_, table) => {
+    const headerRow = $(table).find('tr').first()
+    const headerCells = headerRow.find('th, td').toArray().map(th => $(th).text().trim().toLowerCase())
+
+    if (!headerCells.some(h => h.includes('event')) || !headerCells.some(h => h.includes('player'))) return
+
+    const colDate    = headerCells.findIndex(h => h === 'date')
+    const colClub    = headerCells.findIndex(h => h.includes('club'))
+    const colEvent   = headerCells.findIndex(h => h.includes('event'))
+    const colPlace   = headerCells.findIndex(h => h.includes('place'))
+    const colPlayers = headerCells.findIndex(h => h.includes('player'))
+    const colMpts    = headerCells.findIndex(h => h.includes('mpt') || h === 'mp' || h.includes('point'))
+    const colScore   = headerCells.findIndex(h => h.includes('score'))
+
+    if (colEvent < 0 || colPlayers < 0 || colScore < 0) return
+
+    $(table).find('tr').each((rowIdx, tr) => {
+      if (rowIdx === 0) return
+      const cells = $(tr).find('td').toArray()
+      if (cells.length < Math.max(colEvent, colPlayers, colScore) + 1) return
+
+      //----------------------------------------------------------------------------------------------
+      //  get — trimmed text of the cell at column idx, or '' when idx < 0
+      //----------------------------------------------------------------------------------------------
+      function get(idx: number): string {
+        return idx >= 0 ? $(cells[idx]).text().trim() : ''
+      }
+
+      const eventCell = colEvent >= 0 ? $(cells[colEvent]) : null
+      const eventHref = eventCell?.find('a').attr('href') ?? ''
+      const runMatch  = eventHref.match(/run_id=(\d+)/)
+      if (!runMatch) return
+
+      const run_id     = parseInt(runMatch[1], 10)
+      const event_name = eventCell?.find('a').text().trim() || get(colEvent)
+      const dateRaw    = get(colDate)
+      const clubText   = get(colClub)
+      const placeRaw   = get(colPlace)
+      const playersRaw = get(colPlayers)
+      const mpts       = get(colMpts)
+      const scoreRaw   = get(colScore)
+
+      const parsedDate = parseDate(dateRaw)
+      const score      = parseScore(scoreRaw)
+      if (!score) return
+
+      const player_names = playersRaw.split(',').map(s => s.trim()).filter(Boolean)
+
+      const existing = rowsByRunId.get(run_id) ?? []
+      existing.push({
+        run_id, event_name, date: parsedDate, club: clubText, place: placeRaw,
+        player_names,
+        score_value: normaliseScore(score.value, score.type),
+        score_type: score.type,
+        tournament: mpts
+      })
+      rowsByRunId.set(run_id, existing)
+    })
+  })
+
+  return rowsByRunId
 }

@@ -1,5 +1,17 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PerformanceChart — a player's results-over-time line chart, one series per partner
+//    (rolling-averaged by a selectable window), for a single scoring type. Partners are
+//    ordered best-average first; the top CHART_TOP_N_PRESELECTED are pre-selected. Clickable
+//    points/legend navigate to the session / partner page; the current view exports to CSV.
+//
+//    Parameters:
+//      results — the player's result rows (all scoring types; filtered here)
+//      scoring — which scoring type to chart (MP / VP / XIMP)
+//==============================================================================================
+
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MyLineChart } from '@/src/ui/graphs/graph_charts'
@@ -35,6 +47,10 @@ const PARTNER_COLORS = [
   'rgba(100, 100, 200, 1)',
 ]
 
+//----------------------------------------------------------------------------------
+//  rollingAvg — trailing moving average of `values` over a `window`-wide trailing
+//  slice (the first few points average over fewer values)
+//----------------------------------------------------------------------------------
 function rollingAvg(values: number[], window: number): number[] {
   return values.map((_, i) => {
     const slice = values.slice(Math.max(0, i - window + 1), i + 1)
@@ -42,10 +58,17 @@ function rollingAvg(values: number[], window: number): number[] {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  fmtDate — an ISO date as a short "Mon YY" label for the x-axis
+//----------------------------------------------------------------------------------
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' })
 }
 
+//----------------------------------------------------------------------------------
+//  escCsv — a CSV field, double-quote-escaped and quoted when it contains a comma,
+//  quote, or newline
+//----------------------------------------------------------------------------------
 function escCsv(v: string | number | null | undefined) {
   const s = String(v ?? '')
   return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
@@ -63,10 +86,14 @@ export default function PerformanceChart({ results, scoring }: Props) {
       .sort((a, b) => (a.date < b.date ? -1 : 1))
   , [results, scoring])
 
-  const valueOf = (r: ResultRow) =>
-    scoring === 'VP'   ? parseFloat(String(r.vp   ?? 0)) :
-    scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)) :
-    parseFloat(String(r.percentage))
+  //--------------------------------------------------------------------------------------------
+  //  valueOf — the numeric score for a row under the current `scoring` (vp / ximp / percentage)
+  //--------------------------------------------------------------------------------------------
+  function valueOf(r: ResultRow): number {
+    return scoring === 'VP'   ? parseFloat(String(r.vp   ?? 0)) :
+           scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)) :
+           parseFloat(String(r.percentage))
+  }
 
   const { partnerOrder, partnerMeta } = useMemo(() => {
     const groups = new Map<number, { name: string; vals: number[] }>()
@@ -140,6 +167,10 @@ export default function PerformanceChart({ results, scoring }: Props) {
 
   const visibleOrder = partnerOrder.filter(id => selectedIds.has(id))
 
+  //--------------------------------------------------------------------------------------------
+  //  exportCSV — builds and downloads a CSV of the currently-visible partners' rows (date, day,
+  //  session id, partner, actual, smoothed value)
+  //--------------------------------------------------------------------------------------------
   function exportCSV() {
     const smoothLabel = smoothing > 0 ? `Smooth_${smoothing}` : 'Score'
     const header = ['Date', 'Day', 'Session_ID', 'Partner', 'Actual', smoothLabel].join(',')
@@ -169,6 +200,9 @@ export default function PerformanceChart({ results, scoring }: Props) {
     a.click(); URL.revokeObjectURL(url)
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  toggleId — adds/removes one partner id from the on-graph selection
+  //--------------------------------------------------------------------------------------------
   function toggleId(id: number) {
     const next = new Set(selectedIds)
     if (next.has(id)) next.delete(id); else next.add(id)

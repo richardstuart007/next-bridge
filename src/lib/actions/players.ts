@@ -10,6 +10,9 @@ import { PLAYER_SEARCH_LIMIT, PLAYER_SEARCH_ALL_LIMIT } from '@/src/lib/constant
 
 const PLAYERS_TABLE = 'tpl_players'
 
+//----------------------------------------------------------------------------------
+//  getPlayerById — the tpl_players row for pl_plid, or null
+//----------------------------------------------------------------------------------
 export async function getPlayerById(plPlid: number) {
   const rows = await table_fetch({
     caller: 'getPlayerById',
@@ -19,6 +22,9 @@ export async function getPlayerById(plPlid: number) {
   return rows[0] ?? null
 }
 
+//----------------------------------------------------------------------------------
+//  getPlayerByNzb — the tpl_players row for pl_nzb, or null
+//----------------------------------------------------------------------------------
 export async function getPlayerByNzb(nzb: number) {
   const rows = await table_fetch({
     caller: 'getPlayerByNzb',
@@ -28,6 +34,11 @@ export async function getPlayerByNzb(nzb: number) {
   return rows[0] ?? null
 }
 
+//----------------------------------------------------------------------------------
+//  getPlayerByName — the best tpl_players row for a name, matched
+//  whitespace-/case-insensitively, preferring non-Archive rows then highest
+//  pl_rating; null when none match
+//----------------------------------------------------------------------------------
 export async function getPlayerByName(name: string) {
   const rows = await table_query({
     caller: 'getPlayerByName',
@@ -41,6 +52,10 @@ export async function getPlayerByName(name: string) {
   return rows[0] ?? null
 }
 
+//----------------------------------------------------------------------------------
+//  searchPlayers — up to PLAYER_SEARCH_LIMIT tpl_players rows whose pl_name
+//  contains the (title-cased) query and whose pl_nzb > 0, ordered by pl_name
+//----------------------------------------------------------------------------------
 export async function searchPlayers(query: string) {
   // Names are stored in Title Case. table_fetch LIKE is case-sensitive, so
   // title-case each word of the search term to match correctly.
@@ -57,6 +72,10 @@ export async function searchPlayers(query: string) {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  searchAllPlayers — like searchPlayers but includes pl_nzb = 0 players and is
+//  capped at PLAYER_SEARCH_ALL_LIMIT
+//----------------------------------------------------------------------------------
 export async function searchAllPlayers(query: string) {
   const titleCased = query.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
   return table_fetch({
@@ -68,6 +87,9 @@ export async function searchAllPlayers(query: string) {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  getAllPlayers — every tpl_players row, ordered by pl_name
+//----------------------------------------------------------------------------------
 export async function getAllPlayers() {
   return table_fetch({
     caller: 'getAllPlayers',
@@ -76,6 +98,9 @@ export async function getAllPlayers() {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  getPlayersWithoutNzb — every tpl_players row with pl_nzb = 0, ordered by pl_name
+//----------------------------------------------------------------------------------
 export async function getPlayersWithoutNzb() {
   return table_fetch({
     caller: 'getPlayersWithoutNzb',
@@ -85,6 +110,9 @@ export async function getPlayersWithoutNzb() {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  playerCount — total row count of tpl_players
+//----------------------------------------------------------------------------------
 export async function playerCount(): Promise<number> {
   return table_count({
     table: PLAYERS_TABLE,
@@ -92,6 +120,10 @@ export async function playerCount(): Promise<number> {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  getPlayerCounts — { withNumber, withoutNumber } split of tpl_players by whether
+//  pl_nzb > 0
+//----------------------------------------------------------------------------------
 export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNumber: number }> {
   const total = await table_count({
     table: PLAYERS_TABLE,
@@ -105,9 +137,12 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
   return { withNumber, withoutNumber: total - withNumber }
 }
 
-/** Fetch all group/scoring stats (A/B/C/all × MP/VP/XIMP) for a player from ta1_player_stats.
- *  avg_rank/group_total/pct_rank are precomputed by statsCompute.ts during the "Update Stats"
- *  pipeline step, not recalculated here — this data is static between pipeline runs. */
+//----------------------------------------------------------------------------------
+//  getPlayerAllGroupStats — every group/scoring stats row (A/B/C/all × MP/VP/XIMP)
+//  for a player from ta1_player_stats, ordered by group then scoring;
+//  avg_rank/group_total/pct_rank are precomputed by statsCompute.ts during the
+//  "Update Stats" pipeline step, not recalculated here
+//----------------------------------------------------------------------------------
 export async function getPlayerAllGroupStats(plid: number) {
   const rows = await table_query({
     caller: 'getPlayerAllGroupStats',
@@ -132,7 +167,11 @@ export async function getPlayerAllGroupStats(plid: number) {
   }[]
 }
 
-/** Upsert full player data including NZ bridge number. */
+//----------------------------------------------------------------------------------
+//  upsertPlayer — upserts full player data (incl. NZ bridge number): updates the
+//  row matched by name if one exists, else the row holding this nzb, else inserts
+//  a new tpl_players row
+//----------------------------------------------------------------------------------
 export async function upsertPlayer(data: {
   nzb: number
   name: string
@@ -188,6 +227,10 @@ export async function upsertPlayer(data: {
 
 const PARTNERS_TABLE = 'tpa_partners'
 
+//----------------------------------------------------------------------------------
+//  buildAllPartnerStats — status-only count of tpa_partners rows (no writes); the
+//  Build Partners pipeline step's reported figure
+//----------------------------------------------------------------------------------
 export async function buildAllPartnerStats(): Promise<{ pairs: number }> {
   const result = await table_query({
     caller: 'buildAllPartnerStats/count',
@@ -198,11 +241,11 @@ export async function buildAllPartnerStats(): Promise<{ pairs: number }> {
   return { pairs: result[0]?.n ?? 0 }
 }
 
-/**
- * Upsert a tpa_partners row for a pair and return its pa_paid.
- * plid1/plid2 are stored in alphabetical name order (first name → plid1, second → plid2).
- * Used during session import so re_paid can be set immediately.
- */
+//----------------------------------------------------------------------------------
+//  getOrCreatePartnerRow — upserts the tpa_partners row for a pair and returns its
+//  pa_paid; plid1/plid2 are stored in alphabetical name order (earlier name →
+//  pa_plid1). Used during session import so re_paid can be set immediately
+//----------------------------------------------------------------------------------
 export async function getOrCreatePartnerRow(
   plid1: number, plid2: number,
   name1: string, name2: string
@@ -223,7 +266,10 @@ export async function getOrCreatePartnerRow(
   return rows[0]?.pa_paid ?? null
 }
 
-/** Fetch C-group partnership stats (one row per scoring type) for a pair from ta2_partner_stats (order of IDs does not matter). */
+//----------------------------------------------------------------------------------
+//  getPartnerStats — C-group partnership stats (one row per scoring type) for a
+//  pair from ta2_partner_stats; ID order does not matter
+//----------------------------------------------------------------------------------
 export async function getPartnerStats(plid1: number, plid2: number) {
   const rows = await table_query({
     caller: 'getPartnerStats',

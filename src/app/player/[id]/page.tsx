@@ -1,3 +1,12 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    PlayerPage — the /player/[id] route. Awaits the route params and renders PlayerPageClient
+//    for the numeric player id inside a Suspense boundary.
+//
+//    Parameters:
+//      params — route params promise resolving to { id } (the pl_plid, as a string)
+//==============================================================================================
+
 import { Suspense } from 'react'
 import PlayerPageClient from '@/src/ui/player/PlayerPageClient'
 

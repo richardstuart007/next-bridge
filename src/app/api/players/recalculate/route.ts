@@ -1,3 +1,16 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/players/recalculate route handler. Recomputes one group's stats: mode
+//    'player_grp' runs computePlayerGroupStats(grp), mode 'partner_grp' runs
+//    computePartnerGroupStats(grp); each logs its own sub-step under pipeline step 4.
+//
+//    Parameters:
+//      request — query string: mode ('player_grp' | 'partner_grp'), grp ('A' | 'B' | 'C' | 'all')
+//
+//    Returns:
+//      JSON { updated: <rows> }; 400 for an unknown mode, 500 { error } on failure
+//==============================================================================================
+
 import { NextRequest, NextResponse } from 'next/server'
 import { write_logging } from 'nextjs-shared/write_logging'
 import { computePlayerGroupStats, computePartnerGroupStats } from '@/src/lib/actions/statsCompute'

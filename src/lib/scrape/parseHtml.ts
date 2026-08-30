@@ -4,10 +4,10 @@ import * as cheerio from 'cheerio'
 // Name normalisation
 // -----------------------------------------------------------------------
 
-/**
- * Convert ALL CAPS name to Title Case.
- * Handles NZ/Irish prefixes: Mc, Mac, O'
- */
+//----------------------------------------------------------------------------------
+//  toTitleCase — converts an ALL CAPS name to Title Case, handling NZ/Irish name
+//  prefixes (Mc, Mac, O')
+//----------------------------------------------------------------------------------
 export function toTitleCase(name: string): string {
   return name
     .toLowerCase()
@@ -16,6 +16,10 @@ export function toTitleCase(name: string): string {
     .join(' ')
 }
 
+//----------------------------------------------------------------------------------
+//  capitaliseWord — capitalises a single lowercase word, recursing past an
+//  O'/Mc/Mac prefix so the letter after the prefix is capitalised too
+//----------------------------------------------------------------------------------
 function capitaliseWord(word: string): string {
   if (!word) return word
   if (/^o'/.test(word)) return "O'" + capitaliseWord(word.slice(2))
@@ -45,19 +49,20 @@ export interface ParsedPlayer {
   c_points: number
 }
 
-/**
- * Parse the nzbridge.co.nz online-points page.
- * Table columns: Name | Number | Club | Rank | Stars | Grade | Rating | A Pts | B Pts | C Pts
- * Returns the first matching data row, or null if not found.
- */
+//----------------------------------------------------------------------------------
+//  parsePlayerTable — parses the nzbridge.co.nz online-points page (columns: Name |
+//  Number | Club | Rank | Stars | Grade | Rating | A Pts | B Pts | C Pts) and
+//  returns the first matching data row, or null if none
+//----------------------------------------------------------------------------------
 export function parsePlayerTable(html: string): ParsedPlayer | null {
   return parsePlayerTableByName(html, null)
 }
 
-/**
- * Parse the nzbridge.co.nz online-points page and find a row matching the
- * given name (case-insensitive). If name is null, returns the first data row.
- */
+//----------------------------------------------------------------------------------
+//  parsePlayerTableByName — parses the online-points page and returns the row
+//  matching name (case-insensitive), preferring the lowest NZ bridge number on a
+//  tie; returns the first data row when name is null, or null when none match
+//----------------------------------------------------------------------------------
 export function parsePlayerTableByName(html: string, name: string | null): ParsedPlayer | null {
   const $ = cheerio.load(html)
   const normTarget = name ? name.toLowerCase().replace(/\s+/g, ' ').trim() : null
@@ -96,10 +101,11 @@ export function parsePlayerTableByName(html: string, name: string | null): Parse
   return candidates.reduce((best, c) => c.nzb < best.nzb ? c : best)
 }
 
-/**
- * Like parsePlayerTableByName but returns ALL non-archive matches (not just the lowest).
- * Used by lookupPlayerCandidates to detect ambiguous results.
- */
+//----------------------------------------------------------------------------------
+//  parseAllPlayerMatches — like parsePlayerTableByName but returns every
+//  non-archive row matching name (not just the lowest NZ#); used by
+//  lookupPlayerCandidates to detect ambiguous results
+//----------------------------------------------------------------------------------
 export function parseAllPlayerMatches(html: string, name: string): ParsedPlayer[] {
   const $ = cheerio.load(html)
   const normTarget = name.toLowerCase().replace(/\s+/g, ' ').trim()
@@ -136,9 +142,10 @@ export function parseAllPlayerMatches(html: string, name: string): ParsedPlayer[
 // Fuzzy name matching (surname exact, first name by progressive prefix)
 // -----------------------------------------------------------------------
 
-/**
- * Parse all non-archived rows from an nzbridge.co.nz results page.
- */
+//----------------------------------------------------------------------------------
+//  parseAllRows — parses every non-archived data row from an nzbridge.co.nz
+//  results page into ParsedPlayer records
+//----------------------------------------------------------------------------------
 function parseAllRows(html: string): ParsedPlayer[] {
   const $ = cheerio.load(html)
   const rows: ParsedPlayer[] = []
@@ -164,6 +171,10 @@ function parseAllRows(html: string): ParsedPlayer[] {
   return rows
 }
 
+//----------------------------------------------------------------------------------
+//  nameParts — splits a full name into { first, last } (both lowercased); the
+//  last whitespace-separated token is the surname, everything before it the first
+//----------------------------------------------------------------------------------
 function nameParts(name: string): { first: string; last: string } {
   const parts = name.trim().split(/\s+/)
   return {
@@ -172,16 +183,10 @@ function nameParts(name: string): { first: string; last: string } {
   }
 }
 
-/**
- * Fuzzy first-name match: surname must be exact; first name matched by progressive
- * prefix — i.e. one name must start with the first N characters of the other,
- * where N grows until a unique match is found or names are exhausted.
- *
- * Examples:
- *   "Beverley" vs "Bev"     → match (Bev is prefix of Beverley)
- *   "Will"     vs "William" → match (Will is prefix of William)
- *   "Bob"      vs "Robert"  → no match (neither is prefix of the other)
- */
+//----------------------------------------------------------------------------------
+//  fuzzyFirstMatch — true when a and b are equal or the shorter is a prefix of the
+//  longer (e.g. "Bev"/"Beverley" match; "Bob"/"Robert" do not)
+//----------------------------------------------------------------------------------
 function fuzzyFirstMatch(a: string, b: string): boolean {
   if (a === b) return true
   const shorter = a.length <= b.length ? a : b
@@ -189,13 +194,11 @@ function fuzzyFirstMatch(a: string, b: string): boolean {
   return shorter.length >= 1 && longer.startsWith(shorter)
 }
 
-/**
- * Search html for players whose surname exactly matches the target and whose
- * first name fuzzy-matches (prefix), using progressive prefix narrowing to
- * disambiguate multiple same-surname candidates.
- *
- * Returns the single best match, or null if none or ambiguous.
- */
+//----------------------------------------------------------------------------------
+//  parsePlayerTableFuzzy — finds the player whose surname exactly matches name and
+//  whose first name fuzzy-matches by progressive prefix narrowing; returns the
+//  single best match, or null when none match or it stays ambiguous
+//----------------------------------------------------------------------------------
 export function parsePlayerTableFuzzy(html: string, name: string): ParsedPlayer | null {
   const all = parseAllRows(html)
   const target = nameParts(name)
@@ -228,10 +231,11 @@ export function parsePlayerTableFuzzy(html: string, name: string): ParsedPlayer 
   return null // ambiguous or no match
 }
 
-/**
- * Like parsePlayerTableFuzzy but returns ALL fuzzy surname+first-name-prefix
- * matches. Used by lookupPlayerCandidates.
- */
+//----------------------------------------------------------------------------------
+//  parseAllPlayerMatchesFuzzy — like parsePlayerTableFuzzy but returns every row
+//  with an exact surname and at least a first-letter first-name match; used by
+//  lookupPlayerCandidates
+//----------------------------------------------------------------------------------
 export function parseAllPlayerMatchesFuzzy(html: string, name: string): ParsedPlayer[] {
   const all = parseAllRows(html)
   const target = nameParts(name)
@@ -247,6 +251,10 @@ export function parseAllPlayerMatchesFuzzy(html: string, name: string): ParsedPl
   })
 }
 
+//----------------------------------------------------------------------------------
+//  parseDecimal — parseFloat that returns 0 instead of NaN for a blank/unparseable
+//  value
+//----------------------------------------------------------------------------------
 function parseDecimal(val: string): number {
   const n = parseFloat(val)
   return isNaN(n) ? 0 : n
@@ -276,6 +284,10 @@ export interface ParsedPlayerResult {
   url: string               // full session URL; '' if not found
 }
 
+//----------------------------------------------------------------------------------
+//  parseDMY — converts a "D MMM YY(YY)" date string to ISO YYYY-MM-DD; returns ''
+//  when the string doesn't match that shape. 2-digit years < 50 are 20xx, else 19xx
+//----------------------------------------------------------------------------------
 function parseDMY(dateStr: string): string {
   const m = dateStr.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{2,4})$/)
   if (!m) return ''
@@ -285,6 +297,10 @@ function parseDMY(dateStr: string): string {
   return `${fullYear}-${month}-${m[1].padStart(2, '0')}`
 }
 
+//----------------------------------------------------------------------------------
+//  parseNullablePoints — parseFloat that returns null for a blank/unparseable
+//  value (masterpoint columns that may legitimately be empty)
+//----------------------------------------------------------------------------------
 function parseNullablePoints(val: string): number | null {
   const s = val.trim()
   if (!s) return null
@@ -292,6 +308,10 @@ function parseNullablePoints(val: string): number | null {
   return isNaN(n) ? null : n
 }
 
+//----------------------------------------------------------------------------------
+//  parseScore — splits a score cell into its numeric value and type, reading a
+//  trailing "PCT" or "VP" suffix; scoreType is '' when neither suffix is present
+//----------------------------------------------------------------------------------
 function parseScore(val: string): { scoreValue: number; scoreType: 'PCT' | 'VP' | '' } {
   const s = val.trim()
   if (s.endsWith('PCT')) return { scoreValue: parseFloat(s) || 0, scoreType: 'PCT' }
@@ -299,6 +319,11 @@ function parseScore(val: string): { scoreValue: number; scoreType: 'PCT' | 'VP' 
   return { scoreValue: parseFloat(s) || 0, scoreType: '' }
 }
 
+//----------------------------------------------------------------------------------
+//  parseEventFields — pulls structured fields out of a free-text event name:
+//  tournament masterpoint code, Final/Session type + session number, restricted/
+//  open, event type (pairs/teams/swiss_*), and category (Provincial/…/Open)
+//----------------------------------------------------------------------------------
 function parseEventFields(name: string) {
   const tournamentMatch = name.match(/(\d+[ABC])/)
   const tournament = tournamentMatch ? tournamentMatch[1] : ''
@@ -333,11 +358,11 @@ function parseEventFields(name: string) {
   return { tournament, type, sessionNumber, restricted, eventType, category }
 }
 
-/**
- * Parse the nzbridge.co.nz player results history page (?mpsr=1&mp_user=NNN).
- * Rows have columns: date | club | event name | place | score | A-pts | B-pts | C-pts
- * The event name cell may contain a link to the session page (results.html?run_id=X).
- */
+//----------------------------------------------------------------------------------
+//  parsePlayerResultsHistory — parses the player results-history page
+//  (?mpsr=1&mp_user=NNN); rows are date | club | event | place | score | A/B/C
+//  pts, and the event cell's link supplies the session run_id + URL when present
+//----------------------------------------------------------------------------------
 export function parsePlayerResultsHistory(html: string): ParsedPlayerResult[] {
   const $ = cheerio.load(html)
   const results: ParsedPlayerResult[] = []
@@ -370,6 +395,10 @@ export function parsePlayerResultsHistory(html: string): ParsedPlayerResult[] {
   return results
 }
 
+//----------------------------------------------------------------------------------
+//  extractRunIdFromHref — reads the run_id query param out of an href; returns 0
+//  when absent or unparseable
+//----------------------------------------------------------------------------------
 function extractRunIdFromHref(href: string): number {
   if (!href) return 0
   try {
@@ -389,6 +418,10 @@ const CLUB_TRANSLATIONS: Record<string, string> = {
   '2020 Waiheke Bridge Club': 'Waiheke',
 }
 
+//----------------------------------------------------------------------------------
+//  normaliseClub — trims a raw club name and maps it through CLUB_TRANSLATIONS
+//  (e.g. "2020 Waiheke Bridge Club" → "Waiheke"), passing anything else through
+//----------------------------------------------------------------------------------
 export function normaliseClub(raw: string): string {
   const trimmed = raw.trim()
   return CLUB_TRANSLATIONS[trimmed] ?? trimmed
@@ -410,11 +443,11 @@ export interface ParsedSessionPair {
   scoreType: 'PCT' | 'VP' | ''
 }
 
-/**
- * Parse a NZbridge session results page (results.html?run_id=X).
- * Columns: date | club | event | session | place | players | mpts | score | A | B | C
- * Players cell is comma-separated: 2 names for pairs, 4 for teams.
- */
+//----------------------------------------------------------------------------------
+//  parseNzSessionPage — parses a session results page (results.html?run_id=X);
+//  columns are date | club | event | session | place | players | mpts | score |
+//  A/B/C, players comma-separated (2 for pairs, 4 for teams); skips rows with < 2
+//----------------------------------------------------------------------------------
 export function parseNzSessionPage(html: string): ParsedSessionPair[] {
   const $ = cheerio.load(html)
   const pairs: ParsedSessionPair[] = []

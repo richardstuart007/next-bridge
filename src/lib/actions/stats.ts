@@ -1,5 +1,27 @@
 'use server'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    rebuildAllStats — recomputes ta1_player_stats + ta2_partner_stats for every tournament
+//    group (A/B/C plus 'all') via upsert, logging each of the 8 group computations as its own
+//    sub-step under pipeline step 4.
+//
+//    Parameters:
+//      forceNewRun — allocate a fresh pip_run_id instead of reusing the current run's
+//                    (default false)
+//
+//    Returns:
+//      player_rows  — total ta1_player_stats rows upserted across all groups
+//      partner_rows — total ta2_partner_stats rows upserted across all groups
+//      groups       — per-group row counts, keyed `player-<grp>` / `partner-<grp>`
+//
+//  2) NOTES
+//    `groups` is keyed the same way PipelineTable.tsx's STATS_SUB_ROWS is, so the UI can fill
+//    all 8 sub-rows' Processed column from this one call whether it was triggered by "Run All"/
+//    "Finish Pipeline" or an individual button. Each of the 8 group computations is logged as a
+//    separate sub-step (a/b/c/d for players, e/f/g/h for partners) rather than one aggregate row.
+//==============================================================================================
+
 import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
 import { computePlayerGroupStats, computePartnerGroupStats } from '@/src/lib/actions/statsCompute'
 import { TOURNAMENT_GROUPS } from '@/src/lib/constants'
@@ -13,14 +35,6 @@ export type RebuildAllStatsResult = {
 const PLAYER_SUB_STEP:  Record<string, string> = { A: 'a', B: 'b', C: 'c', all: 'd' }
 const PARTNER_SUB_STEP: Record<string, string> = { A: 'e', B: 'f', C: 'g', all: 'h' }
 
-//----------------------------------------------------------------------------------
-//  rebuildAllStats — recomputes ta1_player_stats + ta2_partner_stats for every group
-//  (A/B/C/all) via upsert. Logs each of the 8 group computations as its own sub-step
-//  under step 4, rather than one aggregate row. `groups` returns each group's row
-//  count keyed the same way PipelineTable.tsx's STATS_SUB_ROWS does, so the UI can
-//  populate all 8 sub-rows' Processed column from this one call, regardless of
-//  whether it was triggered via "Run All"/"Finish Pipeline" or an individual button.
-//----------------------------------------------------------------------------------
 export async function rebuildAllStats(forceNewRun = false): Promise<RebuildAllStatsResult> {
   const run_id = await resolvePipRunId(4, forceNewRun)
   const groups: Record<string, number> = {}

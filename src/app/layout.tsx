@@ -1,3 +1,13 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    RootLayout — the app's root layout. Wraps every page in <html>/<body> with the Geist
+//    sans/mono fonts, a NuqsAdapter for URL query-state, and (in dev only) a DevLayoutHeader
+//    showing the current database location.
+//
+//    Parameters:
+//      children — the routed page content
+//==============================================================================================
+
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'

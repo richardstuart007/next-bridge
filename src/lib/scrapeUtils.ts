@@ -1,10 +1,18 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    extractRunIds — parses run_ids out of an NZ Bridge results/points HTML page by scanning
+//    every table for an "event" column link containing run_id=NNN.
+//
+//    Parameters:
+//      html — raw HTML of an NZ Bridge results/points page
+//
+//    Returns:
+//      runIds      — every run_id found on the page (deduplicated)
+//      finalRunIds — the subset whose Session column reads "Final" (combined summary sessions)
+//==============================================================================================
+
 import * as cheerio from 'cheerio'
 
-/**
- * Parse run_ids from an NZ Bridge results/points HTML page.
- * Returns all run_ids found, plus the subset that are "Final"
- * (combined summary sessions — Session column = "Final").
- */
 export function extractRunIds(html: string): { runIds: number[]; finalRunIds: number[] } {
   const $ = cheerio.load(html)
   const finalSet = new Set<number>()

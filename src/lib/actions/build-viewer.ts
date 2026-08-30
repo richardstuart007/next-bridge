@@ -2,7 +2,10 @@
 
 import { table_query } from 'nextjs-shared/table_query'
 
-/** tre_results for a session, with player and partner names. */
+//----------------------------------------------------------------------------------
+//  getResultsBySeid — tre_results for one session (re_seid), resolved to player +
+//  partner names, ordered by re_score DESC
+//----------------------------------------------------------------------------------
 export async function getResultsBySeid(seid: number) {
   return table_query({
     caller: 'build-viewer/resultsBySeid',
@@ -18,7 +21,10 @@ export async function getResultsBySeid(seid: number) {
   })
 }
 
-/** All tre_results rows, raw columns plus player names for re_paid (1:1 lookup via tpa_partners). */
+//----------------------------------------------------------------------------------
+//  getAllResults — every tre_results row, raw columns plus both player names for
+//  re_paid (1:1 lookup via tpa_partners), ordered by re_reid
+//----------------------------------------------------------------------------------
 export async function getAllResults() {
   return table_query({
     caller: 'build-viewer/allResults',
@@ -34,7 +40,10 @@ export async function getAllResults() {
   })
 }
 
-/** All tpa_partners rows, with player names (1:1 lookup — no ta2_partner_stats join, one row per partnership). */
+//----------------------------------------------------------------------------------
+//  getAllPartners — every tpa_partners row with both player names (1:1 lookup, no
+//  ta2_partner_stats join so it stays one row per partnership), ordered by name
+//----------------------------------------------------------------------------------
 export async function getAllPartners() {
   return table_query({
     caller: 'build-viewer/allPartners',
@@ -48,7 +57,10 @@ export async function getAllPartners() {
   })
 }
 
-/** All ta1_player_stats rows, plus the player name for a1_plid (1:1 lookup). */
+//----------------------------------------------------------------------------------
+//  getAllPlayerStats — every ta1_player_stats row plus the player name for a1_plid
+//  (1:1 lookup), ordered by plid, group, scoring
+//----------------------------------------------------------------------------------
 export async function getAllPlayerStats() {
   return table_query({
     caller: 'build-viewer/allPlayerStats',
@@ -60,7 +72,10 @@ export async function getAllPlayerStats() {
   })
 }
 
-/** All ta2_partner_stats rows, plus player names for a2_paid (1:1 lookup via tpa_partners). */
+//----------------------------------------------------------------------------------
+//  getAllPartnerStats — every ta2_partner_stats row plus both player names for
+//  a2_paid (1:1 lookup via tpa_partners), ordered by paid, group, scoring
+//----------------------------------------------------------------------------------
 export async function getAllPartnerStats() {
   return table_query({
     caller: 'build-viewer/allPartnerStats',

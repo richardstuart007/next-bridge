@@ -1,4 +1,17 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+﻿//==============================================================================================
+//  1) DESCRIPTION
+//    GET — /api/players/lookup route handler. Looks up a single player on nzbridge.co.nz by
+//    the `name` query param via lookupPlayer().
+//
+//    Parameters:
+//      request — query string: name (required)
+//
+//    Returns:
+//      the matched player JSON; 400 when name is missing, 404 when not found on NZB,
+//      500 { error } on failure
+//==============================================================================================
+
+import { NextRequest, NextResponse } from 'next/server'
 import { lookupPlayer } from '@/src/lib/scrape/nzbridge'
 import { write_logging } from 'nextjs-shared/write_logging'
 

@@ -98,7 +98,7 @@ export const PLAYER_SEARCH_ALL_LIMIT = 30
 //
 //  Number of most-recent run_ids offered in the Pipeline page's run-id picker (pipelineLog.ts)
 //
-export const PIPELINE_RECENT_RUN_IDS_LIMIT = 5
+export const PIPELINE_RECENT_RUN_IDS_LIMIT = 10
 
 //
 //  Earliest date the app's data begins — the min bound on every session/result date picker

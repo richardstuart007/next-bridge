@@ -1,5 +1,12 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PipelineHelp — a "Help" button on the Pipeline page that toggles a wide popover describing
+//    all 5 pipeline steps (input / processing / output, from the STEPS constant) plus the
+//    row-count SQL snippet.
+//==============================================================================================
+
 import { useState } from 'react'
 
 //----------------------------------------------------------------------------------------------
@@ -84,9 +91,6 @@ const ROW_COUNT_SQL =
   UNION ALL SELECT 7, 'ta2_partner_stats',  COUNT(*) FROM ta2_partner_stats
 ) t ORDER BY ord;`
 
-//----------------------------------------------------------------------------------------------
-//  PipelineHelp — wider structured help popover for the Pipeline page
-//----------------------------------------------------------------------------------------------
 export default function PipelineHelp() {
   const [open, setOpen] = useState(false)
 

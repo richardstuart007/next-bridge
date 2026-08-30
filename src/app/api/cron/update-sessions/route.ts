@@ -6,6 +6,10 @@ import { buildAllPartnerStats } from '@/src/lib/actions/players'
 import { rebuildAllStats } from '@/src/lib/actions/stats'
 import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
 
+//----------------------------------------------------------------------------------
+//  checkCronAuth — returns a 401 NextResponse when CRON_SECRET is set, the env is
+//  not dev, and the Authorization header isn't `Bearer <secret>`; null otherwise
+//----------------------------------------------------------------------------------
 function checkCronAuth(request: NextRequest): NextResponse | null {
   const isDev  = process.env.NEXT_PUBLIC_APPENV_ISDEV === 'true'
   const secret = process.env.CRON_SECRET
@@ -16,9 +20,19 @@ function checkCronAuth(request: NextRequest): NextResponse | null {
   return null
 }
 
+//----------------------------------------------------------------------------------
+//  run — runs the whole pipeline in one request (scrape AKBC → build → scrape
+//  tracked → build → partners → stats), logging each stage, and returns a summary
+//  JSON (500 with { error } on failure)
+//----------------------------------------------------------------------------------
 async function run(): Promise<NextResponse> {
-  const log = (msg: string, severity = 'I') =>
-    write_logging({ lg_functionname: 'run', lg_caller: 'cron/update-sessions', lg_msg: msg, lg_severity: severity })
+  //----------------------------------------------------------------------------------------------
+  //  log — write_logging bound to this route's functionname/caller (default severity 'I')
+  //----------------------------------------------------------------------------------------------
+  function log(msg: string, severity = 'I') {
+    const result = write_logging({ lg_functionname: 'run', lg_caller: 'cron/update-sessions', lg_msg: msg, lg_severity: severity })
+    return result
+  }
 
   try {
     await log('START full pipeline run')
@@ -67,12 +81,18 @@ async function run(): Promise<NextResponse> {
   }
 }
 
+//----------------------------------------------------------------------------------
+//  GET — Vercel Cron entry: cron-auth-checks, then runs the full pipeline
+//----------------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const unauthorized = checkCronAuth(request)
   if (unauthorized) return unauthorized
   return run()
 }
 
+//----------------------------------------------------------------------------------
+//  POST — manual-trigger equivalent of GET (same cron-auth check and behaviour)
+//----------------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   const unauthorized = checkCronAuth(request)
   if (unauthorized) return unauthorized

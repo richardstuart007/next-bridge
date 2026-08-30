@@ -1,3 +1,16 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    PATCH — /api/admin/players/[id]/all-results route handler. Sets tpl_players.pl_tracked
+//    for the player id in the path to the request body's `all_results` boolean.
+//
+//    Parameters:
+//      request — JSON body { all_results: boolean }
+//      params  — route params promise resolving to { id } (the pl_plid, as a string)
+//
+//    Returns:
+//      JSON { ok: true }; 400 on a bad id / body, 500 { error } on a DB failure
+//==============================================================================================
+
 import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 

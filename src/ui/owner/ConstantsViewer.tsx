@@ -1,5 +1,23 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    ConstantsViewer — a two-level tabbed read-only display of constants.ts and .env (no edit
+//    controls). Top-level tabs pick Constants / .env / Functions; a second tab row picks one
+//    section within Constants/.env and only that section's SectionTable renders. Functions is a
+//    flat reverse-index (buildFunctionIndex) across both, with no section row.
+//
+//    Parameters:
+//      constantsSections    — the constants.ts sections to display
+//      envSections          — the .env sections to display
+//      functionDescriptions — one-line description per resolved consumer reference
+//
+//  2) NOTES
+//    Top-level function order is kept helpers-first, main-component-last. All helpers are
+//    hoisted `function` declarations, so the arrangement is cosmetic. Flagged for a separate
+//    review pass alongside PipelineTable/PipelineDiagram.
+//==============================================================================================
+
 import { useState } from 'react'
 import { VALUE_DISPLAY_MAX_LENGTH } from '@/src/lib/constants'
 import { MyTab } from 'nextjs-shared/MyTab'
@@ -40,6 +58,10 @@ type FunctionIndexEntry = {
 function buildFunctionIndex(constantsSections: ConstantSection[], envSections: ConstantSection[]): FunctionIndexEntry[] {
   const namesByUsedIn = new Map<string, Map<string, boolean>>()
 
+  //--------------------------------------------------------------------------------------------
+  //  addSections — folds one section list's entries into namesByUsedIn, tagging each name with
+  //  whether it came from the .env set
+  //--------------------------------------------------------------------------------------------
   function addSections(sections: ConstantSection[], isEnv: boolean) {
     for (const section of sections) {
       for (const entry of section.entries) {
@@ -213,12 +235,6 @@ function FunctionIndexTable({ index, functionDescriptions }: { index: FunctionIn
   )
 }
 
-//----------------------------------------------------------------------------------------------
-//  ConstantsViewer — two-level tabbed read-only display of constants.ts and .env, no edit
-//  controls. Top-level tabs pick Constants, .env, or Functions; a second tab row picks one
-//  section within Constants/.env, and only that section's table renders at a time. Functions is
-//  a flat reverse-index across both, with no section row.
-//----------------------------------------------------------------------------------------------
 export default function ConstantsViewer({
   constantsSections,
   envSections,
@@ -235,6 +251,9 @@ export default function ConstantsViewer({
   const activeSection = sections[sectionIndex] ?? sections[0]
   const functionIndex = buildFunctionIndex(constantsSections, envSections)
 
+  //--------------------------------------------------------------------------------------------
+  //  handleTabChange — switches the top-level tab and resets the section selection to the first
+  //--------------------------------------------------------------------------------------------
   function handleTabChange(next: Tab) {
     setTab(next)
     setSectionIndex(0)

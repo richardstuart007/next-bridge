@@ -4,6 +4,10 @@ import { fetchHtml } from './fetchHtml'
 
 const NZBRIDGE_BASE = 'https://www.nzbridge.co.nz'
 
+//----------------------------------------------------------------------------------
+//  fetchNzBridgePage — fetches the online-points search page for a name search
+//  term (space-split, lowercased, '+'-joined); returns null on any fetch error
+//----------------------------------------------------------------------------------
 async function fetchNzBridgePage(searchTerm: string): Promise<string | null> {
   const encoded = searchTerm.toLowerCase().split(/\s+/).map(encodeURIComponent).join('+')
   const url = `${NZBRIDGE_BASE}/online-points.html?mp_filter_name=${encoded}&mp_filter_number=&mp_search=Search`
@@ -14,10 +18,11 @@ async function fetchNzBridgePage(searchTerm: string): Promise<string | null> {
   }
 }
 
-/**
- * Look up a player on nzbridge.co.nz by their NZ bridge number.
- * Uses mp_filter_number= parameter for an exact match.
- */
+//----------------------------------------------------------------------------------
+//  lookupPlayerByNumber — looks up a player on nzbridge.co.nz by exact NZ bridge
+//  number (mp_filter_number); logs a warning on no data, an error on failure,
+//  and returns null in both cases
+//----------------------------------------------------------------------------------
 export async function lookupPlayerByNumber(nzb: number): Promise<ParsedPlayer | null> {
   try {
     const url = `${NZBRIDGE_BASE}/online-points.html?mp_filter_name=&mp_filter_number=${nzb}&mp_search=Search`
@@ -33,14 +38,12 @@ export async function lookupPlayerByNumber(nzb: number): Promise<ParsedPlayer | 
   }
 }
 
-/**
- * Look up a player on nzbridge.co.nz by name.
- *
- * Strategy:
- *  1. Search by full name â€” returns a single matching row if exact.
- *  1.5 Search by firstname%lastname â€” catches middle initials / suffixes.
- *  2. If not found, search by surname only and scan results for the full name.
- */
+//----------------------------------------------------------------------------------
+//  lookupPlayer — looks up a player on nzbridge.co.nz by name in three passes:
+//  (1) exact full-name search, (1.5) firstname % lastname wildcard for middle
+//  initials/suffixes, (2) surname-only search with fuzzy first-name matching;
+//  returns the first hit or null
+//----------------------------------------------------------------------------------
 export async function lookupPlayer(name: string): Promise<ParsedPlayer | null> {
   try {
     const parts = name.trim().split(/\s+/)
@@ -76,10 +79,10 @@ export async function lookupPlayer(name: string): Promise<ParsedPlayer | null> {
   }
 }
 
-/**
- * Fetch the full results history for a player by their NZ bridge number.
- * URL: /online-points.html?mpsr=1&mp_user=NNN
- */
+//----------------------------------------------------------------------------------
+//  fetchPlayerResultsHistory — fetches and parses a player's full results-history
+//  page (?mpsr=1&mp_user=NNN); logs and returns [] on error
+//----------------------------------------------------------------------------------
 export async function fetchPlayerResultsHistory(nzb: number): Promise<ParsedPlayerResult[]> {
   try {
     const url = `${NZBRIDGE_BASE}/online-points.html?mpsr=1&mp_user=${nzb}`
@@ -90,10 +93,10 @@ export async function fetchPlayerResultsHistory(nzb: number): Promise<ParsedPlay
   }
 }
 
-/**
- * Fetch and parse a NZbridge session results page by run_id.
- * URL: /results.html?run_id=X
- */
+//----------------------------------------------------------------------------------
+//  fetchNzSessionPage — fetches and parses a session results page by run_id
+//  (/results.html?run_id=X); logs and returns [] on error
+//----------------------------------------------------------------------------------
 export async function fetchNzSessionPage(runId: number): Promise<ParsedSessionPair[]> {
   try {
     const url = `${NZBRIDGE_BASE}/results.html?run_id=${runId}`
@@ -104,18 +107,19 @@ export async function fetchNzSessionPage(runId: number): Promise<ParsedSessionPa
   }
 }
 
-/**
- * Like lookupPlayer but returns ALL non-archive matches across all search strategies,
- * deduplicated by nzb.
- * - Empty array  â†’ not found
- * - Length 1     â†’ unambiguous, safe to auto-assign
- * - Length > 1   â†’ ambiguous, needs manual review
- */
+//----------------------------------------------------------------------------------
+//  lookupPlayerCandidates — like lookupPlayer but returns every non-archive match
+//  across all three search passes, deduplicated by nzb: [] = not found, length 1
+//  = unambiguous (safe to auto-assign), length > 1 = ambiguous (manual review)
+//----------------------------------------------------------------------------------
 export async function lookupPlayerCandidates(name: string): Promise<ParsedPlayer[]> {
   try {
     const seen = new Set<number>()
     const results: ParsedPlayer[] = []
 
+    //----------------------------------------------------------------------------------------------
+    //  addAll — pushes each candidate whose nzb hasn't been seen yet into results
+    //----------------------------------------------------------------------------------------------
     function addAll(candidates: ParsedPlayer[]) {
       for (const c of candidates) {
         if (!seen.has(c.nzb)) {

@@ -1,3 +1,9 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    PipelinePage — the /owner/pipeline route. Renders the PipelineTable (per-step Run buttons
+//    plus "Run All") under a heading with the PipelineHelp popover.
+//==============================================================================================
+
 import PipelineTable from '@/src/ui/admin/PipelineTable'
 import PipelineHelp from '@/src/ui/admin/PipelineHelp'
 

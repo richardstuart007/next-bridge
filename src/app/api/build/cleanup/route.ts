@@ -1,4 +1,11 @@
-﻿import { NextResponse } from 'next/server'
+﻿//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/build/cleanup route handler. Deletes tre_results rows with a negative
+//    re_percentage, logs how many were removed, and returns { deleted } as JSON (500 with
+//    { error } on failure).
+//==============================================================================================
+
+import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
 

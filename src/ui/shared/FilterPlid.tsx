@@ -1,14 +1,26 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    FilterPlid — a multi-select dropdown over a list of players (by pl_plid) with an optional
+//    "select tracked" shortcut. Consolidates two near-identical local components
+//    (PlayerPageClient's PartnerSelect, PartnersTable's PlayerSelect) into one.
+//
+//    Parameters:
+//      players       — { plid, name, count, tracked } list to choose from
+//      selected      — Set of currently-selected plids (size === players.length means "All")
+//      onChange      — called with the new Set
+//      overrideClass — extra classes for the trigger button (default WIDTH_PLID)
+//
+//  2) NOTES
+//    "All selected" is represented as a full Set, not an empty one; toggling a single row while
+//    All is active narrows to just that row.
+//==============================================================================================
+
 import { useState, useEffect, useRef } from 'react'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { WIDTH_PLID } from '@/src/lib/constants'
 
-//----------------------------------------------------------------------------------------------
-//  FilterPlid — multi-select dropdown over a list of players (by pl_plid), with an optional
-//  "select tracked" shortcut. Consolidates what were two near-identical local components
-//  (PlayerPageClient.tsx's PartnerSelect, PartnersTable.tsx's PlayerSelect) into one.
-//----------------------------------------------------------------------------------------------
 export function FilterPlid({ players, selected, onChange, overrideClass = WIDTH_PLID }: {
   players: { plid: number; name: string; count: number; tracked: boolean }[]
   selected: Set<number>
@@ -20,6 +32,9 @@ export function FilterPlid({ players, selected, onChange, overrideClass = WIDTH_
 
   useEffect(() => {
     if (!open) return
+    //--------------------------------------------------------------------------------------------
+    //  handle — closes the dropdown on a mousedown outside the component
+    //--------------------------------------------------------------------------------------------
     function handle(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
@@ -31,14 +46,23 @@ export function FilterPlid({ players, selected, onChange, overrideClass = WIDTH_
   const trackedPlids = players.filter(p => p.tracked).map(p => p.plid)
   const label = allSelected ? 'All' : `${selected.size} / ${players.length}`
 
+  //--------------------------------------------------------------------------------------------
+  //  toggleAll — selects every player
+  //--------------------------------------------------------------------------------------------
   function toggleAll() {
     onChange(new Set(players.map(p => p.plid)))
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  selectTracked — selects only the tracked players
+  //--------------------------------------------------------------------------------------------
   function selectTracked() {
     onChange(new Set(trackedPlids))
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  toggle — adds/removes one plid; from the "All" state, narrows to just that plid
+  //--------------------------------------------------------------------------------------------
   function toggle(plid: number) {
     if (allSelected) {
       onChange(new Set([plid]))

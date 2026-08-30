@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 
+//----------------------------------------------------------------------------------
+//  GET — lists all ts2_results staging rows, resolved to both player names,
+//  ordered by run_id then s2_s2id
+//----------------------------------------------------------------------------------
 export async function GET() {
   const rows = await table_query({
     caller: 'scrape/ts2/list',
@@ -17,6 +21,9 @@ export async function GET() {
   return NextResponse.json(rows)
 }
 
+//----------------------------------------------------------------------------------
+//  DELETE — truncates ts2_results
+//----------------------------------------------------------------------------------
 export async function DELETE() {
   await table_query({ caller: 'scrape/ts2/truncate', query: `TRUNCATE ts2_results`, params: [] })
   return NextResponse.json({ ok: true })

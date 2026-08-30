@@ -1,4 +1,19 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+﻿//==============================================================================================
+//  1) DESCRIPTION
+//    GET — /api/players/[id]/results route handler. Returns every session result row for the
+//    player id in the path (as either partner of the pairing), resolved to session detail and
+//    the other player's name/nzb/tracked flag, newest run_id first.
+//
+//    Parameters:
+//      request — query string: optional day_of_week, optional partner_id (restrict to
+//                pairings that also include that player)
+//      params  — route params promise resolving to { id } (the pl_plid, as a string)
+//
+//    Returns:
+//      JSON array of result rows; 400 on a bad id, 500 { error } on failure
+//==============================================================================================
+
+import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
 

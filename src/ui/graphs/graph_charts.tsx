@@ -32,9 +32,11 @@ interface StackDataStructure {
   datasets: Datasets[]
 }
 
-// -------------------------------------------------------------------------------
-//  Bar Chart
-// -------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------
+//  MyBarChart — a Chart.js bar chart (optionally stacked / horizontal / percentage)
+//  with optional bar-click and y-axis-label-click callbacks; draws a dashed 50%
+//  reference line when showPercentage is set
+//----------------------------------------------------------------------------------
 export function MyBarChart({
   StackedGraphData,
   Stacked = false,
@@ -77,7 +79,12 @@ export function MyBarChart({
 
   const modifiedGraphData = { ...StackedGraphData, datasets: displayDatasets }
 
-  const valueLabel = (v: number) => (showPercentage ? `${v}%` : `${v}`)
+  //----------------------------------------------------------------------------------------------
+  //  valueLabel — a bar value formatted as "N%" when showPercentage, else "N"
+  //----------------------------------------------------------------------------------------------
+  function valueLabel(v: number): string {
+    return showPercentage ? `${v}%` : `${v}`
+  }
 
   const options = {
     indexAxis,
@@ -146,6 +153,10 @@ export function MyBarChart({
     }
   }] : []
 
+  //----------------------------------------------------------------------------------------------
+  //  handleWrapperClick — for a horizontal (indexAxis 'y') chart, maps a click in the left
+  //  label gutter to a label index and forwards it to onLabelClick
+  //----------------------------------------------------------------------------------------------
   function handleWrapperClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!onLabelClick || indexAxis !== 'y') return
     const chart = barRef.current
@@ -175,9 +186,10 @@ export function MyBarChart({
   )
 }
 
-// -------------------------------------------------------------------------------
-//  Line Chart
-// -------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------
+//  MyLineChart — a Chart.js multi-series line chart with a line-style legend and
+//  optional point-click and legend-click callbacks
+//----------------------------------------------------------------------------------
 export function MyLineChart({
   LineGraphData,
   GridDisplayX = false,

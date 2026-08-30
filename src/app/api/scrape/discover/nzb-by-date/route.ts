@@ -1,21 +1,24 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/scrape/discover/nzb-by-date route handler. Streams (SSE) a club-by-date
+//    discovery run: truncates staging, then for each day in the range fetches the club results
+//    page, extracts run_ids, and inserts the ones missing from tse_sessions into ts1_sessions
+//    (flagging "Final"/summary sessions via s1_is_summary).
+//
+//    Parameters:
+//      request — JSON body { date_from, date_end, club_id? (default BRIDGE_CLUB_ID) }
+//
+//    Returns:
+//      a text/event-stream Response; per-day { found, missing } frames then a final
+//      { done: true, total_found, total_in_prod, total_missing, missing }
+//==============================================================================================
+
 import { NextRequest } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { extractRunIds } from '@/src/lib/scrapeUtils'
 import { BRIDGE_CLUB_ID } from '@/src/lib/constants'
 
 const NZB_BASE = 'https://www.nzbridge.co.nz'
-
-function datesInRange(from: string, to: string): string[] {
-  const dates: string[] = []
-  const cur = new Date(from)
-  const end = new Date(to)
-  while (cur <= end) {
-    dates.push(cur.toISOString().slice(0, 10))
-    cur.setDate(cur.getDate() + 1)
-  }
-  return dates
-}
-
 
 export async function POST(request: NextRequest) {
   let body: { date_from?: string; date_end?: string; club_id?: number }
@@ -31,8 +34,12 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
-      const send = (data: object) =>
+      //----------------------------------------------------------------------------------------------
+      //  send — enqueues one SSE `data:` frame carrying the JSON of `data`
+      //----------------------------------------------------------------------------------------------
+      function send(data: object): void {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+      }
 
       let total_found   = 0
       let total_in_prod = 0
@@ -105,4 +112,18 @@ export async function POST(request: NextRequest) {
       'Connection': 'keep-alive',
     }
   })
+}
+
+//----------------------------------------------------------------------------------
+//  datesInRange — every ISO (YYYY-MM-DD) date string from `from` to `to` inclusive
+//----------------------------------------------------------------------------------
+function datesInRange(from: string, to: string): string[] {
+  const dates: string[] = []
+  const cur = new Date(from)
+  const end = new Date(to)
+  while (cur <= end) {
+    dates.push(cur.toISOString().slice(0, 10))
+    cur.setDate(cur.getDate() + 1)
+  }
+  return dates
 }

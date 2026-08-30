@@ -1,5 +1,17 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PartnersTable — a player's full partnership history. Fetches each partner's results
+//    (scoped to sessions shared with this player) on mount, flattens them into one filterable,
+//    client-paginated table, and offers a Data / Graph toggle (Graph reuses PerformanceChart)
+//    plus a CSV export of the filtered rows.
+//
+//    Parameters:
+//      partners — the player's partners (plid, name, nzb, count, tracked)
+//      playerId — the player whose partnerships these are (used to scope each partner's results)
+//==============================================================================================
+
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
@@ -61,7 +73,6 @@ export default function PartnersTable({ partners, playerId }: { partners: Partne
 
   const [filter_run_id,              setFilter_run_id]              = useState('')
   const [filter_date_from,           setFilter_date_from]           = useState('')
-  const [filter_date_to,             setFilter_date_to]             = useState('')
   const [filter_day_of_week,          setFilter_day_of_week]          = useState('')
   const [filter_scoring,      setFilter_scoring]      = useState<'all' | (typeof SCORING_TYPES)[number]>('all')
   const [filter_is_summary,      setFilter_is_summary]      = useState<'all' | 'summary' | 'session'>('all')
@@ -101,7 +112,7 @@ export default function PartnersTable({ partners, playerId }: { partners: Partne
   }, [partners])
 
   useEffect(() => { setCurrentPage(1) },
-    [filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_plid, filter_scoring, filter_name,
+    [filter_run_id, filter_date_from, filter_day_of_week, filter_plid, filter_scoring, filter_name,
      filter_club, filter_tournament, filter_event_type, filter_is_summary])
 
   const allRows: FlatRow[] = useMemo(() => {
@@ -119,7 +130,6 @@ export default function PartnersTable({ partners, playerId }: { partners: Partne
     if (filter_plid.size < partners.length) rows = rows.filter(r => filter_plid.has(r.player_id))
     if (filter_run_id)            rows = rows.filter(r => String(r.run_id).includes(filter_run_id))
     if (filter_date_from)          rows = rows.filter(r => r.date.slice(0, 10) >= filter_date_from)
-    if (filter_date_to)            rows = rows.filter(r => r.date.slice(0, 10) <= filter_date_to)
     if (filter_day_of_week)         rows = rows.filter(r => r.day_of_week === filter_day_of_week)
     if (filter_scoring !== 'all') rows = rows.filter(r => r.scoring === filter_scoring)
     if (filter_name) rows = rows.filter(r => r.session_name.toLowerCase().includes(filter_name.toLowerCase()))
@@ -132,7 +142,7 @@ export default function PartnersTable({ partners, playerId }: { partners: Partne
     if (filter_is_summary === 'summary') rows = rows.filter(r => r.is_summary === true)
     if (filter_is_summary === 'session') rows = rows.filter(r => r.is_summary !== true)
     return rows
-  }, [allRows, filter_plid, partners.length, filter_run_id, filter_date_from, filter_date_to, filter_day_of_week,
+  }, [allRows, filter_plid, partners.length, filter_run_id, filter_date_from, filter_day_of_week,
       filter_scoring, filter_name, filter_club, clubOptions.length,
       filter_tournament, filter_event_type, eventTypeOptions.length, filter_is_summary])
 
@@ -151,11 +161,18 @@ export default function PartnersTable({ partners, playerId }: { partners: Partne
     is_summary:   r.is_summary,
   })), [filtered])
 
+  //--------------------------------------------------------------------------------------------
+  //  escCsv — a CSV field, double-quote-escaped and quoted when it contains a comma, quote, or
+  //  newline
+  //--------------------------------------------------------------------------------------------
   function escCsv(v: string | number | null | undefined) {
     const s = String(v ?? '')
     return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  exportCSV — downloads the currently-filtered rows as a CSV
+  //--------------------------------------------------------------------------------------------
   function exportCSV() {
     const header = ['Player','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP','XIMP']
     const dataRows = filtered.map(r => [
@@ -250,10 +267,7 @@ export default function PartnersTable({ partners, playerId }: { partners: Partne
                 <FilterRunId value={filter_run_id} onChange={setFilter_run_id} />
               </td>
               <td className='py-1 pr-1'>
-                <div className='flex flex-col gap-0.5'>
-                  <FilterDate value={filter_date_from} onChange={setFilter_date_from} />
-                  <FilterDate value={filter_date_to} onChange={setFilter_date_to} />
-                </div>
+                <FilterDate value={filter_date_from} onChange={setFilter_date_from} />
               </td>
               <td className='py-1 pr-1'>
                 <FilterDayOfWeek value={filter_day_of_week} onChange={setFilter_day_of_week} />

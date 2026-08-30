@@ -1,3 +1,15 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    ConstantsPage — the /owner Constants tab. Assembles hardwired display data for every
+//    constants.ts export (CONSTANTS_SECTIONS), the relevant .env vars (envSections), and a
+//    per-consumer function-description map (FUNCTION_DESCRIPTIONS), then hands them to
+//    ConstantsViewer for a read-only tabbed display.
+//
+//  2) NOTES
+//    CONSTANTS_SECTIONS / FUNCTION_DESCRIPTIONS are hand-maintained — add an entry here
+//    whenever a constant or a `consumers` reference is added.
+//==============================================================================================
+
 import ConstantsViewer, { ConstantSection } from '@/src/ui/owner/ConstantsViewer'
 import {
   ROBOT_PLAYER_NAME,
@@ -203,9 +215,6 @@ const FUNCTION_DESCRIPTIONS: Record<string, string> = {
   'SummaryTypeSelects.tsx: SummaryTypeMultiSelect': "Multi-select se_is_summary filter (Home Sessions tab's Summary filter)."
 }
 
-//----------------------------------------------------------------------------------
-//  ConstantsPage — read-only display of constants.ts and .env, tabbed, no edit controls
-//----------------------------------------------------------------------------------
 export default function ConstantsPage() {
   const envSections: ConstantSection[] = [
     {

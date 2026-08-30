@@ -1,23 +1,26 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    GET — /api/rankings route handler. Returns one page each of the player-rankings and
+//    partnership-rankings tabs for a given group + scoring type, applying the tab's own
+//    filters and pagination, plus per-tab total counts and the group's precomputed
+//    a1/a2_group_total.
+//
+//    Parameters:
+//      request — query string: playersMin, partnersMin, scoring, group; player filters
+//                name/nzb/grades/clubs/tracked; partnership filters
+//                name1/name2/nzb1/nzb2/paid/partnerTracked; and per-tab pagination
+//                players*/partners* (Page / ItemsPerPage / TopN)
+//
+//    Returns:
+//      JSON { players, playersTotalPages, playersTotalCount, playersGroupTotal,
+//             partnerships, partnersTotalPages, partnersTotalCount, partnersGroupTotal };
+//      500 { error } on failure
+//==============================================================================================
+
 import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
 import { SCORING_TYPES, ROWS_PER_PAGE } from '@/src/lib/constants'
-
-//----------------------------------------------------------------------------------
-//  pageParams — resolves page/itemsPerPage for one tab. A `topN` selection (e.g. "Top
-//  25") overrides itemsPerPage and forces a single page, matching the Rankings page's
-//  existing "Top N" concept — real page/itemsPerPage-based browsing otherwise applies.
-//----------------------------------------------------------------------------------
-function pageParams(searchParams: URLSearchParams, prefix: string): { limit: number; offset: number } {
-  const topN            = parseInt(searchParams.get(`${prefix}TopN`) ?? '0', 10)
-  const pageParsed       = parseInt(searchParams.get(`${prefix}Page`) ?? '1', 10)
-  const itemsPerPageParsed = parseInt(searchParams.get(`${prefix}ItemsPerPage`) ?? String(ROWS_PER_PAGE), 10)
-  const page         = Number.isFinite(pageParsed) && pageParsed > 0 ? pageParsed : 1
-  const itemsPerPage = Number.isFinite(itemsPerPageParsed) && itemsPerPageParsed > 0 ? itemsPerPageParsed : ROWS_PER_PAGE
-
-  if (Number.isFinite(topN) && topN > 0) return { limit: topN, offset: 0 }
-  return { limit: itemsPerPage, offset: (page - 1) * itemsPerPage }
-}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -210,4 +213,20 @@ export async function GET(request: NextRequest) {
     await write_logging({ lg_functionname: 'GET', lg_caller: 'rankings', lg_msg: String(err), lg_severity: 'E' })
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
+}
+
+//----------------------------------------------------------------------------------
+//  pageParams — resolves page/itemsPerPage for one tab. A `topN` selection (e.g. "Top
+//  25") overrides itemsPerPage and forces a single page, matching the Rankings page's
+//  existing "Top N" concept — real page/itemsPerPage-based browsing otherwise applies.
+//----------------------------------------------------------------------------------
+function pageParams(searchParams: URLSearchParams, prefix: string): { limit: number; offset: number } {
+  const topN            = parseInt(searchParams.get(`${prefix}TopN`) ?? '0', 10)
+  const pageParsed       = parseInt(searchParams.get(`${prefix}Page`) ?? '1', 10)
+  const itemsPerPageParsed = parseInt(searchParams.get(`${prefix}ItemsPerPage`) ?? String(ROWS_PER_PAGE), 10)
+  const page         = Number.isFinite(pageParsed) && pageParsed > 0 ? pageParsed : 1
+  const itemsPerPage = Number.isFinite(itemsPerPageParsed) && itemsPerPageParsed > 0 ? itemsPerPageParsed : ROWS_PER_PAGE
+
+  if (Number.isFinite(topN) && topN > 0) return { limit: topN, offset: 0 }
+  return { limit: itemsPerPage, offset: (page - 1) * itemsPerPage }
 }

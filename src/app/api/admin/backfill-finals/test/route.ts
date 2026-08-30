@@ -1,3 +1,14 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/admin/backfill-finals/test route handler. A diagnostic for the backfill: for
+//    a fixed set of TEST_RUN_IDS it logs their current se_is_summary, resets them to NULL,
+//    re-fetches each NZB page, re-derives is_final via extractRunIds, writes it back, and
+//    returns a step-by-step log plus the resulting rows.
+//
+//    Returns:
+//      JSON { log: string[], after }; 500 { log, error } on failure
+//==============================================================================================
+
 import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { extractRunIds } from '@/src/lib/scrapeUtils'

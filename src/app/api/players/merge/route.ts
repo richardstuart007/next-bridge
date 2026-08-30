@@ -1,4 +1,20 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+﻿//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/players/merge route handler. Merges the discard player into the keep player:
+//    remaps every discard-player partnership's results onto the equivalent keep-player
+//    partnership (deleting results that would become a self-pair), deletes the discard
+//    partnerships, transfers the NZ number if the keep player has none, then deletes the
+//    discard player row.
+//
+//    Parameters:
+//      request — JSON body { keep_plid, discard_plid } (must differ)
+//
+//    Returns:
+//      JSON { merged: true, kept, discarded }; 400 on bad ids, 404 when an id isn't found,
+//      500 { error } on failure
+//==============================================================================================
+
+import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
 

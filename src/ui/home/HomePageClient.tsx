@@ -1,5 +1,18 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    HomePageClient — the home page's three-tab UI (Players / Sessions / Rankings). Players and
+//    Sessions each server-paginate (debounced) with a full filter row above their columns;
+//    filter + page state is mirrored to sessionStorage and restored on mount. Rankings embeds
+//    RankingsPageClient.
+//
+//  2) NOTES
+//    Multi-select filters that load their options asynchronously (rank/grade/club) restore
+//    their saved selection inside their own onOptionsLoaded callbacks, once the option list is
+//    known.
+//==============================================================================================
+
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSessionsPaged, SessionListRow } from '@/src/lib/actions/sessions'
@@ -49,11 +62,14 @@ const NUM_CLS    = 'w-full rounded border border-gray-300 px-1 py-0.5 text-xs fo
 
 const SESSION_KEY = `${SESSION_STORAGE_PREFIX}home_state`
 
+//----------------------------------------------------------------------------------
+//  loadSaved — the parsed home-page state from sessionStorage, or null when absent
+//  or unparseable
+//----------------------------------------------------------------------------------
 function loadSaved() {
   try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null') } catch { return null }
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 export default function HomePageClient() {
   const router = useRouter()
   const restoredRef    = useRef(false)
@@ -94,7 +110,6 @@ export default function HomePageClient() {
   const [sessionsTotalPages,  setSessionsTotalPages]  = useState(1)
   const [filter_run_id,               setFilter_run_id]               = useState('')
   const [filter_date_from,            setFilter_date_from]            = useState('')
-  const [filter_date_to,              setFilter_date_to]              = useState('')
   const [filter_day_of_week,               setFilter_day_of_week]               = useState<Set<string>>(new Set(DAYS_OF_WEEK))
   const [filter_scoring,       setFilter_scoring]       = useState<Set<string>>(new Set(SCORING_TYPES))
   const [filter_se_name,      setFilter_se_name]      = useState('')
@@ -124,7 +139,6 @@ export default function HomePageClient() {
       // Session tab filters
       if (s.filter_run_id)                       setFilter_run_id(s.filter_run_id)
       if (s.filter_date_from)                    setFilter_date_from(s.filter_date_from)
-      if (s.filter_date_to)                      setFilter_date_to(s.filter_date_to)
       if (Array.isArray(s.filter_day_of_week) && s.filter_day_of_week.length) {
         const valid = s.filter_day_of_week.filter((d: string) => DAYS_OF_WEEK.includes(d))
         if (valid.length > 0) setFilter_day_of_week(new Set(valid))
@@ -155,7 +169,7 @@ export default function HomePageClient() {
         filter_pl_club: serializeSelection([...filter_pl_club], clubOptions.length),
         filter_rating_min, filter_a_points_min, filter_sessions_min,
         playerPage, playerItemsPerPage,
-        filter_run_id, filter_date_from, filter_date_to,
+        filter_run_id, filter_date_from,
         filter_day_of_week: serializeSelection([...filter_day_of_week], DAYS_OF_WEEK.length),
         filter_scoring: serializeSelection([...filter_scoring], SCORING_TYPES.length),
         filter_se_name,
@@ -167,10 +181,15 @@ export default function HomePageClient() {
   }, [filter_pl_name, filter_nzb, filter_tracked, filter_exclude_nzb0, filter_rank, filter_grade, filter_pl_club, rankOptions.length, gradeOptions.length, clubOptions.length,
       filter_rating_min, filter_a_points_min, filter_sessions_min,
       playerPage, playerItemsPerPage,
-      filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_scoring, filter_se_name, filter_se_club, sessClubOptions.length, filter_is_summary,
+      filter_run_id, filter_date_from, filter_day_of_week, filter_scoring, filter_se_name, filter_se_club, sessClubOptions.length, filter_is_summary,
       sessionPage, sessionItemsPerPage])
 
-  const isTracked = (v: unknown) => v === true || v === 't' || v === 'true' || v === 1
+  //--------------------------------------------------------------------------------------------
+  //  isTracked — true for any of the shapes pl_tracked can arrive as (true / 't' / 'true' / 1)
+  //--------------------------------------------------------------------------------------------
+  function isTracked(v: unknown): boolean {
+    return v === true || v === 't' || v === 'true' || v === 1
+  }
 
   const hasPlayerFilter = filter_tracked || filter_pl_name || filter_nzb ||
     isSelectionFiltering([...filter_rank], rankOptions.length) ||
@@ -178,6 +197,10 @@ export default function HomePageClient() {
     isSelectionFiltering([...filter_pl_club], clubOptions.length) ||
     filter_rating_min || filter_a_points_min || filter_sessions_min
 
+  //--------------------------------------------------------------------------------------------
+  //  clearPlayerFilters — resets every Players-tab filter to its "no filter" state (all
+  //  multi-selects back to every option)
+  //--------------------------------------------------------------------------------------------
   function clearPlayerFilters() {
     setFilter_tracked(false); setFilter_exclude_nzb0(true)
     setFilter_pl_name(''); setFilter_nzb('')
@@ -193,7 +216,7 @@ export default function HomePageClient() {
   // Reset to page 1 whenever a session filter changes
   useEffect(() => {
     if (restoredRef.current) setSessionPage(1)
-  }, [filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_scoring, filter_se_name, fTournamentTypes, filter_se_club, filter_is_summary])
+  }, [filter_run_id, filter_date_from, filter_day_of_week, filter_scoring, filter_se_name, fTournamentTypes, filter_se_club, filter_is_summary])
 
   // ── Players: fetch only the current page from the server (debounced) ──
   useEffect(() => {
@@ -238,7 +261,6 @@ export default function HomePageClient() {
           const { rows, totalPages } = await getSessionsPaged(sessionPage, sessionItemsPerPage, {
             runId: filter_run_id || undefined,
             dateFrom: filter_date_from || undefined,
-            dateTo: filter_date_to || undefined,
             days: isSelectionFiltering([...filter_day_of_week], DAYS_OF_WEEK.length) ? [...filter_day_of_week] : undefined,
             scoring: isSelectionFiltering([...filter_scoring], SCORING_TYPES.length) ? [...filter_scoring] : undefined,
             name: filter_se_name || undefined,
@@ -253,7 +275,7 @@ export default function HomePageClient() {
       })()
     }, FILTER_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_scoring, filter_se_name, filter_se_club, sessClubOptions.length,
+  }, [filter_run_id, filter_date_from, filter_day_of_week, filter_scoring, filter_se_name, filter_se_club, sessClubOptions.length,
       filter_is_summary, fTournamentTypes, sessionPage, sessionItemsPerPage])
 
   return (
@@ -452,10 +474,7 @@ export default function HomePageClient() {
                     <FilterRunId value={filter_run_id} onChange={setFilter_run_id} />
                   </td>
                   <td className='py-1 pr-2'>
-                    <div className='flex flex-col gap-0.5'>
-                      <FilterDate value={filter_date_from} onChange={setFilter_date_from} />
-                      <FilterDate value={filter_date_to} onChange={setFilter_date_to} />
-                    </div>
+                    <FilterDate value={filter_date_from} onChange={setFilter_date_from} />
                   </td>
                   <td className='py-1 pr-2'>
                     <StringMultiSelect options={DAYS_OF_WEEK} selected={filter_day_of_week} onChange={setFilter_day_of_week} overrideClass={WIDTH_DAY_OF_WEEK} />

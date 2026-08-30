@@ -1,3 +1,9 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    PlayersAdminPage — the /owner/players route. Renders the PlayersAdmin manager under a
+//    heading.
+//==============================================================================================
+
 import PlayersAdmin from '@/src/ui/admin/PlayersAdmin'
 
 export default function PlayersAdminPage() {

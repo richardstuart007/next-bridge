@@ -1,3 +1,12 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    GET — /api/scrape/ts1 route handler. Lists all ts1_sessions staging rows
+//    (run_id/date/club/event name/score type/event type), ordered by date then run_id.
+//
+//    Returns:
+//      JSON array of ts1_sessions rows
+//==============================================================================================
+
 import { NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 

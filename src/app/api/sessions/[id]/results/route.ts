@@ -1,4 +1,18 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+﻿//==============================================================================================
+//  1) DESCRIPTION
+//    GET — /api/sessions/[id]/results route handler. Returns every pair result for the session
+//    id in the path, each row oriented so the lower NZ number is the primary player and the
+//    other is the partner, ordered by re_score DESC.
+//
+//    Parameters:
+//      _request — unused
+//      params   — route params promise resolving to { id } (the se_seid, as a string)
+//
+//    Returns:
+//      JSON array of result rows; 400 on a bad id, 500 { error } on failure
+//==============================================================================================
+
+import { NextRequest, NextResponse } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { write_logging } from 'nextjs-shared/write_logging'
 

@@ -1,5 +1,17 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    BuildDataViewer — the /owner/builddata inspector. A tab bar (ts1/ts2/tse/tre/tpl/tpa/ta1/
+//    ta2 plus Filters) where each tab shows one raw table with per-column filters and
+//    click-through; a set of cross-tab "shared key" filters (plid/paid/seid/run_id) is threaded
+//    through every tab so clicking a row on one tab pre-seeds the matching filter on the others.
+//
+//  2) NOTES
+//    Each tab is its own component (PlayersTab, SessionsTab, …) declared below the main
+//    component. mergeSharedFilters/removeSharedFilter own the shared-filter state.
+//==============================================================================================
+
 import { useState } from 'react'
 import { getAllPlayers } from '@/src/lib/actions/players'
 import { getSessionsByYear } from '@/src/lib/actions/sessions'
@@ -37,6 +49,56 @@ const YEARS = [2026, 2025, 2024, 2023, 2022, 2021]
 
 type TabProps = { sharedFilters: SharedFilters; onKeyClick: (patch: SharedFilters) => void }
 
+export default function BuildDataViewer() {
+  const [active, setActive] = useState<Tab>('ts1')
+  const [sharedFilters, setSharedFilters] = useState<SharedFilters>({})
+
+  //----------------------------------------------------------------------------------------------
+  //  mergeSharedFilters — merges a patch into the cross-tab shared-filter state
+  //----------------------------------------------------------------------------------------------
+  function mergeSharedFilters(patch: SharedFilters) {
+    setSharedFilters(prev => ({ ...prev, ...patch }))
+  }
+
+  //----------------------------------------------------------------------------------------------
+  //  removeSharedFilter — drops one key from the cross-tab shared-filter state
+  //----------------------------------------------------------------------------------------------
+  function removeSharedFilter(key: SharedKey) {
+    setSharedFilters(prev => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
+  return (
+    <div>
+      <div className='flex gap-0 border-b border-gray-200 mb-6'>
+        {TABS.map(t => (
+          <MyTab key={t.id} active={active === t.id} onClick={() => setActive(t.id)}
+            underlineActiveClass={TAB_ACTIVE} underlineInactiveClass={TAB_PASSIVE}>
+            {t.label}
+          </MyTab>
+        ))}
+      </div>
+
+      {active === 'ts1' && <Ts1Table sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'ts2' && <Ts2Table sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tse' && <SessionsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tre' && <ResultsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tpl' && <PlayersTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'tpa' && <PartnersTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'ta1' && <PlayerStatsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'ta2' && <PartnerStatsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
+      {active === 'filters' && <FiltersTab sharedFilters={sharedFilters} onRemove={removeSharedFilter} onAdd={mergeSharedFilters} />}
+    </div>
+  )
+}
+
+//----------------------------------------------------------------------------------
+//  PlayersTab — the tpl tab: loads getAllPlayers, filters in-browser, click a row
+//  to publish its plid to the shared filters
+//----------------------------------------------------------------------------------
 function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
   const [error,          setError]          = useState<string | null>(null)
   const [players,        setPlayers]        = useState<Row[]>([])
@@ -50,6 +112,9 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_grade,        setFilter_grade]        = useState<string[]>([])
   const [filter_all_results,  setFilter_all_results]  = useState('all')
 
+  //--------------------------------------------------------------------------------------------
+  //  loadPlayers — fetches getAllPlayers into `players`
+  //--------------------------------------------------------------------------------------------
   async function loadPlayers() {
     setPlayersLoading(true); setError(null); setSelectedPlayer(null)
     try { setPlayers((await getAllPlayers()) as Row[]) }
@@ -57,6 +122,9 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
     finally { setPlayersLoading(false) }
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  handlePlayerClick — toggles row selection; on select publishes plid (+ name label)
+  //--------------------------------------------------------------------------------------------
   function handlePlayerClick(row: Row) {
     if (selectedPlayer && rowKey(selectedPlayer) === rowKey(row)) { setSelectedPlayer(null); return }
     setSelectedPlayer(row)
@@ -111,6 +179,10 @@ function PlayersTab({ sharedFilters, onKeyClick }: TabProps) {
   )
 }
 
+//----------------------------------------------------------------------------------
+//  SessionsTab — the tse tab: loads sessions for a chosen year, filters in-browser,
+//  and shows the clicked session's tre_results below; publishes seid + run_id
+//----------------------------------------------------------------------------------
 function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [error,              setError]              = useState<string | null>(null)
   const [sessYear,           setSessYear]           = useState(new Date().getFullYear())
@@ -132,6 +204,9 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
   const tournamentTypes: string[] = [...TOURNAMENT_GROUPS]
   const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 
+  //--------------------------------------------------------------------------------------------
+  //  loadSessions — fetches getSessionsByYear(y) into `sessions`
+  //--------------------------------------------------------------------------------------------
   async function loadSessions(y: number) {
     setSessLoading(true); setError(null); setSelectedSess(null); setSessResults([])
     try { setSessions((await getSessionsByYear(y)) as Row[]) }
@@ -139,6 +214,10 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
     finally { setSessLoading(false) }
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  handleSessClick — toggles row selection; on select publishes seid + run_id and loads the
+  //  session's tre_results via getResultsBySeid
+  //--------------------------------------------------------------------------------------------
   async function handleSessClick(row: Row) {
     if (selectedSess && rowKey(selectedSess) === rowKey(row)) { setSelectedSess(null); setSessResults([]); return }
     setSelectedSess(row); setSessResults([])
@@ -226,6 +305,10 @@ function SessionsTab({ sharedFilters, onKeyClick }: TabProps) {
   )
 }
 
+//----------------------------------------------------------------------------------
+//  ResultsTab — the tre tab: loads getAllResults, filters in-browser, click a row
+//  to publish its seid + paid
+//----------------------------------------------------------------------------------
 function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [error,    setError]    = useState<string | null>(null)
   const [results,  setResults]  = useState<Row[]>([])
@@ -239,6 +322,9 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_paid,       setFilter_paid]       = useState(() => sharedFilters.paid?.value ?? '')
   const [filter_score,      setFilter_score]      = useState('')
 
+  //--------------------------------------------------------------------------------------------
+  //  load — fetches getAllResults into `results`
+  //--------------------------------------------------------------------------------------------
   async function load() {
     setLoading(true); setError(null)
     try { setResults((await getAllResults()) as Row[]) }
@@ -246,6 +332,9 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
     finally { setLoading(false) }
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  handleClick — toggles row selection; on select publishes the row's seid + paid
+  //--------------------------------------------------------------------------------------------
   function handleClick(row: Row) {
     if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
     setSelected(row)
@@ -293,6 +382,10 @@ function ResultsTab({ sharedFilters, onKeyClick }: TabProps) {
   )
 }
 
+//----------------------------------------------------------------------------------
+//  PartnersTab — the tpa tab: loads getAllPartners, filters in-browser (incl. a
+//  "player on either side" filter), click a row to publish paid + both plids
+//----------------------------------------------------------------------------------
 function PartnersTab({ sharedFilters, onKeyClick }: TabProps) {
   const [error,           setError]           = useState<string | null>(null)
   const [partners,        setPartners]        = useState<Row[]>([])
@@ -305,6 +398,9 @@ function PartnersTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_paid,         setFilter_paid]         = useState(() => sharedFilters.paid?.value ?? '')
   const [filter_involves_plid, setFilter_involves_plid] = useState(() => sharedFilters.plid?.value ?? '')
 
+  //--------------------------------------------------------------------------------------------
+  //  loadPartners — fetches getAllPartners into `partners`
+  //--------------------------------------------------------------------------------------------
   async function loadPartners() {
     setPartnersLoading(true); setError(null); setSelectedPartner(null)
     try { setPartners((await getAllPartners()) as Row[]) }
@@ -312,6 +408,9 @@ function PartnersTab({ sharedFilters, onKeyClick }: TabProps) {
     finally { setPartnersLoading(false) }
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  handlePartnerClick — toggles row selection; on select publishes paid + both plids
+  //--------------------------------------------------------------------------------------------
   function handlePartnerClick(row: Row) {
     if (selectedPartner && rowKey(selectedPartner) === rowKey(row)) { setSelectedPartner(null); return }
     setSelectedPartner(row)
@@ -361,6 +460,10 @@ function PartnersTab({ sharedFilters, onKeyClick }: TabProps) {
   )
 }
 
+//----------------------------------------------------------------------------------
+//  PlayerStatsTab — the ta1 tab: loads getAllPlayerStats, filters in-browser, click
+//  a row to publish its plid
+//----------------------------------------------------------------------------------
 function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [error,    setError]    = useState<string | null>(null)
   const [stats,    setStats]    = useState<Row[]>([])
@@ -375,6 +478,9 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_avg,         setFilter_avg]         = useState('')
   const [filter_stddev,      setFilter_stddev]      = useState('')
 
+  //--------------------------------------------------------------------------------------------
+  //  load — fetches getAllPlayerStats into `stats`
+  //--------------------------------------------------------------------------------------------
   async function load() {
     setLoading(true); setError(null)
     try { setStats((await getAllPlayerStats()) as Row[]) }
@@ -382,6 +488,9 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
     finally { setLoading(false) }
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  handleClick — toggles row selection; on select publishes the row's a1_plid (+ name label)
+  //--------------------------------------------------------------------------------------------
   function handleClick(row: Row) {
     if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
     setSelected(row)
@@ -431,6 +540,10 @@ function PlayerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   )
 }
 
+//----------------------------------------------------------------------------------
+//  PartnerStatsTab — the ta2 tab: loads getAllPartnerStats, filters in-browser,
+//  click a row to publish its paid
+//----------------------------------------------------------------------------------
 function PartnerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [error,    setError]    = useState<string | null>(null)
   const [stats,    setStats]    = useState<Row[]>([])
@@ -444,6 +557,9 @@ function PartnerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   const [filter_avg,         setFilter_avg]         = useState('')
   const [filter_stddev,      setFilter_stddev]      = useState('')
 
+  //--------------------------------------------------------------------------------------------
+  //  load — fetches getAllPartnerStats into `stats`
+  //--------------------------------------------------------------------------------------------
   async function load() {
     setLoading(true); setError(null)
     try { setStats((await getAllPartnerStats()) as Row[]) }
@@ -451,6 +567,9 @@ function PartnerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
     finally { setLoading(false) }
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  handleClick — toggles row selection; on select publishes the row's a2_paid
+  //--------------------------------------------------------------------------------------------
   function handleClick(row: Row) {
     if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
     setSelected(row)
@@ -498,6 +617,10 @@ function PartnerStatsTab({ sharedFilters, onKeyClick }: TabProps) {
   )
 }
 
+//----------------------------------------------------------------------------------
+//  FiltersTab — the Filters tab: lists the active cross-tab key filters (each
+//  removable) and a key/value form to add one manually
+//----------------------------------------------------------------------------------
 function FiltersTab({ sharedFilters, onRemove, onAdd }: {
   sharedFilters: SharedFilters
   onRemove: (key: SharedKey) => void
@@ -506,6 +629,9 @@ function FiltersTab({ sharedFilters, onRemove, onAdd }: {
   const [addKey,   setAddKey]   = useState<SharedKey>('plid')
   const [addValue, setAddValue] = useState('')
 
+  //--------------------------------------------------------------------------------------------
+  //  handleAdd — adds the { addKey: addValue } entry to the shared filters and clears the input
+  //--------------------------------------------------------------------------------------------
   function handleAdd() {
     if (!addValue.trim()) return
     onAdd({ [addKey]: { value: addValue.trim() } })
@@ -553,46 +679,6 @@ function FiltersTab({ sharedFilters, onRemove, onAdd }: {
           </MyButton>
         </div>
       </div>
-    </div>
-  )
-}
-
-export default function BuildDataViewer() {
-  const [active, setActive] = useState<Tab>('ts1')
-  const [sharedFilters, setSharedFilters] = useState<SharedFilters>({})
-
-  function mergeSharedFilters(patch: SharedFilters) {
-    setSharedFilters(prev => ({ ...prev, ...patch }))
-  }
-
-  function removeSharedFilter(key: SharedKey) {
-    setSharedFilters(prev => {
-      const next = { ...prev }
-      delete next[key]
-      return next
-    })
-  }
-
-  return (
-    <div>
-      <div className='flex gap-0 border-b border-gray-200 mb-6'>
-        {TABS.map(t => (
-          <MyTab key={t.id} active={active === t.id} onClick={() => setActive(t.id)}
-            underlineActiveClass={TAB_ACTIVE} underlineInactiveClass={TAB_PASSIVE}>
-            {t.label}
-          </MyTab>
-        ))}
-      </div>
-
-      {active === 'ts1' && <Ts1Table sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'ts2' && <Ts2Table sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'tse' && <SessionsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'tre' && <ResultsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'tpl' && <PlayersTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'tpa' && <PartnersTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'ta1' && <PlayerStatsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'ta2' && <PartnerStatsTab sharedFilters={sharedFilters} onKeyClick={mergeSharedFilters} />}
-      {active === 'filters' && <FiltersTab sharedFilters={sharedFilters} onRemove={removeSharedFilter} onAdd={mergeSharedFilters} />}
     </div>
   )
 }

@@ -10,6 +10,9 @@ import { TableEmptyRow } from '@/src/ui/shared/TableEmptyRow'
 
 export type Row = Record<string, unknown>
 
+//----------------------------------------------------------------------------------
+//  rowKey — the value of a row's first column, used as its stable identity/key
+//----------------------------------------------------------------------------------
 export function rowKey(row: Row): unknown { return row[Object.keys(row)[0]] }
 
 //----------------------------------------------------------------------------------------------
@@ -48,11 +51,18 @@ export function numMatch(filter: string, val: unknown): boolean {
   return Number(val) === f
 }
 
+//----------------------------------------------------------------------------------
+//  formatDate — a yyyy-mm-dd key string reformatted as dd/mm/yyyy for display
+//----------------------------------------------------------------------------------
 function formatDate(key: string): string {
   const [year, month, day] = key.split('-')
   return `${day}/${month}/${year}`
 }
 
+//----------------------------------------------------------------------------------
+//  renderCell — default cell display: em-dash for null/undefined, Yes/No for
+//  booleans, comma-joined arrays, dd/mm/yyyy for date-shaped values, else String()
+//----------------------------------------------------------------------------------
 export function renderCell(val: unknown): React.ReactNode {
   if (val === null || val === undefined) return <span className='text-gray-300'>—</span>
   if (typeof val === 'boolean') return val ? 'Yes' : 'No'
@@ -62,6 +72,9 @@ export function renderCell(val: unknown): React.ReactNode {
   return String(val)
 }
 
+//----------------------------------------------------------------------------------
+//  FText — a compact text filter input (thin wrapper over MyInput type='text')
+//----------------------------------------------------------------------------------
 export function FText({ placeholder, value, onChange }: { placeholder: string; value: string; onChange: (v: string) => void }) {
   return (
     <MyInput type='text' placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)}
@@ -69,6 +82,9 @@ export function FText({ placeholder, value, onChange }: { placeholder: string; v
   )
 }
 
+//----------------------------------------------------------------------------------
+//  FDate — a compact date filter input (thin wrapper over MyInput type='date')
+//----------------------------------------------------------------------------------
 export function FDate({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <MyInput type='date' value={value} onChange={e => onChange(e.target.value)}
@@ -76,6 +92,10 @@ export function FDate({ value, onChange }: { value: string; onChange: (v: string
   )
 }
 
+//----------------------------------------------------------------------------------
+//  FSelect — a compact single-select filter (thin wrapper over MySelect); caller
+//  supplies the <option> children
+//----------------------------------------------------------------------------------
 export function FSelect({ value, onChange, children }: { value: string; onChange: (v: string) => void; children: React.ReactNode }) {
   return (
     <MySelect value={value} onChange={e => onChange(e.target.value)}
@@ -85,6 +105,9 @@ export function FSelect({ value, onChange, children }: { value: string; onChange
   )
 }
 
+//----------------------------------------------------------------------------------
+//  FMultiSelect — a compact multi-select filter (thin wrapper over MySelectMulti)
+//----------------------------------------------------------------------------------
 export function FMultiSelect({ options, value, onChange }: { options: string[]; value: string[]; onChange: (v: string[]) => void }) {
   return (
     <MySelectMulti
@@ -96,6 +119,10 @@ export function FMultiSelect({ options, value, onChange }: { options: string[]; 
   )
 }
 
+//----------------------------------------------------------------------------------
+//  SectionHeader — an uppercase section label with an optional "shown / total rows"
+//  count (or "Loading…"), plus optional right-aligned children
+//----------------------------------------------------------------------------------
 export function SectionHeader({ label, shown, total, loading, children }: {
   label: string; shown?: number; total?: number; loading?: boolean; children?: React.ReactNode
 }) {

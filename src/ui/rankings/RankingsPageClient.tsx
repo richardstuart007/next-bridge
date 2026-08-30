@@ -1,5 +1,19 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    RankingsPageClient — the Rankings view: a Players / Partnerships tab set over /api/rankings,
+//    each server-paginated (debounced) with a per-column filter row, a shared Tournament Type
+//    toggle and scoring-type selector, and per-tab "≥ N sessions" and "Top N" caps. Switching
+//    scoring resets both tabs' session-min to that scoring type's own floor.
+//
+//  2) NOTES
+//    Top-level function order is kept helpers-first, main-component-last: the module-level
+//    SESSIONS_MIN_OPTIONS_* constants back the `*MinFor` helpers that seed the component's
+//    useState. All declarations hoist, so the arrangement is cosmetic. Flagged for a separate
+//    review.
+//==============================================================================================
+
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { searchAllPlayers } from '@/src/lib/actions/players'
@@ -57,11 +71,17 @@ interface PlayerSearchRow {
   pl_club: string
 }
 
+//----------------------------------------------------------------------------------------------
+//  isTracked — true for any of the shapes pl_tracked can arrive as (true / 't' / 'true' / 1)
+//----------------------------------------------------------------------------------------------
 function isTracked(v: unknown): boolean {
   return v === true || v === 't' || v === 'true' || v === 1
 }
 
-// Compact typeahead used inside table header cells — no label, no external container
+//----------------------------------------------------------------------------------------------
+//  HeaderTypeahead — a compact player-name typeahead sized for a table-header cell (no label,
+//  no container); debounced searchAllPlayers, click a suggestion to select
+//----------------------------------------------------------------------------------------------
 function HeaderTypeahead({ placeholder, onSelect, onClear }: {
   placeholder: string
   onSelect: (name: string) => void
@@ -87,6 +107,9 @@ function HeaderTypeahead({ placeholder, onSelect, onClear }: {
     return () => clearTimeout(timer)
   }, [value])
 
+  //--------------------------------------------------------------------------------------------
+  //  clear — empties the input and selection, closes the dropdown, and fires onClear
+  //--------------------------------------------------------------------------------------------
   function clear() {
     setValue(''); setSelected(''); setOpen(false); onClear()
   }
@@ -311,6 +334,9 @@ export default function RankingsPageClient() {
   const thH = 'px-3 py-2 bg-gray-50 text-xs text-gray-500 uppercase'     // header label cell
   const sel = SEL_CLS
 
+  //--------------------------------------------------------------------------------------------
+  //  GroupToggle — the shared A / B / C / All tournament-group toggle
+  //--------------------------------------------------------------------------------------------
   function GroupToggle() {
     return (
       <div className={`flex justify-center rounded border border-gray-300 overflow-hidden text-xs ${WIDTH_TOURNAMENT_TYPE}`}>

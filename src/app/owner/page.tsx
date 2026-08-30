@@ -1,3 +1,9 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    Page — the /owner landing page. Renders nextjs-shared's OwnerPage with tabs for Data
+//    (the ToolsPanel links), Logging, Cache, Dataflow, Constants, and Session Storage.
+//==============================================================================================
+
 import Link from 'next/link'
 import OwnerPage from 'nextjs-shared/OwnerPage'
 import OwnerTableCache from 'nextjs-shared/OwnerTableCache'
@@ -12,6 +18,25 @@ const TOOLS = [
   { href: '/owner/builddata', label: 'Build Data Viewer', description: 'Inspect and validate the staging and production tables populated by the pipeline.', step: '1' },
 ]
 
+export default function Page() {
+  return (
+    <OwnerPage
+      tabs={[
+        { label: 'Data', content: <ToolsPanel /> },
+        { label: 'Logging', content: <OwnerTableLogging /> },
+        { label: 'Cache', content: <OwnerTableCache /> },
+        { label: 'Dataflow', content: <div className='p-6 md:p-8'><DataflowTabs /></div> },
+        { label: 'Constants', content: <ConstantsPage /> },
+        { label: 'Session Storage', content: <OwnerTableSessionStorage /> },
+      ]}
+    />
+  )
+}
+
+//----------------------------------------------------------------------------------
+//  ToolsPanel — the Data tab body: a vertical list of cards linking to each /owner
+//  tool (from the TOOLS constant)
+//----------------------------------------------------------------------------------
 function ToolsPanel() {
   return (
     <div className='p-8 max-w-2xl'>
@@ -30,20 +55,5 @@ function ToolsPanel() {
         ))}
       </div>
     </div>
-  )
-}
-
-export default function Page() {
-  return (
-    <OwnerPage
-      tabs={[
-        { label: 'Data', content: <ToolsPanel /> },
-        { label: 'Logging', content: <OwnerTableLogging /> },
-        { label: 'Cache', content: <OwnerTableCache /> },
-        { label: 'Dataflow', content: <div className='p-6 md:p-8'><DataflowTabs /></div> },
-        { label: 'Constants', content: <ConstantsPage /> },
-        { label: 'Session Storage', content: <OwnerTableSessionStorage /> },
-      ]}
-    />
   )
 }

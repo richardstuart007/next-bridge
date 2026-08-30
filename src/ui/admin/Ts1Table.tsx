@@ -1,5 +1,17 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    Ts1Table — the ts1_sessions tab of the Build Data Viewer. Fetches /api/scrape/ts1 on
+//    mount, filters the rows in-browser via per-column filter controls, and renders them in a
+//    shared DataTable; clicking a row publishes its run_id to the cross-tab shared filters.
+//
+//    Parameters:
+//      sharedFilters — the current cross-tab key filters (only run_id is read here, to seed
+//                      the run_id filter box)
+//      onKeyClick    — called with a { run_id } patch when a row is clicked
+//==============================================================================================
+
 import { useState, useEffect } from 'react'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { DataTable, SectionHeader, FText, FDate, FMultiSelect, rowKey, dateKey, type Row, type SharedFilters } from '@/src/ui/admin/DataTableShared'
@@ -20,6 +32,11 @@ export default function Ts1Table({ sharedFilters, onKeyClick }: {
   const [filter_score_type, setFilter_score_type] = useState<string[]>([])
   const [filter_event_type, setFilter_event_type] = useState<string[]>([])
 
+  useEffect(() => { load() }, [])
+
+  //----------------------------------------------------------------------------------------------
+  //  load — fetches /api/scrape/ts1 into `sessions`, tracking loading/error state
+  //----------------------------------------------------------------------------------------------
   async function load() {
     setLoading(true); setError(null)
     try {
@@ -33,8 +50,9 @@ export default function Ts1Table({ sharedFilters, onKeyClick }: {
     }
   }
 
-  useEffect(() => { load() }, [])
-
+  //----------------------------------------------------------------------------------------------
+  //  handleClick — toggles row selection; on select, publishes the row's run_id via onKeyClick
+  //----------------------------------------------------------------------------------------------
   function handleClick(row: Row) {
     if (selected && rowKey(selected) === rowKey(row)) { setSelected(null); return }
     setSelected(row)

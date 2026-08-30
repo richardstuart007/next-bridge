@@ -1,10 +1,16 @@
 'use client'
 
-//----------------------------------------------------------------------------------------------
-//  TableEmptyRow — single colSpan-wide <tr> shown in a table's <tbody> when a filter matches no
-//  rows. Local to next-bridge for now; a candidate to promote to nextjs-shared later, since it
-//  has no project-specific dependency.
-//----------------------------------------------------------------------------------------------
+//==============================================================================================
+//  1) DESCRIPTION
+//    TableEmptyRow — a single colSpan-wide <tr> shown in a table's <tbody> when a filter
+//    matches no rows. Local to next-bridge for now; a candidate to promote to nextjs-shared
+//    later, since it has no project-specific dependency.
+//
+//    Parameters:
+//      colSpan — number of columns to span
+//      message — text to show
+//==============================================================================================
+
 export function TableEmptyRow({ colSpan, message }: { colSpan: number; message: string }) {
   return (
     <tr>

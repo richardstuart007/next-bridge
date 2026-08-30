@@ -3,10 +3,10 @@ import { searchAllPlayers, upsertPlayer } from '@/src/lib/actions/players'
 import { lookupPlayerByNumber } from '@/src/lib/scrape/nzbridge'
 import { write_logging } from 'nextjs-shared/write_logging'
 
-/**
- * GET /api/players/correct?q=name
- * Search all local players by name fragment (includes those with nzb = 0).
- */
+//----------------------------------------------------------------------------------
+//  GET — /api/players/correct?q=name : searches all local players by name fragment
+//  (includes pl_nzb = 0); returns [] for a query under 2 chars
+//----------------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get('q') ?? ''
   if (q.length < 2) return NextResponse.json([])
@@ -19,11 +19,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-/**
- * POST /api/players/correct
- * Body: { pl_name: string, nzb: number }
- * Fetches full stats from nzbridge.co.nz by nzb, upserts the player record.
- */
+//----------------------------------------------------------------------------------
+//  POST — /api/players/correct : body { pl_name, nzb } — fetches full stats from
+//  nzbridge.co.nz by nzb and upserts the local player under pl_name (404 if the
+//  nzb isn't found on NZB)
+//----------------------------------------------------------------------------------
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()

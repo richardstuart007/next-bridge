@@ -1,5 +1,18 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PartnersChart — a line chart comparing a player and every partner's results over a shared
+//    date timeline, for a selectable scoring type and tournament group, rolling-averaged by a
+//    selectable window. Fetches each entry's full results from /api/players/[id]/results. Self
+//    sorts first, then partners by average descending; the top CHART_TOP_N_PRESELECTED are
+//    pre-selected. Clickable points/legend navigate; the whole dataset exports to CSV.
+//
+//    Parameters:
+//      partners — the partner refs to plot
+//      self     — the player themselves, plotted first when provided
+//==============================================================================================
+
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { MyLineChart } from '@/src/ui/graphs/graph_charts'
@@ -53,6 +66,10 @@ const PARTNER_COLORS = [
 type Scoring = (typeof SCORING_TYPES)[number]
 type Grp = 'all' | 'A' | 'B' | 'C'
 
+//----------------------------------------------------------------------------------
+//  grpOf — a session's tournament group from the last character of its tournament
+//  code: 'A' or 'B', else 'C'
+//----------------------------------------------------------------------------------
 function grpOf(tournament: string): string {
   const last = tournament.slice(-1)
   if (last === 'A') return 'A'
@@ -60,6 +77,10 @@ function grpOf(tournament: string): string {
   return 'C'
 }
 
+//----------------------------------------------------------------------------------
+//  rollingAvg — trailing moving average of `values` over a `window`-wide trailing
+//  slice (the first few points average over fewer values)
+//----------------------------------------------------------------------------------
 function rollingAvg(values: number[], window: number): number[] {
   return values.map((_, i) => {
     const slice = values.slice(Math.max(0, i - window + 1), i + 1)
@@ -67,11 +88,18 @@ function rollingAvg(values: number[], window: number): number[] {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  fmtDate — an ISO date as a short "Mon YY" label for the x-axis
+//----------------------------------------------------------------------------------
 function fmtDate(iso: string): string {
   const d = new Date(iso)
   return d.toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' })
 }
 
+//----------------------------------------------------------------------------------
+//  escCsv — a CSV field, double-quote-escaped and quoted when it contains a comma,
+//  quote, or newline
+//----------------------------------------------------------------------------------
 function escCsv(v: string | number | null | undefined) {
   const s = String(v ?? '')
   return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
@@ -110,10 +138,14 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
     })()
   }, [partners, self])
 
-  const valueOf = (r: ResultRow) =>
-    scoring === 'VP'   ? parseFloat(String(r.vp   ?? 0)) :
-    scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)) :
-    parseFloat(String(r.percentage))
+  //--------------------------------------------------------------------------------------------
+  //  valueOf — the numeric score for a row under the current `scoring` (vp / ximp / percentage)
+  //--------------------------------------------------------------------------------------------
+  function valueOf(r: ResultRow): number {
+    return scoring === 'VP'   ? parseFloat(String(r.vp   ?? 0)) :
+           scoring === 'XIMP' ? parseFloat(String(r.ximp ?? 0)) :
+           parseFloat(String(r.percentage))
+  }
 
   const dp   = 2
   const unit = scoring === 'MP' ? '%' : ''
@@ -214,6 +246,10 @@ export default function PartnersChart({ partners, self }: { partners: PartnerRef
     return { labels, datasets }
   }, [ordered, selectedIds, partnerResults, smoothing, scoring, grp, entryMeta])
 
+  //--------------------------------------------------------------------------------------------
+  //  exportCSV — downloads a full CSV of every entry's raw result rows (all scoring types and
+  //  groups), regardless of the current on-screen filters
+  //--------------------------------------------------------------------------------------------
   function exportCSV() {
     const all = self ? [self, ...partners] : partners
     const header = ['Player','Player NZB#','Run ID','Date','Day','Partner','Partner NZB#','Session','Club','Tournament','Event Type','Scoring','Summary','%','VP','XIMP']

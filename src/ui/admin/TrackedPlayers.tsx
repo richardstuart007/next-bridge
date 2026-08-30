@@ -1,5 +1,16 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    TrackedPlayers — an indigo panel on the pipeline/players admin UI that shows the tracked-
+//    player count and runs the nzb-by-flagged discovery scrape for a chosen date range,
+//    streaming progress and reporting how many sessions were added to ts1_sessions.
+//
+//    Parameters:
+//      stagingEmpty    — Discover is disabled unless staging is empty
+//      onDiscoveryDone — called with the total sessions added once discovery completes
+//==============================================================================================
+
 import { useState, useEffect } from 'react'
 import { MyButton } from 'nextjs-shared/MyButton'
 import { MyInput } from 'nextjs-shared/MyInput'
@@ -26,6 +37,10 @@ export default function TrackedPlayers({ stagingEmpty, onDiscoveryDone }: Props)
       )
   }, [])
 
+  //----------------------------------------------------------------------------------------------
+  //  handleDiscover — POSTs to /api/scrape/discover/nzb-by-flagged and consumes its SSE stream,
+  //  updating `progress` per event and `ts1Count` (+ onDiscoveryDone) when it completes
+  //----------------------------------------------------------------------------------------------
   async function handleDiscover() {
     setBusy(true); setError(null); setProgress(null); setTs1Count(null)
     try {

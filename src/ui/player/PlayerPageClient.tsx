@@ -1,5 +1,17 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PlayerPageClient — the /player/[id] page body. Two modes: with a ?partner= param it shows
+//    that one partnership (header + PerformanceChart); without one it shows the full player
+//    view — a Player Stats / Player History / All Partners History tab set, with a filtered,
+//    client-paginated history table (Data / Graph views) and CSV export. Filter + tab state is
+//    mirrored to sessionStorage per player id and restored on mount.
+//
+//    Parameters:
+//      playerId — the pl_plid to display
+//==============================================================================================
+
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -61,12 +73,21 @@ interface Player {
   pl_tracked:      boolean
 }
 
-const playerStorageKey = (id: number) => `${SESSION_STORAGE_PREFIX}player_state_${id}`
+//----------------------------------------------------------------------------------
+//  playerStorageKey — the per-player sessionStorage key for this page's saved state
+//----------------------------------------------------------------------------------
+function playerStorageKey(id: number): string {
+  return `${SESSION_STORAGE_PREFIX}player_state_${id}`
+}
+
+//----------------------------------------------------------------------------------
+//  loadPlayerSaved — the parsed saved state for one player id, or null when absent
+//  or unparseable
+//----------------------------------------------------------------------------------
 function loadPlayerSaved(id: number) {
   try { return JSON.parse(sessionStorage.getItem(playerStorageKey(id)) ?? 'null') } catch { return null }
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 export default function PlayerPageClient({ playerId }: { playerId: number }) {
   const searchParams = useSearchParams()
   const partnerParam = searchParams.get('partner')
@@ -89,7 +110,6 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
   // Filters
   const [filter_run_id,              setFilter_run_id]              = useState('')
   const [filter_date_from,           setFilter_date_from]           = useState('')
-  const [filter_date_to,             setFilter_date_to]             = useState('')
   const [filter_day_of_week,          setFilter_day_of_week]          = useState('')
   const [filter_plid, setFilter_plid] = useState<Set<number>>(new Set())
   const [scoring,            setScoring]            = useState<(typeof SCORING_TYPES)[number]>('MP')
@@ -117,7 +137,6 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
       if (s.historyView === 'data' || s.historyView === 'graph') setHistoryView(s.historyView)
       if (s.filter_run_id)                  setFilter_run_id(s.filter_run_id as string)
       if (s.filter_date_from)               setFilter_date_from(s.filter_date_from as string)
-      if (s.filter_date_to)                 setFilter_date_to(s.filter_date_to as string)
       if (s.filter_day_of_week)              setFilter_day_of_week(s.filter_day_of_week as string)
       if (s.scoring)                setScoring(s.scoring as (typeof SCORING_TYPES)[number])
       if (s.statsScoring)           setStatsScoring(s.statsScoring as (typeof SCORING_TYPES)[number])
@@ -135,7 +154,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (!restoredRef.current) return
     try {
       sessionStorage.setItem(playerStorageKey(playerId), JSON.stringify({
-        activeTab, historyView, filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, scoring, statsScoring, filter_name,
+        activeTab, historyView, filter_run_id, filter_date_from, filter_day_of_week, scoring, statsScoring, filter_name,
         filter_tournament: serializeSelection([...filter_tournament], 3),
         filter_club: serializeSelection([...filter_club], clubOptions.length),
         filter_event_type: serializeSelection([...filter_event_type], eventTypeOptions.length),
@@ -143,7 +162,7 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
         filter_is_summary, filter_scoring, currentPage, itemsPerPage,
       }))
     } catch {}
-  }, [playerId, activeTab, filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, scoring, statsScoring, filter_name,
+  }, [playerId, activeTab, filter_run_id, filter_date_from, filter_day_of_week, scoring, statsScoring, filter_name,
       filter_tournament, filter_club, clubOptions.length, filter_event_type, eventTypeOptions.length, filter_plid, results,
       filter_is_summary, filter_scoring, currentPage, itemsPerPage])
 
@@ -181,7 +200,6 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     let rows = [...results].sort((a, b) => (a.date > b.date ? -1 : 1))
     if (filter_run_id)            rows = rows.filter(r => String(r.run_id).includes(filter_run_id))
     if (filter_date_from)         rows = rows.filter(r => r.date.slice(0, 10) >= filter_date_from)
-    if (filter_date_to)           rows = rows.filter(r => r.date.slice(0, 10) <= filter_date_to)
     if (filter_day_of_week)        rows = rows.filter(r => r.day_of_week === filter_day_of_week)
     if (filter_plid.size < uniquePartners.length)
                           rows = rows.filter(r => filter_plid.has(r.partner_id))
@@ -197,18 +215,22 @@ export default function PlayerPageClient({ playerId }: { playerId: number }) {
     if (filter_is_summary === 'summary') rows = rows.filter(r => r.is_summary === true)
     if (filter_is_summary === 'session') rows = rows.filter(r => r.is_summary !== true)
     return rows
-  }, [results, filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_plid, uniquePartners.length,
+  }, [results, filter_run_id, filter_date_from, filter_day_of_week, filter_plid, uniquePartners.length,
       filter_scoring, filter_name,
       filter_club, clubOptions.length, filter_tournament,
       filter_event_type, eventTypeOptions.length, filter_is_summary])
 
 useEffect(() => { setCurrentPage(1) },
-    [filter_run_id, filter_date_from, filter_date_to, filter_day_of_week, filter_plid, filter_scoring, filter_name,
+    [filter_run_id, filter_date_from, filter_day_of_week, filter_plid, filter_scoring, filter_name,
      filter_club, filter_tournament, filter_event_type, filter_is_summary])
 
   useEffect(() => {
     if (isNaN(playerId)) { setError('Invalid player ID'); setLoading(false); return }
     setLoading(true); setResults([])
+    //------------------------------------------------------------------------------------------
+    //  load — fetches the player row, their results, all-group stats and (in partner mode) the
+    //  pair stats in parallel, into the matching state
+    //------------------------------------------------------------------------------------------
     async function load() {
       try {
         const url = filterPartnerId
@@ -235,7 +257,7 @@ useEffect(() => { setCurrentPage(1) },
   if (error)   return <div className='rounded bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700'>{error}</div>
   if (!player) return null
 
-  const hasFilter = !!(filter_run_id || filter_date_from || filter_date_to || filter_day_of_week ||
+  const hasFilter = !!(filter_run_id || filter_date_from || filter_day_of_week ||
     filter_name ||
     filter_plid.size < uniquePartners.length ||
     isSelectionFiltering([...filter_club], clubOptions.length) ||
@@ -243,8 +265,11 @@ useEffect(() => { setCurrentPage(1) },
     isSelectionFiltering([...filter_event_type], eventTypeOptions.length) ||
     filter_scoring !== 'all')
 
+  //--------------------------------------------------------------------------------------------
+  //  clearFilters — resets every history-table filter to its "no filter" state
+  //--------------------------------------------------------------------------------------------
   function clearFilters() {
-    setFilter_date_from(''); setFilter_date_to(''); setFilter_day_of_week('')
+    setFilter_date_from(''); setFilter_day_of_week('')
     setFilter_plid(new Set(results.map(r => r.partner_id)))
     setFilter_name('')
     setFilter_club(new Set(clubOptions))
@@ -253,8 +278,16 @@ useEffect(() => { setCurrentPage(1) },
     setFilter_scoring('all')
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  buildCSV — a CSV string (header + one row per result) for the given rows, with this
+  //  player's name/NZ# prepended to every line
+  //--------------------------------------------------------------------------------------------
   function buildCSV(rows: ResultRow[]) {
-    const esc = (v: string | number | null | undefined) => {
+    //----------------------------------------------------------------------------------------------
+    //  esc — a CSV field, double-quote-escaped and quoted when it contains a comma, quote, or
+    //  newline
+    //----------------------------------------------------------------------------------------------
+    function esc(v: string | number | null | undefined) {
       const s = String(v ?? '')
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
     }
@@ -280,6 +313,9 @@ useEffect(() => { setCurrentPage(1) },
     return [header.join(','), ...dataRows].join('\n')
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  exportCSV — downloads the currently-filtered history rows as a CSV
+  //--------------------------------------------------------------------------------------------
   function exportCSV() {
     const csv = buildCSV(sessionsSorted)
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
@@ -288,6 +324,9 @@ useEffect(() => { setCurrentPage(1) },
     a.click(); URL.revokeObjectURL(url)
   }
 
+  //--------------------------------------------------------------------------------------------
+  //  exportGraphCSV — downloads the filtered history rows for just the graphed scoring type
+  //--------------------------------------------------------------------------------------------
   function exportGraphCSV() {
     const filtered = sessionsSorted.filter(r => r.scoring === scoring)
     const csv = buildCSV(filtered)
@@ -370,6 +409,10 @@ useEffect(() => { setCurrentPage(1) },
             const byGrp: Record<string, Record<string, (typeof playerStats)[number]>> = {}
             playerStats.forEach(r => { (byGrp[r.a1_group] ??= {})[r.a1_scoring] = r })
             const grps = (['A', 'B', 'C', 'all'] as const).filter(g => byGrp[g])
+            //------------------------------------------------------------------------------------
+            //  consistencyLabel — the CONSISTENCY_LEVELS band a pct_rank falls into (first
+            //  whose `max` it is under), or null when pct_rank is null
+            //------------------------------------------------------------------------------------
             function consistencyLabel(pctRank: number | null): { text: string; cls: string } | null {
               if (pctRank === null) return null
               return CONSISTENCY_LEVELS.find(level => pctRank < level.max) ?? null
@@ -486,12 +529,9 @@ useEffect(() => { setCurrentPage(1) },
                     <td className='py-1 pr-1'>
                       <FilterRunId value={filter_run_id} onChange={setFilter_run_id} />
                     </td>
-                    {/* Date: from on top, to below */}
+                    {/* Date from */}
                     <td className='py-1 pr-1'>
-                      <div className='flex flex-col gap-0.5'>
-                        <FilterDate value={filter_date_from} onChange={setFilter_date_from} />
-                        <FilterDate value={filter_date_to} onChange={setFilter_date_to} />
-                      </div>
+                      <FilterDate value={filter_date_from} onChange={setFilter_date_from} />
                     </td>
                     {/* Day */}
                     <td className='py-1 pr-1'>

@@ -36,6 +36,9 @@ export type ScrapeClubSessionsResult = ScrapeSessionsResult & {
   to_date:   string
 }
 
+//----------------------------------------------------------------------------------
+//  datesInRange — every ISO (YYYY-MM-DD) date string from `from` to `to` inclusive
+//----------------------------------------------------------------------------------
 function datesInRange(from: string, to: string): string[] {
   const dates: string[] = []
   const cur = new Date(from)
@@ -47,6 +50,10 @@ function datesInRange(from: string, to: string): string[] {
   return dates
 }
 
+//----------------------------------------------------------------------------------
+//  parseDate — "D MMM YY(YY)" → ISO YYYY-MM-DD; null when the string doesn't match
+//  that shape or the month abbreviation is unknown. 2-digit years become 20xx
+//----------------------------------------------------------------------------------
 function parseDate(raw: string): string | null {
   const m = raw.trim().match(/^(\d{1,2})\s+(\w{3})\s+(\d{2,4})$/)
   if (!m) return null
@@ -56,6 +63,11 @@ function parseDate(raw: string): string | null {
   return `${year}-${month}-${m[1].padStart(2, '0')}`
 }
 
+//----------------------------------------------------------------------------------
+//  parseScore — splits a score cell into { value, type }, reading a PCT/VP/XIMP(S)
+//  suffix; an unrecognised suffix still yields the numeric value under the
+//  UNKNOWN_SCORE_TYPE sentinel; null only when there is no leading number at all
+//----------------------------------------------------------------------------------
 function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' | 'XIMP' | typeof UNKNOWN_SCORE_TYPE } | null {
   const trimmed = raw.trim()
   const known = trimmed.match(/^([\d.]+)\s*(PCT|VP|XIMPS?)$/i)
@@ -75,6 +87,10 @@ function parseScore(raw: string): { value: number; type: 'PCT' | 'VP' | 'XIMP' |
   return { value: parseFloat(unrecognised[1]), type: UNKNOWN_SCORE_TYPE }
 }
 
+//----------------------------------------------------------------------------------
+//  normaliseScore — resets an out-of-range PCT to 50 and an over-VP_SCORE_SANITY_MAX
+//  VP to VP_SCORE_SANITY_RESET; passes every other value through unchanged
+//----------------------------------------------------------------------------------
 function normaliseScore(value: number, type: 'PCT' | 'VP' | 'XIMP' | typeof UNKNOWN_SCORE_TYPE): number {
   if (type === 'PCT' && (value < MP_PERCENTAGE_MIN || value > MP_PERCENTAGE_MAX)) return 50
   if (type === 'VP' && value > VP_SCORE_SANITY_MAX) return VP_SCORE_SANITY_RESET
@@ -92,6 +108,11 @@ type ParsedRow = {
   tournament:   string
 }
 
+//----------------------------------------------------------------------------------
+//  parsePage — parses an NZB results HTML page into ParsedRow[] grouped by run_id,
+//  scanning only tables that have both an "event" and a "player" header column and
+//  keeping only rows whose event link carries a run_id and whose score parses
+//----------------------------------------------------------------------------------
 function parsePage(html: string): Map<number, ParsedRow[]> {
   const $ = cheerio.load(html)
   const rowsByRunId = new Map<number, ParsedRow[]>()
@@ -116,7 +137,12 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
       const cells = $(tr).find('td').toArray()
       if (cells.length < Math.max(colEvent, colPlayers, colScore) + 1) return
 
-      const get = (idx: number) => idx >= 0 ? $(cells[idx]).text().trim() : ''
+      //----------------------------------------------------------------------------------------------
+      //  get — trimmed text of the cell at column idx, or '' when idx < 0
+      //----------------------------------------------------------------------------------------------
+      function get(idx: number): string {
+        return idx >= 0 ? $(cells[idx]).text().trim() : ''
+      }
 
       const eventCell = colEvent >= 0 ? $(cells[colEvent]) : null
       const eventHref = eventCell?.find('a').attr('href') ?? ''
@@ -148,6 +174,11 @@ function parsePage(html: string): Map<number, ParsedRow[]> {
   return rowsByRunId
 }
 
+//----------------------------------------------------------------------------------
+//  getOrCreatePlayer — returns the pl_plid for a whitespace-normalised name,
+//  inserting a tpl_players row (pl_nzb 0) when none exists; `created` says whether
+//  a new row was made. Reselects after an ON CONFLICT no-op insert
+//----------------------------------------------------------------------------------
 async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; created: boolean }> {
   const name = rawName.replace(/\s+/g, ' ').trim()
   const existing = await table_query({
@@ -196,6 +227,11 @@ async function batchCheckMissing(runIds: number[]): Promise<number[]> {
   return runIds.filter(id => !existingSet.has(id))
 }
 
+//----------------------------------------------------------------------------------
+//  scrapeRunId — fetches one run_id's results page, upserts its ts1_sessions header
+//  row and every ts2_results pair row (creating players as needed), and deletes the
+//  ts1_sessions header again when the page yielded no valid pair rows
+//----------------------------------------------------------------------------------
 async function scrapeRunId(run_id: number): Promise<{ pairs: number; created: number }> {
   const response = await fetch(`${NZB_BASE}/results.html?run_id=${run_id}`, { headers: UA })
   if (!response.ok) return { pairs: 0, created: 0 }
@@ -282,6 +318,10 @@ async function scrapeRunIds(missingIds: Set<number>): Promise<{ pairs_total: num
   return { pairs_total, players_created }
 }
 
+//----------------------------------------------------------------------------------
+//  getMaxSessionDate — MAX(se_date) from tse_sessions as an ISO text string, or
+//  null when the table is empty (uncached)
+//----------------------------------------------------------------------------------
 async function getMaxSessionDate(): Promise<string | null> {
   const rows = await table_query({
     caller: 'pipelineScrape/from-date',
@@ -292,6 +332,11 @@ async function getMaxSessionDate(): Promise<string | null> {
   return rows[0]?.from_date ?? null
 }
 
+//----------------------------------------------------------------------------------
+//  getDateRange — resolves the scrape date window: an override wins, else
+//  MAX(se_date), else SCRAPE_FALLBACK_LOOKBACK_DAYS back from today for from_date;
+//  to_date defaults to today
+//----------------------------------------------------------------------------------
 async function getDateRange(fromDateOverride?: string, toDateOverride?: string): Promise<{ from_date: string; to_date: string }> {
   const from_date = fromDateOverride
     ?? (await getMaxSessionDate())

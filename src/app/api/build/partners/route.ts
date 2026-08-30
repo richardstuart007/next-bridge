@@ -3,6 +3,10 @@ import { buildAllPartnerStats } from '@/src/lib/actions/players'
 import { write_logging } from 'nextjs-shared/write_logging'
 import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
 
+//----------------------------------------------------------------------------------
+//  run — reads the tpa_partners count via buildAllPartnerStats(), logs it as
+//  pipeline step 3, and returns { pairs } as JSON (500 with { error } on failure)
+//----------------------------------------------------------------------------------
 async function run(): Promise<NextResponse> {
   const t0 = Date.now()
   try {
@@ -20,5 +24,12 @@ async function run(): Promise<NextResponse> {
   }
 }
 
+//----------------------------------------------------------------------------------
+//  GET — runs the Build Partners step
+//----------------------------------------------------------------------------------
 export async function GET()  { return run() }
+
+//----------------------------------------------------------------------------------
+//  POST — manual-trigger equivalent of GET
+//----------------------------------------------------------------------------------
 export async function POST() { return run() }

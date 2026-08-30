@@ -12,7 +12,6 @@ const SESSIONS_TABLE = 'tse_sessions'
 
 export type SessionFilters = {
   dateFrom?:         string
-  dateTo?:           string
   days?:             string[]
   scoring?:          string[]
   name?:             string
@@ -46,7 +45,6 @@ export type SessionListRow = {
 function buildSessionFilters(f: SessionFilters): Filter[] {
   const result: Filter[] = []
   if (f.dateFrom) result.push({ column: 'se_date', operator: '>=', value: f.dateFrom })
-  if (f.dateTo)   result.push({ column: 'se_date', operator: '<=', value: f.dateTo })
   if (f.days && f.days.length > 0)
     result.push({ column: 'se_day_of_week', operator: 'IN', value: f.days })
   if (f.scoring && f.scoring.length > 0)
@@ -100,6 +98,10 @@ export async function getSessionsPaged(
   return { rows: rows as SessionListRow[], totalPages }
 }
 
+//----------------------------------------------------------------------------------
+//  getRecentSessions — the most recent sessions by se_date DESC, capped at `limit`
+//  (default 500)
+//----------------------------------------------------------------------------------
 export async function getRecentSessions(limit: number = 500) {
   return table_fetch({
     caller: 'getRecentSessions',
@@ -109,6 +111,10 @@ export async function getRecentSessions(limit: number = 500) {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  getSessionsByYear — every session for the given calendar year (se_date DESC), or
+//  every session when year is null
+//----------------------------------------------------------------------------------
 export async function getSessionsByYear(year: number | null) {
   return table_query({
     caller: 'getSessionsByYear',
@@ -119,6 +125,9 @@ export async function getSessionsByYear(year: number | null) {
   })
 }
 
+//----------------------------------------------------------------------------------
+//  getSessionById — the tse_sessions row for se_seid, or null
+//----------------------------------------------------------------------------------
 export async function getSessionById(seId: number) {
   const rows = await table_fetch({
     caller: 'getSessionById',
@@ -128,6 +137,9 @@ export async function getSessionById(seId: number) {
   return rows[0] ?? null
 }
 
+//----------------------------------------------------------------------------------
+//  sessionExistsByRunId — true when a tse_sessions row exists for se_run_id
+//----------------------------------------------------------------------------------
 export async function sessionExistsByRunId(seRunId: number): Promise<boolean> {
   const count = await table_count({
     caller: 'sessionExistsByRunId',
@@ -137,6 +149,10 @@ export async function sessionExistsByRunId(seRunId: number): Promise<boolean> {
   return count > 0
 }
 
+//----------------------------------------------------------------------------------
+//  getSkippedRunIds — the subset of runIds whose tse_sessions row has se_scoring
+//  'VP' (i.e. was skipped as a VP session), as a Set
+//----------------------------------------------------------------------------------
 export async function getSkippedRunIds(runIds: number[]): Promise<Set<number>> {
   if (runIds.length === 0) return new Set()
   const ph = runIds.map((_, i) => `$${i + 1}`).join(', ')
@@ -148,6 +164,10 @@ export async function getSkippedRunIds(runIds: number[]): Promise<Set<number>> {
   return new Set(rows.map((r: any) => r.se_run_id))
 }
 
+//----------------------------------------------------------------------------------
+//  getImportedRunIds — the subset of runIds that already have a tse_sessions row,
+//  as a Set
+//----------------------------------------------------------------------------------
 export async function getImportedRunIds(runIds: number[]): Promise<Set<number>> {
   if (runIds.length === 0) return new Set()
   const rows = await table_fetch({
@@ -159,6 +179,9 @@ export async function getImportedRunIds(runIds: number[]): Promise<Set<number>> 
   return new Set(rows.map((r: any) => r.se_run_id))
 }
 
+//----------------------------------------------------------------------------------
+//  getSessionByRunId — the tse_sessions row for se_run_id, or null
+//----------------------------------------------------------------------------------
 export async function getSessionByRunId(seRunId: number) {
   const rows = await table_fetch({
     caller: 'getSessionByRunId',
@@ -171,6 +194,10 @@ export async function getSessionByRunId(seRunId: number) {
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
+//----------------------------------------------------------------------------------
+//  fixUnknownDays — recomputes se_day_of_week from se_date for every session
+//  currently marked 'Unknown'; returns how many rows were updated
+//----------------------------------------------------------------------------------
 export async function fixUnknownDays(): Promise<number> {
   const rows = await table_fetch({
     caller: 'fixUnknownDays',
@@ -190,6 +217,9 @@ export async function fixUnknownDays(): Promise<number> {
   return rows.length
 }
 
+//----------------------------------------------------------------------------------
+//  sessionCount — total row count of tse_sessions
+//----------------------------------------------------------------------------------
 export async function sessionCount(): Promise<number> {
   return table_count({ table: SESSIONS_TABLE, caller: 'sessionCount' })
 }
@@ -204,6 +234,10 @@ export interface SessionCatalogueEntry {
   se_name: string
 }
 
+//----------------------------------------------------------------------------------
+//  getSessionCatalogueForYear — a lightweight session catalogue (seid, run_id,
+//  date, day, scoring, name) for one calendar year, se_date DESC
+//----------------------------------------------------------------------------------
 export async function getSessionCatalogueForYear(year: number): Promise<SessionCatalogueEntry[]> {
   return table_query({
     caller: 'getSessionCatalogueForYear',

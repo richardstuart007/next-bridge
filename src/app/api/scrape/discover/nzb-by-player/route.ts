@@ -1,3 +1,17 @@
+//==============================================================================================
+//  1) DESCRIPTION
+//    POST — /api/scrape/discover/nzb-by-player route handler. Reads a player's full NZB match
+//    history by nzb, extracts every run_id, and reports which are already in tse_sessions vs.
+//    missing (with the "Final"/summary run_ids called out separately).
+//
+//    Parameters:
+//      request — JSON body { nzb: number }
+//
+//    Returns:
+//      JSON { total_found, total_in_prod, total_missing, missing, final_run_ids, missing_final };
+//      400 on a bad body, 502 on an NZB fetch failure, 500 { error } on other failures
+//==============================================================================================
+
 import { NextRequest } from 'next/server'
 import { table_query } from 'nextjs-shared/table_query'
 import { extractRunIds } from '@/src/lib/scrapeUtils'

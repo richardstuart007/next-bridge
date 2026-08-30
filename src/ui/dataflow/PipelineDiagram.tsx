@@ -1,5 +1,16 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PipelineDiagram — the next-bridge pipeline dataflow diagram, drawn with React Flow: a
+//    fixed grid of table/process nodes (NODES) wired by fixed edges (EDGES), non-interactive.
+//
+//  2) NOTES
+//    Top-level order is kept helpers/consts-first, main-component-last: the module-level NODES
+//    and EDGES constants call the `pos` / `edge` helpers at init time. All function declarations
+//    hoist, so the arrangement is cosmetic. Flagged for a separate review.
+//==============================================================================================
+
 import { ReactFlow, Handle, Position, MarkerType } from '@xyflow/react'
 import type { Node, Edge, NodeProps } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -105,10 +116,6 @@ const EDGES: Edge[] = [
   edge('e17', 'updatestats',   'bottom-src', 'ta2',           'top-tgt'),
 ]
 
-//----------------------------------------------------------------------------------------------
-//  PipelineDiagram — the next-bridge pipeline dataflow diagram (React Flow, replacing the
-//  earlier nextjs-shared markdown-lite `flow` diagram approach for this page)
-//----------------------------------------------------------------------------------------------
 export default function PipelineDiagram() {
   return (
     <div style={{ height: 720 }} className='w-full rounded-lg border border-gray-200 bg-gray-50'>

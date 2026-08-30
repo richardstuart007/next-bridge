@@ -4,18 +4,32 @@ import { table_fetch } from 'nextjs-shared/table_fetch'
 import { table_query } from 'nextjs-shared/table_query'
 import { cache_clearTable } from 'nextjs-shared/userCache_store'
 
+//----------------------------------------------------------------------------------
+//  getAllRanks — every trk_ranks row, ordered by rk_rank (uncached)
+//----------------------------------------------------------------------------------
 export async function getAllRanks() {
   return table_fetch({ caller: 'getAllRanks', table: 'trk_ranks', orderBy: 'rk_rank ASC', skipCache: true })
 }
 
+//----------------------------------------------------------------------------------
+//  getAllClubs — every tcl_clubs row, ordered by cl_club (uncached)
+//----------------------------------------------------------------------------------
 export async function getAllClubs() {
   return table_fetch({ caller: 'getAllClubs', table: 'tcl_clubs', orderBy: 'cl_club ASC', skipCache: true })
 }
 
+//----------------------------------------------------------------------------------
+//  getAllGrades — every tgr_grades row, ordered by gr_grade (uncached)
+//----------------------------------------------------------------------------------
 export async function getAllGrades() {
   return table_fetch({ caller: 'getAllGrades', table: 'tgr_grades', orderBy: 'gr_grade ASC', skipCache: true })
 }
 
+//----------------------------------------------------------------------------------
+//  populateRanks — inserts any distinct pl_rank from tpl_players missing from
+//  trk_ranks (blank/"n/a"/"no rank"/"unknown" folded to 'No Rank'); clears the
+//  trk_ranks cache and returns the resulting row count
+//----------------------------------------------------------------------------------
 export async function populateRanks(): Promise<{ inserted: number }> {
   await table_query({
     caller: 'populateRanks',
@@ -38,6 +52,10 @@ export async function populateRanks(): Promise<{ inserted: number }> {
   return { inserted: rows[0]?.n ?? 0 }
 }
 
+//----------------------------------------------------------------------------------
+//  populateClubs — inserts any distinct non-blank pl_club from tpl_players missing
+//  from tcl_clubs; clears the tcl_clubs cache and returns the resulting row count
+//----------------------------------------------------------------------------------
 export async function populateClubs(): Promise<{ inserted: number }> {
   await table_query({
     caller: 'populateClubs',
@@ -55,6 +73,11 @@ export async function populateClubs(): Promise<{ inserted: number }> {
   return { inserted: rows[0]?.n ?? 0 }
 }
 
+//----------------------------------------------------------------------------------
+//  mergeClubs — repoints every tpl_players.pl_club from fromClub to toClub, deletes
+//  the now-unused fromClub row from tcl_clubs, clears both caches, and returns the
+//  number of player rows updated
+//----------------------------------------------------------------------------------
 export async function mergeClubs(fromClub: string, toClub: string): Promise<{ updated: number }> {
   const rows = await table_query({
     caller: 'mergeClubs',
@@ -71,6 +94,10 @@ export async function mergeClubs(fromClub: string, toClub: string): Promise<{ up
   return { updated: rows.length }
 }
 
+//----------------------------------------------------------------------------------
+//  populateGrades — inserts any distinct non-blank pl_grade from tpl_players
+//  missing from tgr_grades; clears the tgr_grades cache and returns the row count
+//----------------------------------------------------------------------------------
 export async function populateGrades(): Promise<{ inserted: number }> {
   await table_query({
     caller: 'populateGrades',
@@ -88,10 +115,17 @@ export async function populateGrades(): Promise<{ inserted: number }> {
   return { inserted: rows[0]?.n ?? 0 }
 }
 
+//----------------------------------------------------------------------------------
+//  getAllEventTypes — every tet_event_types row, ordered by et_event_type (uncached)
+//----------------------------------------------------------------------------------
 export async function getAllEventTypes() {
   return table_fetch({ caller: 'getAllEventTypes', table: 'tet_event_types', orderBy: 'et_event_type ASC', skipCache: true })
 }
 
+//----------------------------------------------------------------------------------
+//  populateEventTypes — inserts any distinct non-blank se_event_type from
+//  tse_sessions missing from tet_event_types; returns the resulting row count
+//----------------------------------------------------------------------------------
 export async function populateEventTypes(): Promise<{ inserted: number }> {
   await table_query({
     caller: 'populateEventTypes',

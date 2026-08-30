@@ -1,5 +1,12 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PlayersAdmin — the /owner/players manager. Server-paginated player table (name/NZB#
+//    filters, debounced) with a per-row "track" checkbox that PATCHes pl_tracked, and a header
+//    showing the overall tracked/total counts.
+//==============================================================================================
+
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import MyPaginationFooter from 'nextjs-shared/MyPaginationFooter'
@@ -71,6 +78,10 @@ export default function PlayersAdmin() {
     return () => clearTimeout(timer)
   }, [filter_name, filter_nzb, page, itemsPerPage])
 
+  //----------------------------------------------------------------------------------------------
+  //  toggle — PATCHes /api/admin/players/[plid]/all-results to flip pl_tracked, updating the row
+  //  and the header count optimistically; `toggling` gates the checkbox while in flight
+  //----------------------------------------------------------------------------------------------
   async function toggle(plid: number, current: boolean) {
     setToggling(prev => new Set([...prev, plid]))
     try {

@@ -1,5 +1,18 @@
 'use client'
 
+//==============================================================================================
+//  1) DESCRIPTION
+//    PipelineTable — the /owner/pipeline page. A 4-tab UI (Overview / AKBC / Tracked Players /
+//    Finish) with per-step Run buttons, per-tab "Run All" sequencers, live "remaining" status
+//    counts, and a per-run Jobs summary table (JobsTable) driven by tpip_pipelinelog.
+//
+//  2) NOTES
+//    Top-level function order is kept helpers-first, main-component-last (against the usual
+//    convention): the module-level STATS_SUB_ROWS constant calls playerStatsSql/partnerStatsSql
+//    at init time, so a clean main-first reorder is entangled with const-initialisation order.
+//    All declarations hoist, so the arrangement is cosmetic. Flagged for a separate review.
+//==============================================================================================
+
 import { useState, useEffect, Fragment } from 'react'
 import MyBox from 'nextjs-shared/MyBox'
 import { MyButton } from 'nextjs-shared/MyButton'
@@ -64,6 +77,10 @@ const STEP_SUBSTEPS: Record<number, SubStep[] | null> = {
 
 const GRP_EXPR_SQL = TOURNAMENT_GROUP_SQL_EXPR
 
+//----------------------------------------------------------------------------------------------
+//  playerStatsSql — the (abbreviated, display-only) ta1_player_stats upsert SQL for one group,
+//  shown in the step's SQL popover
+//----------------------------------------------------------------------------------------------
 function playerStatsSql(grp: string): string {
   const isAll = grp === 'all'
   return `INSERT INTO ta1_player_stats
@@ -79,6 +96,10 @@ GROUP BY u.plid, se_scoring
 ON CONFLICT (a1_plid, a1_group, a1_scoring) DO UPDATE SET ...;`
 }
 
+//----------------------------------------------------------------------------------------------
+//  partnerStatsSql — the (abbreviated, display-only) ta2_partner_stats upsert SQL for one
+//  group, shown in the step's SQL popover
+//----------------------------------------------------------------------------------------------
 function partnerStatsSql(grp: string): string {
   const isAll = grp === 'all'
   return `INSERT INTO ta2_partner_stats
@@ -120,21 +141,33 @@ WHERE NOT EXISTS (
   SELECT 1 FROM tpa_partners WHERE pa_plid1 = t.s2_plid1 AND pa_plid2 = t.s2_plid2
 );`
 
+//----------------------------------------------------------------------------------------------
+//  n — a number formatted with thousands separators, or an em-dash when undefined
+//----------------------------------------------------------------------------------------------
 function n(val: number | undefined): string {
   return val === undefined ? '—' : val.toLocaleString()
 }
 
+//----------------------------------------------------------------------------------------------
+//  formatDuration — milliseconds as "NNNms" (< 1s) or "N.Ns"
+//----------------------------------------------------------------------------------------------
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(1)}s`
 }
 
+//----------------------------------------------------------------------------------------------
+//  addDays — an ISO date string advanced by `days` days, back as ISO YYYY-MM-DD
+//----------------------------------------------------------------------------------------------
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr)
   d.setDate(d.getDate() + days)
   return d.toISOString().slice(0, 10)
 }
 
+//----------------------------------------------------------------------------------------------
+//  runStep — POSTs to a pipeline step URL and returns its JSON, throwing on a non-OK response
+//----------------------------------------------------------------------------------------------
 async function runStep(url: string): Promise<Record<string, unknown>> {
   const res = await fetch(url, { method: 'POST' })
   const json = await res.json()
@@ -142,6 +175,10 @@ async function runStep(url: string): Promise<Record<string, unknown>> {
   return json
 }
 
+//----------------------------------------------------------------------------------------------
+//  StatusBadge — a green "Completed" / red "Incomplete" pill, or an em-dash when `complete` is
+//  null (unknown)
+//----------------------------------------------------------------------------------------------
 function StatusBadge({ complete }: { complete: boolean | null }) {
   if (complete === null) return <span className='text-gray-300'>—</span>
   return (
@@ -264,10 +301,19 @@ function PipelineJobsSummary({ refreshKey, steps }: { refreshKey: number; steps:
   const [runs, setRuns] = useState<PipelineStatus[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
 
+  useEffect(() => { doRefreshRuns() }, [refreshKey])
+
+  //----------------------------------------------------------------------------------------------
+  //  loadRunStatus — replaces `runs` with getPipelineRunStatus for one run_id
+  //----------------------------------------------------------------------------------------------
   async function loadRunStatus(runId: number) {
     setRuns(await getPipelineRunStatus(runId))
   }
 
+  //----------------------------------------------------------------------------------------------
+  //  doRefreshRuns — reloads the recent-run_id list; shows the newest run if one just appeared,
+  //  otherwise keeps the current selection (or falls back to the newest), then loads its rows
+  //----------------------------------------------------------------------------------------------
   async function doRefreshRuns() {
     setRunsLoading(true)
     const ids = await getRecentRunIds()
@@ -280,8 +326,9 @@ function PipelineJobsSummary({ refreshKey, steps }: { refreshKey: number; steps:
     setRunsLoading(false)
   }
 
-  useEffect(() => { doRefreshRuns() }, [refreshKey])
-
+  //----------------------------------------------------------------------------------------------
+  //  handleSelectRunId — selects a run_id from the picker and loads its rows
+  //----------------------------------------------------------------------------------------------
   async function handleSelectRunId(runId: number) {
     setSelectedRunId(runId)
     setRunsLoading(true)
@@ -296,9 +343,9 @@ function PipelineJobsSummary({ refreshKey, steps }: { refreshKey: number; steps:
       <div className='flex items-center gap-2 mb-2'>
         <h3 className='text-xs font-bold'>Summary</h3>
         <MySelect
-          options={recentRunIds.map(id => `Run # (${id})`)}
-          value={selectedRunId != null ? `Run # (${selectedRunId})` : ''}
-          onChange={e => handleSelectRunId(parseInt(e.target.value.replace(/\D/g, ''), 10))}
+          options={recentRunIds.map(String)}
+          value={selectedRunId != null ? String(selectedRunId) : ''}
+          onChange={e => handleSelectRunId(parseInt(e.target.value, 10))}
           overrideClass='w-20'
         />
         <MyButton onClick={doRefreshRuns} disabled={runsLoading}
@@ -322,10 +369,19 @@ function OverviewSummary({ refreshKey }: { refreshKey: number }) {
   const [runs, setRuns] = useState<PipelineStatus[]>([])
   const [runsLoading, setRunsLoading] = useState(false)
 
+  useEffect(() => { doRefreshRuns() }, [refreshKey])
+
+  //----------------------------------------------------------------------------------------------
+  //  loadRunStatus — replaces `runs` with getPipelineRunStatus for one run_id
+  //----------------------------------------------------------------------------------------------
   async function loadRunStatus(runId: number) {
     setRuns(await getPipelineRunStatus(runId))
   }
 
+  //----------------------------------------------------------------------------------------------
+  //  doRefreshRuns — reloads the recent-run_id list; shows the newest run if one just appeared,
+  //  otherwise keeps the current selection (or falls back to the newest), then loads its rows
+  //----------------------------------------------------------------------------------------------
   async function doRefreshRuns() {
     setRunsLoading(true)
     const ids = await getRecentRunIds()
@@ -338,8 +394,9 @@ function OverviewSummary({ refreshKey }: { refreshKey: number }) {
     setRunsLoading(false)
   }
 
-  useEffect(() => { doRefreshRuns() }, [refreshKey])
-
+  //----------------------------------------------------------------------------------------------
+  //  handleSelectRunId — selects a run_id from the picker and loads its rows
+  //----------------------------------------------------------------------------------------------
   async function handleSelectRunId(runId: number) {
     setSelectedRunId(runId)
     setRunsLoading(true)
@@ -353,9 +410,9 @@ function OverviewSummary({ refreshKey }: { refreshKey: number }) {
     <>
       <div className='flex items-center gap-2'>
         <MySelect
-          options={recentRunIds.map(id => `Run # (${id})`)}
-          value={selectedRunId != null ? `Run # (${selectedRunId})` : ''}
-          onChange={e => handleSelectRunId(parseInt(e.target.value.replace(/\D/g, ''), 10))}
+          options={recentRunIds.map(String)}
+          value={selectedRunId != null ? String(selectedRunId) : ''}
+          onChange={e => handleSelectRunId(parseInt(e.target.value, 10))}
           overrideClass='w-20'
         />
         <MyButton onClick={doRefreshRuns} disabled={runsLoading}
@@ -387,10 +444,20 @@ export default function PipelineTable() {
   const [scrapeFromDate, setScrapeFromDate] = useState('')
   const [scrapeToDate,   setScrapeToDate]   = useState('')
 
+  useEffect(() => { doRefreshAll() }, [])
+
+  //----------------------------------------------------------------------------------------------
+  //  doRefreshSessions / doRefreshResults / doRefreshPartners — reload one step's "remaining"
+  //  status count
+  //----------------------------------------------------------------------------------------------
   async function doRefreshSessions() { setSessionsLoading(true); setSessionsStatus(await refreshSessionsStatus()); setSessionsLoading(false) }
   async function doRefreshResults()  { setResultsLoading(true);  setResultsStatus(await refreshResultsStatus());   setResultsLoading(false) }
   async function doRefreshPartners() { setPartnersLoading(true); setPartnersStatus(await refreshPartnersStatus()); setPartnersLoading(false) }
 
+  //----------------------------------------------------------------------------------------------
+  //  doRefreshAll — reloads all three status counts and the auto scrape "From" date in parallel,
+  //  seeding the From/To date inputs (only while still empty) for the catch-up workflow
+  //----------------------------------------------------------------------------------------------
   async function doRefreshAll() {
     setRefreshAllLoading(true)
     setSessionsLoading(true); setResultsLoading(true); setPartnersLoading(true)
@@ -411,8 +478,10 @@ export default function PipelineTable() {
     setRefreshAllLoading(false)
   }
 
-  useEffect(() => { doRefreshAll() }, [])
-
+  //----------------------------------------------------------------------------------------------
+  //  run — POSTs one step URL via runStep, stores its result/error under `key`, then runs
+  //  afterRefresh and bumps refreshKey so the Jobs summary reloads. Returns the step's data
+  //----------------------------------------------------------------------------------------------
   async function run(key: string, url: string, afterRefresh: () => Promise<void>): Promise<Record<string, unknown> | null> {
     setRunning(key)
     let data: Record<string, unknown> | null = null
@@ -429,7 +498,11 @@ export default function PipelineTable() {
     return data
   }
 
-  const handleScrapeClub = () => {
+  //----------------------------------------------------------------------------------------------
+  //  handleScrapeClub — runs the AKBC scrape step, passing the From/To date inputs as query
+  //  params when set
+  //----------------------------------------------------------------------------------------------
+  function handleScrapeClub() {
     const params = new URLSearchParams()
     if (scrapeFromDate) params.set('from_date', scrapeFromDate)
     if (scrapeToDate)   params.set('to_date',   scrapeToDate)
@@ -438,24 +511,45 @@ export default function PipelineTable() {
     return run('scrape-club', url, async () => {})
   }
 
+  //----------------------------------------------------------------------------------------------
+  //  clubDateParams — the ?group=akbc[&from_date&to_date] query string for the AKBC build
+  //  steps, taken from the passed scrape result or the last stored one
+  //----------------------------------------------------------------------------------------------
   function clubDateParams(clubData?: Record<string, unknown> | null): string {
     const data = clubData ?? results['scrape-club']?.data ?? null
     if (data && data.from_date && data.to_date) return `?group=akbc&from_date=${data.from_date}&to_date=${data.to_date}`
     return '?group=akbc'
   }
 
-  const handleSessionsClub = (clubData?: Record<string, unknown> | null) =>
-    run('sessions-club', `/api/build/sessions-nzb${clubDateParams(clubData)}`, doRefreshSessions)
-  const handleResultsClub = (clubData?: Record<string, unknown> | null) =>
-    run('results-club', `/api/build/results-nzb${clubDateParams(clubData)}`, doRefreshResults)
+  //----------------------------------------------------------------------------------------------
+  //  handleSessionsClub / handleResultsClub — run the AKBC Build Sessions / Build Results steps,
+  //  scoped to the AKBC scrape's date range
+  //----------------------------------------------------------------------------------------------
+  function handleSessionsClub(clubData?: Record<string, unknown> | null) {
+    return run('sessions-club', `/api/build/sessions-nzb${clubDateParams(clubData)}`, doRefreshSessions)
+  }
+  function handleResultsClub(clubData?: Record<string, unknown> | null) {
+    return run('results-club', `/api/build/results-nzb${clubDateParams(clubData)}`, doRefreshResults)
+  }
 
-  const handleScrapeTracked   = () => run('scrape-tracked',   '/api/build/scrape-tracked', async () => {})
-  const handleSessionsTracked = () => run('sessions-tracked', '/api/build/sessions-nzb?group=tracked',   doRefreshSessions)
-  const handleResultsTracked  = () => run('results-tracked',  '/api/build/results-nzb?group=tracked',    doRefreshResults)
+  //----------------------------------------------------------------------------------------------
+  //  handleScrapeTracked / handleSessionsTracked / handleResultsTracked — run the three
+  //  tracked-player pipeline steps
+  //----------------------------------------------------------------------------------------------
+  function handleScrapeTracked()   { return run('scrape-tracked',   '/api/build/scrape-tracked', async () => {}) }
+  function handleSessionsTracked() { return run('sessions-tracked', '/api/build/sessions-nzb?group=tracked',   doRefreshSessions) }
+  function handleResultsTracked()  { return run('results-tracked',  '/api/build/results-nzb?group=tracked',    doRefreshResults) }
 
-  const handlePartners = () => run('partners', '/api/build/partners', doRefreshPartners)
-  const handleRunFullCron = () => run('full-cron', '/api/cron/update-sessions', async () => {})
+  //----------------------------------------------------------------------------------------------
+  //  handlePartners / handleRunFullCron — run the Build Partners step / the whole cron pipeline
+  //----------------------------------------------------------------------------------------------
+  function handlePartners()    { return run('partners', '/api/build/partners', doRefreshPartners) }
+  function handleRunFullCron() { return run('full-cron', '/api/cron/update-sessions', async () => {}) }
 
+  //----------------------------------------------------------------------------------------------
+  //  handleStats — runs the Update Stats step, then fans its per-group counts out into the
+  //  matching STATS_SUB_ROWS result cells
+  //----------------------------------------------------------------------------------------------
   async function handleStats() {
     const data = await run('stats', '/api/build/stats', async () => {})
     const groups = data?.groups as Record<string, number> | undefined
@@ -472,6 +566,10 @@ export default function PipelineTable() {
     return data
   }
 
+  //----------------------------------------------------------------------------------------------
+  //  runAllAkbc / runAllTracked / runFinishPipeline — the per-tab "Run All" sequencers, each
+  //  running its tab's steps in order
+  //----------------------------------------------------------------------------------------------
   async function runAllAkbc() {
     setRunningAll('akbc')
     const clubData = await handleScrapeClub()

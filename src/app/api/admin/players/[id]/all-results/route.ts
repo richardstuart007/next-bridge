@@ -34,6 +34,7 @@ export async function PATCH(
   try {
     await table_query({
       caller: 'admin/players/all-results',
+      table: 'tre_results',
       query: `UPDATE tpl_players SET pl_tracked = $1 WHERE pl_plid = $2`,
       params: [body.all_results, plid]
     })

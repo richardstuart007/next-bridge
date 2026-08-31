@@ -1,28 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { write_logging } from 'nextjs-shared/write_logging'
 import { startPipelineRun } from '@/src/lib/actions/pipelineLog'
+import { cronStart, cronEnd, cronFail } from '@/src/lib/actions/cronTrace'
+
+const ROUTE = 'build/start-run'
 
 //----------------------------------------------------------------------------------
-//  run — allocates the day's fresh pipeline run_id and writes the step-0 "Start
-//  Run" marker row via startPipelineRun(toDate), logs it, and returns { run_id } as
-//  JSON (500 with { error } on failure). toDate is recorded on the step-0 row.
+//  run — the day's first cron: allocates the shared pip_run_id (MAX+1), truncates
+//  ts1_sessions/ts2_results, and writes the step-0 "Start Run" marker row. Every other
+//  cron job of the day reuses this run_id. `to_date` (optional) is recorded on the
+//  step-0 row as the run's process-nothing-past cap. Returns { run_id } (500 on failure).
 //----------------------------------------------------------------------------------
 async function run(toDate?: string): Promise<NextResponse> {
+  await cronStart(ROUTE, { to_date: toDate })
   try {
-    const result = await startPipelineRun(toDate)
-    await write_logging({ lg_functionname: 'run', lg_caller: 'build/start-run', lg_msg: `New pipeline run_id ${result.run_id}${toDate ? ` (to_date ${toDate})` : ''}`, lg_severity: 'I' })
+    const result = await startPipelineRun(toDate, true)
+    await cronEnd(ROUTE, `new pipeline run_id ${result.run_id}${toDate ? ` (to_date ${toDate})` : ''}, staging truncated`)
     return NextResponse.json(result)
   } catch (err) {
-    await write_logging({ lg_functionname: 'run', lg_caller: 'build/start-run', lg_msg: String(err), lg_severity: 'E' })
+    await cronFail(ROUTE, err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
 
 //----------------------------------------------------------------------------------
-//  toDateParam — the optional ?to_date= query value, or undefined
+//  toDateParam — the optional ?to_date= query value, or undefined. `|| undefined`
+//  (not `?? undefined`) so an empty ?to_date= — the form every vercel.json cron
+//  path carries, filled in only for a UI test run — reads as "no cap".
 //----------------------------------------------------------------------------------
 function toDateParam(request: NextRequest): string | undefined {
-  return request.nextUrl.searchParams.get('to_date') ?? undefined
+  return request.nextUrl.searchParams.get('to_date') || undefined
 }
 
 //----------------------------------------------------------------------------------

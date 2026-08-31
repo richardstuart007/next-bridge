@@ -126,9 +126,10 @@ export async function GET(request: NextRequest) {
       WHERE ${partnersWhere}
     `
 
-    const [players, playersCount, partnerships, partnersCount, playersGroupTotalRows, partnersGroupTotalRows] = await Promise.all([
+    const [playersResult, playersCountResult, partnershipsResult, partnersCountResult, playersGroupTotalResult, partnersGroupTotalResult] = await Promise.all([
       table_query({
         caller: 'rankings players',
+        table: 'tpl_players',
         query: `
           SELECT
             pl_plid,
@@ -149,12 +150,14 @@ export async function GET(request: NextRequest) {
       }),
       table_query({
         caller: 'rankings players/count',
+        table: 'tpl_players',
         query: `SELECT COUNT(*)::int AS n ${playersFrom}`,
         params: playersParams,
         skipCache: true
       }),
       table_query({
         caller: 'rankings partnerships',
+        table: 'tpa_partners',
         query: `
           SELECT
             pa_paid,
@@ -178,26 +181,37 @@ export async function GET(request: NextRequest) {
       }),
       table_query({
         caller: 'rankings partnerships/count',
+        table: 'tpa_partners',
         query: `SELECT COUNT(*)::int AS n ${partnersFrom}`,
         params: partnersParams,
         skipCache: true
       }),
       table_query({
         caller: 'rankings players/groupTotal',
+        table: 'ta1_player_stats',
         query: `SELECT a1_group_total FROM ta1_player_stats WHERE a1_group = $1 AND a1_scoring = $2 AND a1_group_total IS NOT NULL LIMIT 1`,
         params: [group, scoring],
         skipCache: true
       }),
       table_query({
         caller: 'rankings partnerships/groupTotal',
+        table: 'ta2_partner_stats',
         query: `SELECT a2_group_total FROM ta2_partner_stats WHERE a2_group = $1 AND a2_scoring = $2 AND a2_group_total IS NOT NULL LIMIT 1`,
         params: [group, scoring],
         skipCache: true
       })
     ])
 
-    const playersTotalCount = playersCount[0]?.n ?? 0
-    const partnersTotalCount = partnersCount[0]?.n ?? 0
+    if (!playersResult.ok || !playersCountResult.ok || !partnershipsResult.ok || !partnersCountResult.ok || !playersGroupTotalResult.ok || !partnersGroupTotalResult.ok) {
+      throw new Error('rankings: ' + (playersResult.error ?? playersCountResult.error ?? partnershipsResult.error ?? partnersCountResult.error ?? playersGroupTotalResult.error ?? partnersGroupTotalResult.error))
+    }
+
+    const players = playersResult.data
+    const partnerships = partnershipsResult.data
+    const playersGroupTotalRows = playersGroupTotalResult.data
+    const partnersGroupTotalRows = partnersGroupTotalResult.data
+    const playersTotalCount = playersCountResult.data[0]?.n ?? 0
+    const partnersTotalCount = partnersCountResult.data[0]?.n ?? 0
 
     return NextResponse.json({
       players,

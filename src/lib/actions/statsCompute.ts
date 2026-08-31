@@ -1,6 +1,7 @@
 'use server'
 
 import { table_query } from 'nextjs-shared/table_query'
+import { write_logging } from 'nextjs-shared/write_logging'
 import {
   TOURNAMENT_GROUP_SQL_EXPR,
   MIN_RANKING_SESSIONS_MP, MIN_RANKING_SESSIONS_VP, MIN_RANKING_SESSIONS_XIMP,
@@ -36,8 +37,9 @@ const MIN_RANKING_SESSIONS_CASE_SQL_A2 = `
 //----------------------------------------------------------------------------------
 export async function computePlayerGroupStats(grp: string): Promise<{ inserted: number; inputRecs: number }> {
   const isAll = grp === 'all'
-  const inputRows = await table_query({
+  const inputResult = await table_query({
     caller: `statsCompute/player-${grp}-input`,
+    table: 'tre_results',
     query: `SELECT COUNT(*)::int AS n
             FROM tre_results
             JOIN tse_sessions ON se_seid = re_seid
@@ -45,11 +47,17 @@ export async function computePlayerGroupStats(grp: string): Promise<{ inserted: 
             WHERE se_is_summary IS NOT TRUE
             ${isAll ? '' : `AND ${GRP_EXPR} = $1`}`,
     params: isAll ? [] : [grp]
-  }) as { n: number }[]
+  })
+  if (!inputResult.ok) {
+    write_logging({ lg_functionname: 'computePlayerGroupStats', lg_caller: `statsCompute/player-${grp}-input`, lg_msg: `Failed to count player-stats input for group ${grp}: ` + inputResult.error, lg_severity: 'E' })
+    return { inserted: 0, inputRecs: 0 }
+  }
+  const inputRows = inputResult.data as { n: number }[]
   const inputRecs = inputRows[0]?.n ?? 0
 
-  const rows = await table_query({
+  const insertResult = await table_query({
     caller: `statsCompute/player-${grp}`,
+    table: 'ta1_player_stats',
     query: `INSERT INTO ta1_player_stats
               (a1_plid, a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev)
             SELECT u.plid,
@@ -73,6 +81,10 @@ export async function computePlayerGroupStats(grp: string): Promise<{ inserted: 
     params: isAll ? [] : [grp],
     isupdate: true
   })
+  if (!insertResult.ok) {
+    write_logging({ lg_functionname: 'computePlayerGroupStats', lg_caller: `statsCompute/player-${grp}`, lg_msg: `Failed to upsert ta1_player_stats for group ${grp}: ` + insertResult.error, lg_severity: 'E' })
+    return { inserted: 0, inputRecs }
+  }
 
   //
   //  Precompute rank/group_total/pct_rank for this group now that its averages are current —
@@ -81,8 +93,9 @@ export async function computePlayerGroupStats(grp: string): Promise<{ inserted: 
   //  MIN_RANKING_SESSIONS_* floor are ranked; below it, rank is reset to NULL (a player who
   //  drops back below threshold on a recompute must not keep a stale rank).
   //
-  await table_query({
+  const rankResult = await table_query({
     caller: `statsCompute/player-${grp}-rank`,
+    table: 'ta1_player_stats',
     query: `UPDATE ta1_player_stats t
             SET a1_avg_rank    = sub.avg_rank,
                 a1_group_total = sub.group_total,
@@ -99,16 +112,20 @@ export async function computePlayerGroupStats(grp: string): Promise<{ inserted: 
     params: [grp],
     isupdate: true
   })
-  await table_query({
+  const rankResetResult = await table_query({
     caller: `statsCompute/player-${grp}-rank-reset`,
+    table: 'ta1_player_stats',
     query: `UPDATE ta1_player_stats
             SET a1_avg_rank = NULL, a1_group_total = NULL, a1_pct_rank = NULL
             WHERE a1_group = $1 AND a1_sessions < ${MIN_RANKING_SESSIONS_CASE_SQL}`,
     params: [grp],
     isupdate: true
   })
+  if (!rankResult.ok || !rankResetResult.ok) {
+    write_logging({ lg_functionname: 'computePlayerGroupStats', lg_caller: `statsCompute/player-${grp}-rank`, lg_msg: `Failed to precompute player ranks for group ${grp}: ` + (rankResult.error ?? rankResetResult.error), lg_severity: 'E' })
+  }
 
-  return { inserted: rows.length, inputRecs }
+  return { inserted: insertResult.data.length, inputRecs }
 }
 
 //----------------------------------------------------------------------------------
@@ -117,19 +134,26 @@ export async function computePlayerGroupStats(grp: string): Promise<{ inserted: 
 //----------------------------------------------------------------------------------
 export async function computePartnerGroupStats(grp: string): Promise<{ inserted: number; inputRecs: number }> {
   const isAll = grp === 'all'
-  const inputRows = await table_query({
+  const inputResult = await table_query({
     caller: `statsCompute/partner-${grp}-input`,
+    table: 'tre_results',
     query: `SELECT COUNT(*)::int AS n
             FROM tre_results
             JOIN tse_sessions ON se_seid = re_seid
             WHERE se_is_summary IS NOT TRUE
             ${isAll ? '' : `AND ${GRP_EXPR} = $1`}`,
     params: isAll ? [] : [grp]
-  }) as { n: number }[]
+  })
+  if (!inputResult.ok) {
+    write_logging({ lg_functionname: 'computePartnerGroupStats', lg_caller: `statsCompute/partner-${grp}-input`, lg_msg: `Failed to count partner-stats input for group ${grp}: ` + inputResult.error, lg_severity: 'E' })
+    return { inserted: 0, inputRecs: 0 }
+  }
+  const inputRows = inputResult.data as { n: number }[]
   const inputRecs = inputRows[0]?.n ?? 0
 
-  const rows = await table_query({
+  const insertResult = await table_query({
     caller: `statsCompute/partner-${grp}`,
+    table: 'ta2_partner_stats',
     query: `INSERT INTO ta2_partner_stats
               (a2_paid, a2_group, a2_scoring, a2_sessions, a2_avg, a2_stddev)
             SELECT re_paid,
@@ -151,14 +175,19 @@ export async function computePartnerGroupStats(grp: string): Promise<{ inserted:
     params: isAll ? [] : [grp],
     isupdate: true
   })
+  if (!insertResult.ok) {
+    write_logging({ lg_functionname: 'computePartnerGroupStats', lg_caller: `statsCompute/partner-${grp}`, lg_msg: `Failed to upsert ta2_partner_stats for group ${grp}: ` + insertResult.error, lg_severity: 'E' })
+    return { inserted: 0, inputRecs }
+  }
 
   //
   //  Precompute rank/group_total for this group now that its averages are current — see the
   //  matching comment in computePlayerGroupStats for the full reasoning, including the
   //  per-scoring-type MIN_RANKING_SESSIONS_* floor and NULL-reset for rows below it
   //
-  await table_query({
+  const rankResult = await table_query({
     caller: `statsCompute/partner-${grp}-rank`,
+    table: 'ta2_partner_stats',
     query: `UPDATE ta2_partner_stats t
             SET a2_avg_rank    = sub.avg_rank,
                 a2_group_total = sub.group_total
@@ -173,14 +202,18 @@ export async function computePartnerGroupStats(grp: string): Promise<{ inserted:
     params: [grp],
     isupdate: true
   })
-  await table_query({
+  const rankResetResult = await table_query({
     caller: `statsCompute/partner-${grp}-rank-reset`,
+    table: 'ta2_partner_stats',
     query: `UPDATE ta2_partner_stats
             SET a2_avg_rank = NULL, a2_group_total = NULL
             WHERE a2_group = $1 AND a2_sessions < ${MIN_RANKING_SESSIONS_CASE_SQL_A2}`,
     params: [grp],
     isupdate: true
   })
+  if (!rankResult.ok || !rankResetResult.ok) {
+    write_logging({ lg_functionname: 'computePartnerGroupStats', lg_caller: `statsCompute/partner-${grp}-rank`, lg_msg: `Failed to precompute partner ranks for group ${grp}: ` + (rankResult.error ?? rankResetResult.error), lg_severity: 'E' })
+  }
 
-  return { inserted: rows.length, inputRecs }
+  return { inserted: insertResult.data.length, inputRecs }
 }

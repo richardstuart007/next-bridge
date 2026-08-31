@@ -6,6 +6,7 @@ import { table_update } from 'nextjs-shared/table_update'
 import { table_count } from 'nextjs-shared/table_count'
 import { table_upsert } from 'nextjs-shared/table_upsert'
 import { table_query } from 'nextjs-shared/table_query'
+import { write_logging } from 'nextjs-shared/write_logging'
 import { PLAYER_SEARCH_LIMIT, PLAYER_SEARCH_ALL_LIMIT } from '@/src/lib/constants'
 
 const PLAYERS_TABLE = 'tpl_players'
@@ -14,24 +15,32 @@ const PLAYERS_TABLE = 'tpl_players'
 //  getPlayerById — the tpl_players row for pl_plid, or null
 //----------------------------------------------------------------------------------
 export async function getPlayerById(plPlid: number) {
-  const rows = await table_fetch({
+  const result = await table_fetch({
     caller: 'getPlayerById',
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [{ column: 'pl_plid', value: plPlid }]
   })
-  return rows[0] ?? null
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getPlayerById', lg_caller: 'getPlayerById', lg_msg: 'Failed to fetch player by plid: ' + result.error, lg_severity: 'E' })
+    return null
+  }
+  return result.data[0] ?? null
 }
 
 //----------------------------------------------------------------------------------
 //  getPlayerByNzb — the tpl_players row for pl_nzb, or null
 //----------------------------------------------------------------------------------
 export async function getPlayerByNzb(nzb: number) {
-  const rows = await table_fetch({
+  const result = await table_fetch({
     caller: 'getPlayerByNzb',
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [{ column: 'pl_nzb', value: nzb }]
   })
-  return rows[0] ?? null
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getPlayerByNzb', lg_caller: 'getPlayerByNzb', lg_msg: 'Failed to fetch player by nzb: ' + result.error, lg_severity: 'E' })
+    return null
+  }
+  return result.data[0] ?? null
 }
 
 //----------------------------------------------------------------------------------
@@ -40,8 +49,9 @@ export async function getPlayerByNzb(nzb: number) {
 //  pl_rating; null when none match
 //----------------------------------------------------------------------------------
 export async function getPlayerByName(name: string) {
-  const rows = await table_query({
+  const result = await table_query({
     caller: 'getPlayerByName',
+    table: 'tpl_players',
     query: `SELECT * FROM ${PLAYERS_TABLE}
             WHERE LOWER(TRIM(REGEXP_REPLACE(pl_name, '\\s+', ' ', 'g'))) = LOWER(TRIM(REGEXP_REPLACE($1, '\\s+', ' ', 'g')))
             ORDER BY
@@ -49,7 +59,11 @@ export async function getPlayerByName(name: string) {
               pl_rating DESC`,
     params: [name]
   })
-  return rows[0] ?? null
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getPlayerByName', lg_caller: 'getPlayerByName', lg_msg: 'Failed to fetch player by name: ' + result.error, lg_severity: 'E' })
+    return null
+  }
+  return result.data[0] ?? null
 }
 
 //----------------------------------------------------------------------------------
@@ -60,7 +74,7 @@ export async function searchPlayers(query: string) {
   // Names are stored in Title Case. table_fetch LIKE is case-sensitive, so
   // title-case each word of the search term to match correctly.
   const titleCased = query.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
-  return table_fetch({
+  const result = await table_fetch({
     caller: 'searchPlayers',
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [
@@ -70,6 +84,11 @@ export async function searchPlayers(query: string) {
     orderBy: 'pl_name ASC',
     limit: PLAYER_SEARCH_LIMIT
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'searchPlayers', lg_caller: 'searchPlayers', lg_msg: 'Failed to search players: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data
 }
 
 //----------------------------------------------------------------------------------
@@ -78,46 +97,66 @@ export async function searchPlayers(query: string) {
 //----------------------------------------------------------------------------------
 export async function searchAllPlayers(query: string) {
   const titleCased = query.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
-  return table_fetch({
+  const result = await table_fetch({
     caller: 'searchAllPlayers',
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [{ column: 'pl_name', value: `%${titleCased}%`, operator: 'LIKE' }],
     orderBy: 'pl_name ASC',
     limit: PLAYER_SEARCH_ALL_LIMIT
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'searchAllPlayers', lg_caller: 'searchAllPlayers', lg_msg: 'Failed to search all players: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data
 }
 
 //----------------------------------------------------------------------------------
 //  getAllPlayers — every tpl_players row, ordered by pl_name
 //----------------------------------------------------------------------------------
 export async function getAllPlayers() {
-  return table_fetch({
+  const result = await table_fetch({
     caller: 'getAllPlayers',
     table: PLAYERS_TABLE,
     orderBy: 'pl_name ASC'
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getAllPlayers', lg_caller: 'getAllPlayers', lg_msg: 'Failed to fetch all players: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data
 }
 
 //----------------------------------------------------------------------------------
 //  getPlayersWithoutNzb — every tpl_players row with pl_nzb = 0, ordered by pl_name
 //----------------------------------------------------------------------------------
 export async function getPlayersWithoutNzb() {
-  return table_fetch({
+  const result = await table_fetch({
     caller: 'getPlayersWithoutNzb',
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [{ column: 'pl_nzb', value: 0 }],
     orderBy: 'pl_name ASC'
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getPlayersWithoutNzb', lg_caller: 'getPlayersWithoutNzb', lg_msg: 'Failed to fetch players without nzb: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data
 }
 
 //----------------------------------------------------------------------------------
 //  playerCount — total row count of tpl_players
 //----------------------------------------------------------------------------------
 export async function playerCount(): Promise<number> {
-  return table_count({
+  const result = await table_count({
     table: PLAYERS_TABLE,
     caller: 'playerCount'
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'playerCount', lg_caller: 'playerCount', lg_msg: 'Failed to count tpl_players: ' + result.error, lg_severity: 'E' })
+    return 0
+  }
+  return result.data
 }
 
 //----------------------------------------------------------------------------------
@@ -125,16 +164,20 @@ export async function playerCount(): Promise<number> {
 //  pl_nzb > 0
 //----------------------------------------------------------------------------------
 export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNumber: number }> {
-  const total = await table_count({
+  const totalResult = await table_count({
     table: PLAYERS_TABLE,
     caller: 'getPlayerCounts'
   })
-  const withNumber = await table_count({
+  const withNumberResult = await table_count({
     table: PLAYERS_TABLE,
     whereColumnValuePairs: [{ column: 'pl_nzb', value: 0, operator: '>' }],
     caller: 'getPlayerCounts'
   })
-  return { withNumber, withoutNumber: total - withNumber }
+  if (!totalResult.ok || !withNumberResult.ok) {
+    write_logging({ lg_functionname: 'getPlayerCounts', lg_caller: 'getPlayerCounts', lg_msg: 'Failed to count tpl_players split: ' + (totalResult.error ?? withNumberResult.error), lg_severity: 'E' })
+    return { withNumber: 0, withoutNumber: 0 }
+  }
+  return { withNumber: withNumberResult.data, withoutNumber: totalResult.data - withNumberResult.data }
 }
 
 //----------------------------------------------------------------------------------
@@ -144,8 +187,9 @@ export async function getPlayerCounts(): Promise<{ withNumber: number; withoutNu
 //  "Update Stats" pipeline step, not recalculated here
 //----------------------------------------------------------------------------------
 export async function getPlayerAllGroupStats(plid: number) {
-  const rows = await table_query({
+  const result = await table_query({
     caller: 'getPlayerAllGroupStats',
+    table: 'ta1_player_stats',
     query: `
       SELECT a1_group, a1_scoring, a1_sessions, a1_avg, a1_stddev,
              a1_pct_rank, a1_avg_rank, a1_group_total
@@ -155,7 +199,11 @@ export async function getPlayerAllGroupStats(plid: number) {
     `,
     params: [plid]
   })
-  return rows as {
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getPlayerAllGroupStats', lg_caller: 'getPlayerAllGroupStats', lg_msg: 'Failed to fetch player group stats: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data as {
     a1_group:       string
     a1_scoring:     string
     a1_sessions:    number
@@ -198,31 +246,43 @@ export async function upsertPlayer(data: {
   // If a player with this name already exists, update them (covers both 0 and real NZ number)
   const byName = await getPlayerByName(data.name)
   if (byName) {
-    return table_update({
+    const updateResult = await table_update({
       caller: 'upsertPlayer',
       table: PLAYERS_TABLE,
       columnValuePairs: statsCols,
       whereColumnValuePairs: [{ column: 'pl_plid', value: byName.pl_plid }]
     })
+    if (!updateResult.ok) {
+      write_logging({ lg_functionname: 'upsertPlayer', lg_caller: 'upsertPlayer/byName', lg_msg: `Failed to update player ${data.name}: ` + updateResult.error, lg_severity: 'E' })
+    }
+    return updateResult
   }
 
   // If a different player already holds this NZ number, update them
   const byNzb = data.nzb > 0 ? await getPlayerByNzb(data.nzb) : null
   if (byNzb) {
-    return table_update({
+    const updateResult = await table_update({
       caller: 'upsertPlayer',
       table: PLAYERS_TABLE,
       columnValuePairs: statsCols,
       whereColumnValuePairs: [{ column: 'pl_plid', value: byNzb.pl_plid }]
     })
+    if (!updateResult.ok) {
+      write_logging({ lg_functionname: 'upsertPlayer', lg_caller: 'upsertPlayer/byNzb', lg_msg: `Failed to update player nzb ${data.nzb}: ` + updateResult.error, lg_severity: 'E' })
+    }
+    return updateResult
   }
 
   // New player — insert
-  return table_write({
+  const writeResult = await table_write({
     caller: 'upsertPlayer',
     table: PLAYERS_TABLE,
     columnValuePairs: statsCols
   })
+  if (!writeResult.ok) {
+    write_logging({ lg_functionname: 'upsertPlayer', lg_caller: 'upsertPlayer/insert', lg_msg: `Failed to insert player ${data.name}: ` + writeResult.error, lg_severity: 'E' })
+  }
+  return writeResult
 }
 
 const PARTNERS_TABLE = 'tpa_partners'
@@ -234,11 +294,16 @@ const PARTNERS_TABLE = 'tpa_partners'
 export async function buildAllPartnerStats(): Promise<{ pairs: number }> {
   const result = await table_query({
     caller: 'buildAllPartnerStats/count',
+    table: 'tpa_partners',
     query: `SELECT COUNT(*)::int AS n FROM tpa_partners`,
     params: []
-  }) as { n: number }[]
-
-  return { pairs: result[0]?.n ?? 0 }
+  })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'buildAllPartnerStats', lg_caller: 'buildAllPartnerStats/count', lg_msg: 'Failed to count tpa_partners: ' + result.error, lg_severity: 'E' })
+    return { pairs: 0 }
+  }
+  const rows = result.data as { n: number }[]
+  return { pairs: rows[0]?.n ?? 0 }
 }
 
 //----------------------------------------------------------------------------------
@@ -254,7 +319,7 @@ export async function getOrCreatePartnerRow(
   const lo = firstIsAlpha ? plid1 : plid2
   const hi = firstIsAlpha ? plid2 : plid1
 
-  const rows = await table_upsert({
+  const result = await table_upsert({
     caller: 'getOrCreatePartnerRow',
     table: PARTNERS_TABLE,
     columnValuePairs: [
@@ -263,7 +328,11 @@ export async function getOrCreatePartnerRow(
     ],
     conflictColumns: ['pa_plid1', 'pa_plid2']
   })
-  return rows[0]?.pa_paid ?? null
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getOrCreatePartnerRow', lg_caller: 'getOrCreatePartnerRow', lg_msg: 'Failed to upsert tpa_partners row: ' + result.error, lg_severity: 'E' })
+    return null
+  }
+  return result.data[0]?.pa_paid ?? null
 }
 
 //----------------------------------------------------------------------------------
@@ -271,8 +340,9 @@ export async function getOrCreatePartnerRow(
 //  pair from ta2_partner_stats; ID order does not matter
 //----------------------------------------------------------------------------------
 export async function getPartnerStats(plid1: number, plid2: number) {
-  const rows = await table_query({
+  const result = await table_query({
     caller: 'getPartnerStats',
+    table: 'ta2_partner_stats',
     query: `SELECT a2_scoring, a2_sessions, a2_avg, a2_stddev FROM ta2_partner_stats
             WHERE a2_paid IN (
               SELECT pa_paid FROM tpa_partners
@@ -282,7 +352,11 @@ export async function getPartnerStats(plid1: number, plid2: number) {
             AND a2_group = 'C'`,
     params: [plid1, plid2]
   })
-  return rows as {
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getPartnerStats', lg_caller: 'getPartnerStats', lg_msg: 'Failed to fetch partner stats: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data as {
     a2_scoring:  string
     a2_sessions: number
     a2_avg:      number

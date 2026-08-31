@@ -52,14 +52,17 @@ completed step logs a row to `tpip_pipelinelog` (run_id, duration, input/output 
 1. Scrape        /api/build/scrape        → ts1_sessions, ts2_results (auto date range: last built session → today)
 2. Build Sessions /api/build/sessions-nzb → tse_sessions (from ts1_sessions)
 3. Build Results  /api/build/results-nzb  → tre_results, tpa_partners (from ts2_results)
-4. Build Partners /api/build/partners     → tpa_partners row count (status only, no new writes)
-5. Update Stats   /api/build/stats        → ta1_player_stats, ta2_partner_stats (all groups)
+4. Build Partners /api/build/partners      → tpa_partners row count (status only, no new writes)
+5. Player Stats   /api/build/stats-player  → ta1_player_stats (all groups)
+6. Partner Stats  /api/build/stats-partner → ta2_partner_stats (all groups)
+   (/api/build/stats = combined rebuildAllStats(), manual/localprod full run only)
 ```
 
 The underlying logic lives in `src/lib/actions/pipelineScrape.ts` (`scrapeNewSessions`),
 `src/lib/actions/buildSteps.ts` (`buildSessionsFromStaging`, `buildResultsFromStaging`), and
-`src/lib/actions/stats.ts` (`rebuildAllStats`) — shared between the manual per-step API routes and
-`/api/cron/update-sessions` (the scheduled full-pipeline run), so both paths log identically.
+`src/lib/actions/stats.ts` (`rebuildPlayerStats` / `rebuildPartnerStats`, wrapped by
+`rebuildAllStats`) — shared between the manual per-step API routes and `/api/cron/update-sessions`
+(the scheduled full-pipeline run), so both paths log identically.
 
 The Update Stats step only recalculates from existing prod data — it does not re-import or re-build.
 
@@ -78,6 +81,12 @@ from any page but still work if called directly; see "Scrape API routes" below.
 Installed from `github:richardstuart007/nextjs-shared`. Ships raw `.ts` files — tsx can transform it in Next.js but NOT in standalone scripts (inline the logic instead).
 
 Key exports: `table_fetch`, `table_query`, `table_update`, `table_count`, `table_upsert`, `write_Logging`, `MyPagination`, `StringMultiSelect`.
+
+**Always pass `table:` to `table_query`** — it's optional in the signature (defaults to `''`) but
+must be set to the primary `FROM` table (for a multi-table JOIN, pick the main one) so the
+`xlg_logging` "Table" column shows which table the raw query hit, the same as every other
+`table_*` function. Every `table_query` call in this project carries it as of
+`PLAN_table-query-log-table`.
 
 ## nextjs-shared route exports
 
@@ -145,37 +154,95 @@ stats to see what's actually stored." Two things follow from that purpose:
 
 ## Cron
 
-`/api/cron/update-sessions` — full pipeline in one request: discover → scrape → build sessions → build results → build stats. Secured with `CRON_SECRET`.
+**Current model (v0.1.19+, `PLAN_prod-cron-pipeline-followups` Phases 7 + 13 — takes effect on the
+next prod deploy).** `vercel.json` runs 12 daily crons that share **one `run_id` per day**.
+`tpip_pipelinelog` columns (in order): `pip_run_id, pip_step, pip_batch, pip_sub_step, pip_sub_sub,
+pip_step_name, …`. **`pip_batch`** (smallint, `DEFAULT 0 NOT NULL`) is the AKBC / Tracked batch and
+is **always 1-indexed, ≥ 1** in new rows — steps 0/3/4/5 carry no URL batch param but still log
+`pip_batch = 1` (`logPipelineStep` defaults an omitted `batch` to 1). `pip_batch = 0` only ever
+appears on pre-Phase-13 backfilled rows; the DB `DEFAULT 0` is kept purely to mark those.
+**`pip_sub_step`** (nullable) is set only where it names a real sub-step that matches
+`pip_step_name` — the stats groups (`a`–`d` ↔ Group A/B/C/All); NULL for steps 0/1/2/3.
+`pip_sub_sub` is the tracked per-player index. Key: `(pip_run_id, pip_step, pip_batch,
+pip_sub_step, pip_sub_sub)`. Each row also gets a `cronStart` / `cronEnd` / `cronFail`
+`xlg_logging` line (`P`/`E`) plus `phase7`-tagged `trace()` detail — grep `PHASE7-TRACE` to remove.
+
+- `/api/build/start-run` (12:50 UTC) — the **only** job that creates a run_id and truncates
+  staging: `startPipelineRun(undefined, true)` → `MAX(pip_run_id)+1`, truncate `ts1_sessions` +
+  `ts2_results`, write the step-0 marker (`pip_step 0`, `pip_batch 1`, `pip_sub_step` NULL,
+  `pip_to_date` = the run's cap).
+- `/api/build/scrape-akbc-day?batch=1` (13:05), `?batch=2` (13:35) — each: `resolvePipRunId(1,
+  false)` (reuse the day's run_id, no truncate) → `getNextScrapeDay()` (`MAX(se_date)+1`, or a
+  logged no-op when that's in the future / past the `to_date` cap) → scrape that day in **one**
+  club/date search fetch (no per-run_id fetch) → Build Sessions + Build Results for that day
+  (`skipLog`) → one combined `pip_step 1` row, `pip_batch` = 1/2, `pip_sub_step` NULL,
+  `pip_step_name` = `Scrape AKBC <day>`. Batch 2 re-reads the now-advanced `MAX(se_date)`, so a
+  failed batch 1 is retried, not skipped. Recovers ≤ 2 days/day; deeper backlog → a separate
+  fix-data pipeline (not built).
+- `/api/build/scrape-tracked-batch?batch=1..6` (14:00–14:50, every 10 min) — each:
+  `resolvePipRunId(2, false)` → scrape a `TRACKED_SCRAPE_BATCH_SIZE`-player slice (`LIMIT
+  SIZE OFFSET (batch-1)*SIZE` on the `pl_name`-ordered tracked list) via `online-points.html`
+  discovery + `?run_id=` fetch per session → Build Sessions + Build Results (`skipLog`) → one
+  combined `pip_step 2` row, `pip_batch` = 1..6, `pip_sub_step` NULL, `pip_step_name` = `Tracked
+  batch <N>`, plus a per-player child each (`pip_batch` same, `pip_sub_sub` `01`–`05`,
+  `pip_step_name` = the player name).
+- `/api/build/partners` (15:10) — `pip_step 3`, `pip_batch 1`, `pip_sub_step` NULL. Reuses
+  `MAX(pip_run_id)`.
+- `/api/build/stats-player` (15:20) — `rebuildPlayerStats()`: `pip_step 4` `pip_sub_step a`–`d`
+  (Player Stats, group A/B/C/All), `pip_batch 1`. Reuses `MAX(pip_run_id)`.
+- `/api/build/stats-partner` (15:25) — `rebuildPartnerStats()`: `pip_step 5` `pip_sub_step a`–`d`
+  (Partner Stats, group A/B/C/All), `pip_batch 1`. Reuses `MAX(pip_run_id)`. Split from step 4 so
+  a slow half can't starve the other's `maxDuration`.
+- `/api/players/recalculate?mode=player_grp|partner_grp&grp=` re-runs one group → `pip_step 4`/`5`,
+  `pip_sub_step` = that group's letter. `/api/build/stats` (`rebuildAllStats()`, both steps in one
+  call) is kept for the manual / `npm run localprod` full-run path — not scheduled.
+
+Every pipeline `crons` path in `vercel.json` carries **empty** `?to_date=` (all three scrape/
+start routes) and `&fetch_timeout_ms=` (the two scrape routes) placeholders. In prod they fire
+empty → routes parse with `|| undefined` → treated as absent, zero behaviour change. They exist
+so the `/owner/pipeline` **Run All Cron** button can substitute UI test values without knowing
+which route takes what (Phase 9).
+
+`/owner/pipeline` **Run All Cron** (Phase 9, `PipelineTable.tsx` `handleRunFullCron`) iterates
+`vercel.json`'s `crons` array in file order and POSTs each `path` one at a time — so a manual
+"whole pipeline" run fires the exact routes Vercel schedules, no parallel implementation.
+`fillCronParams()` fills the empty `to_date=` / `fetch_timeout_ms=` placeholders from the
+Overview fields only when non-empty. A failing job is shown and the loop continues.
+
+Shared: `persistSessionsFromPage()` in `pipelineScrape.ts` writes `ts1`+`ts2` for every session on
+a parsed results page (used by both the AKBC day search and the tracked per-run_id page).
+
+`PipelineTable.tsx`'s `JobsTable` renders a run's `tpip_pipelinelog` rows **data-driven** — one
+bold line for `SINGLE_ROW_STEPS` (0, 3), a header + one row per `pip_sub_step` present for the
+rest, with a `▶` toggle that expands a tracked batch's per-player `pip_sub_sub` children.
+
+**Still exists for `CRON_SECRET` curl / `npm run localprod` catch-up (no longer wired to any
+button):** `/api/cron/update-sessions` (whole pipeline in one request, `CRON_SECRET`-secured —
+calls `startPipelineRun` itself), and the standalone `/api/build/scrape`, `sessions-nzb`,
+`results-nzb`, `scrape-tracked`, `start-run`, `stats` (combined `rebuildAllStats()`) routes.
+`scrapeClubSessions` / `scrapeTrackedPlayerSessions` (the multi-day / all-players functions) keep
+their own truncate + `pip_sub_step 'a'`/`'b'`/`'c'` summary rows for that path.
 
 ## Outstanding items
-
-- **Production DB migration pending (2026-07-31)** — the `re_score` column consolidation and the
-  `ta1_player_stats`/`ta2_partner_stats` scoring-type restructure (XIMP support) have been applied
-  to **local** only. Production still has the old schema (`re_percentage`/`re_vp` columns on
-  `tre_results`; `a1_mp_*`/`a1_vp_*`/`a2_mp_*`/`a2_vp_*` columns on `ta1_player_stats`/
-  `ta2_partner_stats`). The code deployed by this commit expects the new schema, so before/when
-  deploying to production, run the same manual SQL sequence against production that was already
-  run on local: add + backfill `re_score`, drop `re_percentage`/`re_vp`, and the
-  backup/drop/recreate for `ta1_player_stats`/`ta2_partner_stats` followed by re-running "Update
-  Stats" on `/owner/pipeline` (prod). The exact SQL lived in the now-deleted
-  `docs/PLAN_data-investigation-bill-leach.md` — see this commit's git history for the full text
-  if it's needed again.
 
 - **`src/app/api/build/*` routes were never in git until 2026-08-30** — `~/.gitignore_global`'s
   bare `build/` rule matched `src/app/api/build/`, so `scrape`, `scrape-tracked`, `stats`, and the
   new `start-run` route files had never been committed. This is the likely reason the production
-  `/api/build/*` cron jobs (in `vercel.json`) have been dead — Vercel deploys from git, so those
-  routes returned 404 with no log trace. Fixed by adding `!src/app/api/build/` to the project
-  `.gitignore` and committing all four. **Verify after the next prod deploy** that `/api/build/scrape`
-  etc. now respond (Vercel Cron Jobs tab / Logs — Phase 1 of `PLAN_prod-cron-pipeline-not-running`).
+  `/api/build/*` cron jobs (in `vercel.json`) had been dead — Vercel deploys from git, so those
+  routes returned 404 with no log trace. Fixed 2026-08-30 (commit `8d74f19` / v0.1.18) by adding
+  `!src/app/api/build/` to the project `.gitignore` and committing all four. **Still to verify on
+  the Vercel dashboard** that the scheduled `/api/build/*` crons now return 200 on their schedule
+  (Phase 1 of `PLAN_prod-cron-pipeline-followups`).
 
-- **`ALTER TABLE tpip_pipelinelog ADD COLUMN pip_to_date date;` pending on prod** — run on local
-  already; needed on prod before/at the next deploy or `startPipelineRun` / every `logPipelineStep`
-  call will fail with "column does not exist".
+- **Not yet done from `PLAN_prod-cron-pipeline-followups`:** Phase 4 — make prod `write_logging('E')`
+  actually persist so cron failures aren't invisible (`xlg_logging` had no `'E'`/`'W'` rows since
+  2026-07-25); has open decisions, never `#code`'d. Also deferred: `pipelineToDate` browser
+  persistence via `localStorage`; an optional mid-scrape `tpip_pipelinelog` progress row.
 
-- **Not yet done from `PLAN_prod-cron-pipeline-not-running` (archived):** Phase 4 (make prod
-  `write_logging('E')` actually persist so cron failures aren't invisible — never triggered);
-  Phase 5 (the ~4-week prod session backlog backfill from `npm run localprod`); `pipelineToDate`
-  browser persistence via `localStorage` (deferred).
+- **Resolved 2026-08-30:** the 2026-07-31 prod schema migration (`re_score` / `ta1`-`ta2`
+  restructure) is applied to prod; `pip_to_date` column added to prod `tpip_pipelinelog`; the
+  ~4-week prod session backlog is backfilled (`tse_sessions` `MAX(se_date)` ≈ current, stats
+  rebuilt, `pip_run_id` advancing). Note: the old `re_percentage` / `re_vp` columns on prod
+  `tre_results` were left in place (unused by current code — harmless dead columns).
 
 

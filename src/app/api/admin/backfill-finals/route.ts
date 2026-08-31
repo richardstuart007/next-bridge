@@ -44,8 +44,9 @@ export async function POST(request: Request) {
       try {
         send({ status: 'querying sessionsâ€¦' })
 
-        const sessions = await table_query({
+        const sessionsResult = await table_query({
           caller: 'admin/backfill-finals/sessions',
+          table: 'tse_sessions',
           query: `SELECT se_run_id
                   FROM tse_sessions
                   WHERE se_run_id IS NOT NULL
@@ -53,7 +54,9 @@ export async function POST(request: Request) {
                   ORDER BY se_run_id DESC
                   LIMIT $1`,
           params: [limit]
-        }) as { se_run_id: number }[]
+        })
+        if (!sessionsResult.ok) throw new Error('admin/backfill-finals/sessions: ' + sessionsResult.error)
+        const sessions = sessionsResult.data as { se_run_id: number }[]
 
         send({ total: sessions.length })
 
@@ -67,6 +70,7 @@ export async function POST(request: Request) {
             failed++
             await table_query({
               caller: 'admin/backfill-finals/mark-failed',
+              table: 'tse_sessions',
               query: `UPDATE tse_sessions SET se_is_summary = FALSE
                       WHERE se_run_id = $1 AND se_is_summary IS NULL`,
               params: [se_run_id]
@@ -79,6 +83,7 @@ export async function POST(request: Request) {
 
           await table_query({
             caller: 'admin/backfill-finals/mark',
+            table: 'tse_sessions',
             query: `UPDATE tse_sessions SET se_is_summary = $1
                     WHERE se_run_id = $2 AND se_is_summary IS NULL`,
             params: [is_final, se_run_id]
@@ -92,11 +97,14 @@ export async function POST(request: Request) {
           }
         }
 
-        const remaining = await table_query({
+        const remainingResult = await table_query({
           caller: 'admin/backfill-finals/remaining',
+          table: 'tse_sessions',
           query: `SELECT COUNT(*)::int AS n FROM tse_sessions WHERE se_run_id IS NOT NULL AND se_is_summary IS NULL`,
           params: []
-        }) as { n: number }[]
+        })
+        if (!remainingResult.ok) throw new Error('admin/backfill-finals/remaining: ' + remainingResult.error)
+        const remaining = remainingResult.data as { n: number }[]
 
         await write_logging({
           lg_functionname: 'POST', lg_caller: 'admin/backfill-finals',

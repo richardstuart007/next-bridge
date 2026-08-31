@@ -13,11 +13,14 @@ export async function POST() {
   try {
     const result = await table_query({
       caller: 'build/cleanup',
+      table: 'tre_results',
       query: `DELETE FROM tre_results WHERE re_percentage < 0 RETURNING re_reid`,
       params: []
-    }) as { re_reid: number }[]
+    })
+    if (!result.ok) throw new Error('build/cleanup: ' + result.error)
+    const deletedRows = result.data as { re_reid: number }[]
 
-    const deleted = result.length
+    const deleted = deletedRows.length
     await write_logging({ lg_functionname: 'POST', lg_caller: 'build/cleanup', lg_msg: `Deleted ${deleted} results with negative percentage`, lg_severity: 'I' })
     return NextResponse.json({ deleted })
   } catch (err) {

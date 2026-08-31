@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
       try {
         await table_query({
           caller: 'scrape/nzb-by-date/truncate',
+          table: 'ts2_results',
           query: `TRUNCATE ts2_results`,
           params: []
         })
@@ -101,11 +102,14 @@ export async function POST(request: NextRequest) {
           run_ids_found += runIds.length
 
           // Batch check which run_ids are already in prod
-          const existing = await table_query({
+          const existingResult = await table_query({
             caller: 'scrape/nzb-by-date/check',
+            table: 'tse_sessions',
             query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
             params: [runIds] as unknown as (string | number | boolean | null)[]
-          }) as { se_run_id: number }[]
+          })
+          if (!existingResult.ok) throw new Error('scrape/nzb-by-date/check: ' + existingResult.error)
+          const existing = existingResult.data as { se_run_id: number }[]
 
           const existingSet = new Set(existing.map(r => r.se_run_id))
           const missingIds  = runIds.filter(id => !existingSet.has(id))
@@ -129,6 +133,7 @@ export async function POST(request: NextRequest) {
               const event_type = headerRow.player_names.length === 4 ? 'teams' : 'pairs'
               await table_query({
                 caller: 'scrape/nzb-by-date/upsert-ts1',
+                table: 'ts1_sessions',
                 query: `INSERT INTO ts1_sessions
                           (s1_run_id, s1_date, s1_club, s1_event_name, s1_score_type, s1_event_type, s1_tournament)
                         VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -172,6 +177,7 @@ export async function POST(request: NextRequest) {
 
                 await table_query({
                   caller: 'scrape/nzb-by-date/insert',
+                  table: 'ts2_results',
                   query: `INSERT INTO ts2_results (s2_run_id, s2_plid1, s2_plid2, s2_score_value)
                           VALUES ($1,$2,$3,$4)
                           ON CONFLICT (s2_run_id, s2_plid1, s2_plid2) DO NOTHING`,
@@ -351,28 +357,37 @@ function normaliseScore(value: number, type: 'PCT' | 'VP', isSummary = false): n
 //----------------------------------------------------------------------------------
 async function getOrCreatePlayer(rawName: string): Promise<{ plid: number; created: boolean }> {
   const name = rawName.replace(/\s+/g, ' ').trim()
-  const existing = await table_query({
+  const existingResult = await table_query({
     caller: 'scrape/nzb-by-date/lookup',
+    table: 'tpl_players',
     query: `SELECT pl_plid FROM tpl_players WHERE LOWER(pl_name) = LOWER($1)`,
     params: [name]
-  }) as { pl_plid: number }[]
+  })
+  if (!existingResult.ok) throw new Error('getOrCreatePlayer/lookup: ' + existingResult.error)
+  const existing = existingResult.data as { pl_plid: number }[]
 
   if (existing.length > 0) return { plid: existing[0].pl_plid, created: false }
 
-  const inserted = await table_query({
+  const insertedResult = await table_query({
     caller: 'scrape/nzb-by-date/create',
+    table: 'tpl_players',
     query: `INSERT INTO tpl_players (pl_name, pl_nzb)
             VALUES ($1, 0) ON CONFLICT (pl_name) DO NOTHING RETURNING pl_plid`,
     params: [name]
-  }) as { pl_plid: number }[]
+  })
+  if (!insertedResult.ok) throw new Error('getOrCreatePlayer/create: ' + insertedResult.error)
+  const inserted = insertedResult.data as { pl_plid: number }[]
 
   if (inserted.length > 0) return { plid: inserted[0].pl_plid, created: true }
 
-  const reselect = await table_query({
+  const reselectResult = await table_query({
     caller: 'scrape/nzb-by-date/reselect',
+    table: 'tpl_players',
     query: `SELECT pl_plid FROM tpl_players WHERE pl_name = $1`,
     params: [name]
-  }) as { pl_plid: number }[]
+  })
+  if (!reselectResult.ok) throw new Error('getOrCreatePlayer/reselect: ' + reselectResult.error)
+  const reselect = reselectResult.data as { pl_plid: number }[]
 
   return { plid: reselect[0].pl_plid, created: false }
 }

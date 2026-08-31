@@ -11,7 +11,7 @@ async function run(fromDate?: string, toDate?: string, group?: string): Promise<
   try {
     const groupValue = group === 'tracked' ? 'tracked' : 'akbc'
     const { inserted, skipped, total } = await buildSessionsFromStaging(false, fromDate, toDate, groupValue)
-    await write_logging({ lg_functionname: 'run', lg_caller: 'build/sessions-nzb', lg_msg: `Sessions: ${inserted} inserted, ${skipped} already existed`, lg_severity: 'I' })
+    await write_logging({ lg_functionname: 'run', lg_caller: 'build/sessions-nzb', lg_msg: `Sessions: ${inserted} inserted, ${skipped} already existed`, lg_severity: 'P' })
     return NextResponse.json({ inserted, skipped, total })
   } catch (err) {
     await write_logging({ lg_functionname: 'run', lg_caller: 'build/sessions-nzb', lg_msg: String(err), lg_severity: 'E' })

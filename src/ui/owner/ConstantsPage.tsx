@@ -21,8 +21,8 @@ import {
   BRIDGE_CLUB_ID,
   FETCH_TIMEOUT_MS,
   SCRAPE_MAX_DURATION_SECONDS,
-  SCRAPE_TIME_BUDGET_MS,
   SCRAPE_FALLBACK_LOOKBACK_DAYS,
+  TRACKED_SCRAPE_BATCH_SIZE,
   MP_PERCENTAGE_MIN,
   MP_PERCENTAGE_MAX,
   VP_SCORE_SANITY_MAX,
@@ -75,8 +75,8 @@ const CONSTANTS_SECTIONS: ConstantSection[] = [
       { name: 'BRIDGE_CLUB_ID', value: BRIDGE_CLUB_ID, description: 'NZB club id for AKBC — filters nzbridge.co.nz results pages to this club during discovery/scrape.', consumers: ['pipelineScrape.ts: scrapeClubSessions', 'scrape/discover/nzb-by-date/route.ts: POST', 'scrape/raw/nzb-by-date/route.ts: POST', 'PipelineTable.tsx: PipelineTable'] },
       { name: 'FETCH_TIMEOUT_MS', value: FETCH_TIMEOUT_MS, description: "Abort timeout for a single scrape HTML fetch. Default for the Pipeline page's 'Fetch timeout (s)' input; overrideable per run via ?fetch_timeout_ms=.", consumers: ['fetchHtml.ts: fetchWithTimeout', 'pipelineScrape.ts: fetchWithTimeout', 'PipelineTable.tsx: PipelineTable'] },
       { name: 'SCRAPE_MAX_DURATION_SECONDS', value: SCRAPE_MAX_DURATION_SECONDS, description: 'Canonical value for the hard Vercel `export const maxDuration` on the long-running pipeline routes (scrape, scrape-tracked, stats, cron/update-sessions). Next.js route config must be a literal, so each route writes `= 300` directly and keeps it in sync with this — no code imports it.', consumers: [] },
-      { name: 'SCRAPE_TIME_BUDGET_MS', value: SCRAPE_TIME_BUDGET_MS, description: "Soft time budget the scrape loops self-enforce — once past it they stop between run_ids/days and commit, so an overflowing catch-up window resumes on the next run. Default for the Pipeline page's 'Time budget (s)' input; overrideable per run via ?time_budget_ms=.", consumers: ['pipelineScrape.ts: scrapeClubSessions', 'pipelineScrape.ts: scrapeTrackedPlayerSessions', 'PipelineTable.tsx: PipelineTable'] },
       { name: 'SCRAPE_FALLBACK_LOOKBACK_DAYS', value: SCRAPE_FALLBACK_LOOKBACK_DAYS, description: "Days back the automatic scrape 'From' date falls back to when no session has ever been built yet.", consumers: ['pipelineScrape.ts: getDateRange'] },
+      { name: 'TRACKED_SCRAPE_BATCH_SIZE', value: TRACKED_SCRAPE_BATCH_SIZE, description: 'How many tracked players one /api/build/scrape-tracked-batch cron job handles (?batch=N → LIMIT this OFFSET N*this on the pl_name-ordered tracked list).', consumers: ['pipelineScrape.ts: scrapeTrackedPlayerSessions'] },
       { name: 'SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS', value: SCRAPE_DEFAULT_TO_DATE_WINDOW_DAYS, description: '(Currently unused — the Pipeline page’s shared "To date" is now opt-in with no default. Retained for possible reuse.)', consumers: [] }
     ]
   },

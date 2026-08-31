@@ -74,7 +74,7 @@ export async function GET(
 
     query += ' ORDER BY se_run_id DESC'
 
-    const rows = await table_query({ caller: 'players/[id]/results', query, params: queryParams })
+    const rows = await table_query({ caller: 'players/[id]/results', table: 'tre_results', query, params: queryParams })
 
     return NextResponse.json(rows)
   } catch (err) {

@@ -40,9 +40,10 @@ export async function GET(request: NextRequest) {
   `
 
   try {
-    const [rows, countRows] = await Promise.all([
+    const [rowsResult, countResult] = await Promise.all([
       table_query({
         caller: 'admin/players',
+        table: 'tpl_players',
         query: `
           SELECT pl_plid, pl_name, pl_club, pl_grade, pl_rank,
                  pl_a_points, pl_rating,
@@ -57,12 +58,15 @@ export async function GET(request: NextRequest) {
       }),
       table_query({
         caller: 'admin/players/count',
+        table: 'tpl_players',
         query: `SELECT COUNT(*)::int AS n ${fromJoin}`,
         params
       })
     ])
 
-    const totalCount = countRows[0]?.n ?? 0
+    if (!rowsResult.ok || !countResult.ok) throw new Error('admin/players: ' + (rowsResult.error ?? countResult.error))
+    const rows = rowsResult.data
+    const totalCount = countResult.data[0]?.n ?? 0
     const totalPages = Math.max(1, Math.ceil(totalCount / itemsPerPage))
     return NextResponse.json({ rows, totalPages, totalCount })
   } catch (err) {

@@ -3,14 +3,17 @@
     "deploymentEnabled": true
   },
   "crons": [
-    { "path": "/api/build/start-run",                    "schedule": "50 13 * * *" },
-    { "path": "/api/build/scrape",                       "schedule": "0 14 * * *" },
-    { "path": "/api/build/sessions-nzb?group=akbc",      "schedule": "20 14 * * *" },
-    { "path": "/api/build/results-nzb?group=akbc",       "schedule": "40 14 * * *" },
-    { "path": "/api/build/scrape-tracked",                "schedule": "0 15 * * *" },
-    { "path": "/api/build/sessions-nzb?group=tracked",   "schedule": "20 15 * * *" },
-    { "path": "/api/build/results-nzb?group=tracked",    "schedule": "40 15 * * *" },
-    { "path": "/api/build/partners",       "schedule": "0 16 * * *" },
-    { "path": "/api/build/stats",          "schedule": "20 16 * * *" }
+    { "path": "/api/build/start-run?to_date=",                                     "schedule": "50 12 * * *" },
+    { "path": "/api/build/scrape-akbc-day?batch=1&to_date=&fetch_timeout_ms=",      "schedule": "5 13 * * *" },
+    { "path": "/api/build/scrape-akbc-day?batch=2&to_date=&fetch_timeout_ms=",      "schedule": "35 13 * * *" },
+    { "path": "/api/build/scrape-tracked-batch?batch=1&to_date=&fetch_timeout_ms=", "schedule": "0 14 * * *" },
+    { "path": "/api/build/scrape-tracked-batch?batch=2&to_date=&fetch_timeout_ms=", "schedule": "10 14 * * *" },
+    { "path": "/api/build/scrape-tracked-batch?batch=3&to_date=&fetch_timeout_ms=", "schedule": "20 14 * * *" },
+    { "path": "/api/build/scrape-tracked-batch?batch=4&to_date=&fetch_timeout_ms=", "schedule": "30 14 * * *" },
+    { "path": "/api/build/scrape-tracked-batch?batch=5&to_date=&fetch_timeout_ms=", "schedule": "40 14 * * *" },
+    { "path": "/api/build/scrape-tracked-batch?batch=6&to_date=&fetch_timeout_ms=", "schedule": "50 14 * * *" },
+    { "path": "/api/build/partners",                                               "schedule": "10 15 * * *" },
+    { "path": "/api/build/stats-player",                                           "schedule": "20 15 * * *" },
+    { "path": "/api/build/stats-partner",                                          "schedule": "25 15 * * *" }
   ]
 }

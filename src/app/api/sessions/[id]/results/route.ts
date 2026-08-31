@@ -30,6 +30,7 @@ export async function GET(
   try {
     const rows = await table_query({
       caller: 'sessions/[id]/results',
+      table: 'tre_results',
       query: `
         WITH ranked AS (
           SELECT

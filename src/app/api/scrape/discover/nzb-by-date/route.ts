@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
       const missing: { date: string; run_id: number }[] = []
 
       try {
-        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts1', query: `TRUNCATE ts1_sessions`, params: [] })
-        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts2', query: `TRUNCATE ts2_results`,  params: [] })
+        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts1', table: 'ts1_sessions', query: `TRUNCATE ts1_sessions`, params: [] })
+        await table_query({ caller: 'scrape/discover/nzb-by-date/truncate-ts2', table: 'ts2_results', query: `TRUNCATE ts2_results`,  params: [] })
 
         const dates = datesInRange(date_from, date_end)
 
@@ -70,11 +70,14 @@ export async function POST(request: NextRequest) {
 
           total_found += runIds.length
 
-          const existing = await table_query({
+          const existingResult = await table_query({
             caller: 'scrape/discover/nzb-by-date/check',
+            table: 'tse_sessions',
             query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
             params: [runIds] as unknown as (string | number | boolean | null)[]
-          }) as { se_run_id: number }[]
+          })
+          if (!existingResult.ok) throw new Error('scrape/discover/nzb-by-date/check: ' + existingResult.error)
+          const existing = existingResult.data as { se_run_id: number }[]
 
           const existingSet  = new Set(existing.map(r => r.se_run_id))
           const dayMissing   = runIds.filter(id => !existingSet.has(id))
@@ -87,6 +90,7 @@ export async function POST(request: NextRequest) {
             missing.push({ date: day, run_id })
             await table_query({
               caller: 'scrape/discover/nzb-by-date/insert',
+              table: 'ts1_sessions',
               query: `INSERT INTO ts1_sessions (s1_run_id, s1_date, s1_club_id, s1_is_summary)
                       VALUES ($1, $2, $3, $4) ON CONFLICT (s1_run_id) DO NOTHING`,
               params: [run_id, day, club_id, is_final]

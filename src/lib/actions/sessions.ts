@@ -4,6 +4,7 @@ import { table_fetch } from 'nextjs-shared/table_fetch'
 import { table_update } from 'nextjs-shared/table_update'
 import { table_count } from 'nextjs-shared/table_count'
 import { table_query } from 'nextjs-shared/table_query'
+import { write_logging } from 'nextjs-shared/write_logging'
 import { fetchFiltered } from 'nextjs-shared/fetchFiltered'
 import { fetchTotalPages } from 'nextjs-shared/fetchTotalPages'
 import type { Filter } from 'nextjs-shared/structures'
@@ -78,7 +79,7 @@ export async function getSessionsPaged(
   const filterArray = buildSessionFilters(filters)
   const offset = (page - 1) * itemsPerPage
 
-  const [rows, totalPages] = await Promise.all([
+  const [rowsResult, pagesResult] = await Promise.all([
     fetchFiltered({
       table: SESSIONS_TABLE,
       filters: filterArray,
@@ -95,7 +96,12 @@ export async function getSessionsPaged(
     })
   ])
 
-  return { rows: rows as SessionListRow[], totalPages }
+  if (!rowsResult.ok || !pagesResult.ok) {
+    write_logging({ lg_functionname: 'getSessionsPaged', lg_caller: 'getSessionsPaged', lg_msg: 'Failed to page tse_sessions: ' + (rowsResult.error ?? pagesResult.error), lg_severity: 'E' })
+    return { rows: [], totalPages: 0 }
+  }
+
+  return { rows: rowsResult.data as SessionListRow[], totalPages: pagesResult.data }
 }
 
 //----------------------------------------------------------------------------------
@@ -103,12 +109,17 @@ export async function getSessionsPaged(
 //  (default 500)
 //----------------------------------------------------------------------------------
 export async function getRecentSessions(limit: number = 500) {
-  return table_fetch({
+  const result = await table_fetch({
     caller: 'getRecentSessions',
     table: SESSIONS_TABLE,
     orderBy: 'se_date DESC',
     limit
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getRecentSessions', lg_caller: 'getRecentSessions', lg_msg: 'Failed to fetch recent sessions: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data
 }
 
 //----------------------------------------------------------------------------------
@@ -116,37 +127,51 @@ export async function getRecentSessions(limit: number = 500) {
 //  every session when year is null
 //----------------------------------------------------------------------------------
 export async function getSessionsByYear(year: number | null) {
-  return table_query({
+  const result = await table_query({
     caller: 'getSessionsByYear',
+    table: 'tse_sessions',
     query: year
       ? `SELECT * FROM ${SESSIONS_TABLE} WHERE EXTRACT(YEAR FROM se_date) = $1 ORDER BY se_date DESC`
       : `SELECT * FROM ${SESSIONS_TABLE} ORDER BY se_date DESC`,
     params: year ? [year] : []
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getSessionsByYear', lg_caller: 'getSessionsByYear', lg_msg: 'Failed to fetch sessions by year: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data
 }
 
 //----------------------------------------------------------------------------------
 //  getSessionById — the tse_sessions row for se_seid, or null
 //----------------------------------------------------------------------------------
 export async function getSessionById(seId: number) {
-  const rows = await table_fetch({
+  const result = await table_fetch({
     caller: 'getSessionById',
     table: SESSIONS_TABLE,
     whereColumnValuePairs: [{ column: 'se_seid', value: seId }]
   })
-  return rows[0] ?? null
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getSessionById', lg_caller: 'getSessionById', lg_msg: 'Failed to fetch session by seid: ' + result.error, lg_severity: 'E' })
+    return null
+  }
+  return result.data[0] ?? null
 }
 
 //----------------------------------------------------------------------------------
 //  sessionExistsByRunId — true when a tse_sessions row exists for se_run_id
 //----------------------------------------------------------------------------------
 export async function sessionExistsByRunId(seRunId: number): Promise<boolean> {
-  const count = await table_count({
+  const result = await table_count({
     caller: 'sessionExistsByRunId',
     table: SESSIONS_TABLE,
     whereColumnValuePairs: [{ column: 'se_run_id', value: seRunId }]
   })
-  return count > 0
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'sessionExistsByRunId', lg_caller: 'sessionExistsByRunId', lg_msg: 'Failed to count session by run_id: ' + result.error, lg_severity: 'E' })
+    return false
+  }
+  return result.data > 0
 }
 
 //----------------------------------------------------------------------------------
@@ -156,12 +181,17 @@ export async function sessionExistsByRunId(seRunId: number): Promise<boolean> {
 export async function getSkippedRunIds(runIds: number[]): Promise<Set<number>> {
   if (runIds.length === 0) return new Set()
   const ph = runIds.map((_, i) => `$${i + 1}`).join(', ')
-  const rows = await table_query({
+  const result = await table_query({
     caller: 'getSkippedRunIds',
+    table: 'tse_sessions',
     query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id IN (${ph}) AND se_scoring = 'VP'`,
     params: runIds
   })
-  return new Set(rows.map((r: any) => r.se_run_id))
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getSkippedRunIds', lg_caller: 'getSkippedRunIds', lg_msg: 'Failed to fetch skipped run_ids: ' + result.error, lg_severity: 'E' })
+    return new Set()
+  }
+  return new Set(result.data.map((r: any) => r.se_run_id))
 }
 
 //----------------------------------------------------------------------------------
@@ -170,25 +200,33 @@ export async function getSkippedRunIds(runIds: number[]): Promise<Set<number>> {
 //----------------------------------------------------------------------------------
 export async function getImportedRunIds(runIds: number[]): Promise<Set<number>> {
   if (runIds.length === 0) return new Set()
-  const rows = await table_fetch({
+  const result = await table_fetch({
     caller: 'getImportedRunIds',
     table: SESSIONS_TABLE,
     whereColumnValuePairs: [{ column: 'se_run_id', value: runIds, operator: 'IN' }],
     columns: ['se_run_id']
   })
-  return new Set(rows.map((r: any) => r.se_run_id))
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getImportedRunIds', lg_caller: 'getImportedRunIds', lg_msg: 'Failed to fetch imported run_ids: ' + result.error, lg_severity: 'E' })
+    return new Set()
+  }
+  return new Set(result.data.map((r: any) => r.se_run_id))
 }
 
 //----------------------------------------------------------------------------------
 //  getSessionByRunId — the tse_sessions row for se_run_id, or null
 //----------------------------------------------------------------------------------
 export async function getSessionByRunId(seRunId: number) {
-  const rows = await table_fetch({
+  const result = await table_fetch({
     caller: 'getSessionByRunId',
     table: SESSIONS_TABLE,
     whereColumnValuePairs: [{ column: 'se_run_id', value: seRunId }]
   })
-  return rows[0] ?? null
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getSessionByRunId', lg_caller: 'getSessionByRunId', lg_msg: 'Failed to fetch session by run_id: ' + result.error, lg_severity: 'E' })
+    return null
+  }
+  return result.data[0] ?? null
 }
 
 
@@ -199,20 +237,28 @@ const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 //  currently marked 'Unknown'; returns how many rows were updated
 //----------------------------------------------------------------------------------
 export async function fixUnknownDays(): Promise<number> {
-  const rows = await table_fetch({
+  const result = await table_fetch({
     caller: 'fixUnknownDays',
     table: SESSIONS_TABLE,
     whereColumnValuePairs: [{ column: 'se_day_of_week', value: 'Unknown' }],
     columns: ['se_seid', 'se_date']
   })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'fixUnknownDays', lg_caller: 'fixUnknownDays', lg_msg: 'Failed to fetch Unknown-day sessions: ' + result.error, lg_severity: 'E' })
+    return 0
+  }
+  const rows = result.data
   for (const row of rows) {
     const dayName = DAY_NAMES[new Date(row.se_date).getUTCDay()]
-    await table_update({
+    const updateResult = await table_update({
       caller: 'fixUnknownDays',
       table: SESSIONS_TABLE,
       columnValuePairs: [{ column: 'se_day_of_week', value: dayName }],
       whereColumnValuePairs: [{ column: 'se_seid', value: row.se_seid }]
     })
+    if (!updateResult.ok) {
+      write_logging({ lg_functionname: 'fixUnknownDays', lg_caller: 'fixUnknownDays', lg_msg: `Failed to update se_day_of_week for se_seid ${row.se_seid}: ` + updateResult.error, lg_severity: 'E' })
+    }
   }
   return rows.length
 }
@@ -221,7 +267,12 @@ export async function fixUnknownDays(): Promise<number> {
 //  sessionCount — total row count of tse_sessions
 //----------------------------------------------------------------------------------
 export async function sessionCount(): Promise<number> {
-  return table_count({ table: SESSIONS_TABLE, caller: 'sessionCount' })
+  const result = await table_count({ table: SESSIONS_TABLE, caller: 'sessionCount' })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'sessionCount', lg_caller: 'sessionCount', lg_msg: 'Failed to count tse_sessions: ' + result.error, lg_severity: 'E' })
+    return 0
+  }
+  return result.data
 }
 
 
@@ -239,12 +290,18 @@ export interface SessionCatalogueEntry {
 //  date, day, scoring, name) for one calendar year, se_date DESC
 //----------------------------------------------------------------------------------
 export async function getSessionCatalogueForYear(year: number): Promise<SessionCatalogueEntry[]> {
-  return table_query({
+  const result = await table_query({
     caller: 'getSessionCatalogueForYear',
+    table: 'tse_sessions',
     query: `SELECT se_seid, se_run_id, se_date::text, se_day_of_week, se_scoring, se_name
             FROM tse_sessions
             WHERE EXTRACT(YEAR FROM se_date) = $1
             ORDER BY se_date DESC`,
     params: [year]
-  }) as Promise<SessionCatalogueEntry[]>
+  })
+  if (!result.ok) {
+    write_logging({ lg_functionname: 'getSessionCatalogueForYear', lg_caller: 'getSessionCatalogueForYear', lg_msg: 'Failed to fetch session catalogue: ' + result.error, lg_severity: 'E' })
+    return []
+  }
+  return result.data as SessionCatalogueEntry[]
 }

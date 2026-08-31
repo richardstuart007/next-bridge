@@ -45,11 +45,14 @@ export async function POST(request: NextRequest) {
       return new Response(JSON.stringify({ total_found: 0, total_in_prod: 0, total_missing: 0, missing: [], final_run_ids: [] }))
     }
 
-    const existing = await table_query({
+    const existingResult = await table_query({
       caller: 'scrape/discover/nzb-by-player/check',
+      table: 'tse_sessions',
       query: `SELECT se_run_id FROM tse_sessions WHERE se_run_id = ANY($1)`,
       params: [runIds] as unknown as (string | number | boolean | null)[]
-    }) as { se_run_id: number }[]
+    })
+    if (!existingResult.ok) throw new Error('scrape/discover/nzb-by-player/check: ' + existingResult.error)
+    const existing = existingResult.data as { se_run_id: number }[]
 
     const existingSet = new Set(existing.map(r => r.se_run_id))
     const missing     = runIds.filter(id => !existingSet.has(id))

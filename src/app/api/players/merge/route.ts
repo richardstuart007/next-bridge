@@ -30,11 +30,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'keep_plid and discard_plid must be different' }, { status: 400 })
     }
 
-    const players = await table_query({
+    const playersResult = await table_query({
       caller: 'players/merge',
+      table: 'tpl_players',
       query: `SELECT pl_plid, pl_name FROM tpl_players WHERE pl_plid IN ($1, $2)`,
       params: [keep_plid, discard_plid]
     })
+    if (!playersResult.ok) throw new Error('players/merge: ' + playersResult.error)
+    const players = playersResult.data
 
     const keepPlayer    = players.find((p: any) => p.pl_plid === keep_plid)
     const discardPlayer = players.find((p: any) => p.pl_plid === discard_plid)
@@ -47,58 +50,73 @@ export async function POST(request: NextRequest) {
     const discardName = discardPlayer.pl_name as string
 
     // 1. Get all partnerships of the discard player
-    const discardPartnerships = await table_query({
+    const discardPartnershipsResult = await table_query({
       caller: 'players/merge/get-partnerships',
+      table: 'tpa_partners',
       query: `SELECT pa_paid,
                 CASE WHEN pa_plid1 = $1 THEN pa_plid2 ELSE pa_plid1 END AS partner_id
               FROM tpa_partners WHERE pa_plid1 = $1 OR pa_plid2 = $1`,
       params: [discard_plid]
-    }) as { pa_paid: number; partner_id: number }[]
+    })
+    if (!discardPartnershipsResult.ok) throw new Error('players/merge/get-partnerships: ' + discardPartnershipsResult.error)
+    const discardPartnerships = discardPartnershipsResult.data as { pa_paid: number; partner_id: number }[]
 
     // 2. For each old partnership, remap or delete results
     for (const { pa_paid: old_paid, partner_id } of discardPartnerships) {
       if (partner_id === keep_plid) {
         // keep_plid was paired with discard_plid â€” would become self-pair, delete results
-        await table_query({
+        const delSelfResult = await table_query({
           caller: 'players/merge/delete-self-results',
+          table: 'tre_results',
           query: `DELETE FROM tre_results WHERE re_paid = $1`,
           params: [old_paid]
         })
+        if (!delSelfResult.ok) throw new Error('players/merge/delete-self-results: ' + delSelfResult.error)
       } else {
         // Create/find equivalent partnership with keep_plid
-        await table_query({
+        const upsertPartnershipResult = await table_query({
           caller: 'players/merge/upsert-partnership',
+          table: 'tpa_partners',
           query: `INSERT INTO tpa_partners (pa_plid1, pa_plid2)
                   VALUES (LEAST($1,$2), GREATEST($1,$2))
                   ON CONFLICT (pa_plid1, pa_plid2) DO NOTHING`,
           params: [keep_plid, partner_id]
         })
+        if (!upsertPartnershipResult.ok) throw new Error('players/merge/upsert-partnership: ' + upsertPartnershipResult.error)
 
-        const newPaRows = await table_query({
+        const newPaRowsResult = await table_query({
           caller: 'players/merge/get-new-paid',
+          table: 'tpa_partners',
           query: `SELECT pa_paid FROM tpa_partners
                   WHERE pa_plid1 = LEAST($1,$2) AND pa_plid2 = GREATEST($1,$2)`,
           params: [keep_plid, partner_id]
-        }) as { pa_paid: number }[]
+        })
+        if (!newPaRowsResult.ok) throw new Error('players/merge/get-new-paid: ' + newPaRowsResult.error)
+        const newPaRows = newPaRowsResult.data as { pa_paid: number }[]
 
-        await table_query({
+        const remapResult = await table_query({
           caller: 'players/merge/remap-results',
+          table: 'tre_results',
           query: `UPDATE tre_results SET re_paid = $1 WHERE re_paid = $2`,
           params: [newPaRows[0].pa_paid, old_paid]
         })
+        if (!remapResult.ok) throw new Error('players/merge/remap-results: ' + remapResult.error)
       }
     }
 
     // 3. Delete all partnerships for discard player (results already remapped or deleted)
-    await table_query({
+    const delPartnershipsResult = await table_query({
       caller: 'players/merge/delete-partnerships',
+      table: 'tpa_partners',
       query: `DELETE FROM tpa_partners WHERE pa_plid1 = $1 OR pa_plid2 = $1`,
       params: [discard_plid]
     })
+    if (!delPartnershipsResult.ok) throw new Error('players/merge/delete-partnerships: ' + delPartnershipsResult.error)
 
     // 4. Transfer nzb if kept player has none
-    await table_query({
+    const transferNzbResult = await table_query({
       caller: 'players/merge/transfer-nzb',
+      table: 'tpl_players',
       query: `UPDATE tpl_players
               SET pl_nzb = (SELECT pl_nzb FROM tpl_players WHERE pl_plid = $1)
               WHERE pl_plid = $2
@@ -106,13 +124,16 @@ export async function POST(request: NextRequest) {
                 AND (SELECT pl_nzb FROM tpl_players WHERE pl_plid = $1) > 0`,
       params: [discard_plid, keep_plid]
     })
+    if (!transferNzbResult.ok) throw new Error('players/merge/transfer-nzb: ' + transferNzbResult.error)
 
     // 5. Delete the discarded player
-    await table_query({
+    const delPlayerResult = await table_query({
       caller: 'players/merge/delete-player',
+      table: 'tpl_players',
       query: `DELETE FROM tpl_players WHERE pl_plid = $1`,
       params: [discard_plid]
     })
+    if (!delPlayerResult.ok) throw new Error('players/merge/delete-player: ' + delPlayerResult.error)
 
     await write_logging({
       lg_functionname: 'POST',

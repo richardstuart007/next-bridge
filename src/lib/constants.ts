@@ -59,17 +59,16 @@ export const FETCH_TIMEOUT_MS = 15_000
 export const SCRAPE_MAX_DURATION_SECONDS = 300
 
 //
-//  Soft time budget (ms) the scrape loops self-enforce: once past it they stop between run_ids /
-//  days and commit what they have, so an overflowing catch-up window resumes on the next run
-//  instead of being killed at SCRAPE_MAX_DURATION_SECONDS. Overrideable per run via ?time_budget_ms=
-//
-export const SCRAPE_TIME_BUDGET_MS = 240_000
-
-//
 //  When no session has ever been built yet, how many days back the automatic "From" date
 //  falls back to (getDateRange's fallback when tse_sessions is empty)
 //
 export const SCRAPE_FALLBACK_LOOKBACK_DAYS = 30
+
+//
+//  How many tracked players one /api/build/scrape-tracked-batch cron job handles
+//  (?batch=N → LIMIT this OFFSET N*this on the pl_name-ordered tracked list)
+//
+export const TRACKED_SCRAPE_BATCH_SIZE = 5
 
 //
 //  MP percentage clamp bounds — a raw scraped score outside this range is treated as

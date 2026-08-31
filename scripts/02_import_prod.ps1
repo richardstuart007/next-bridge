@@ -45,7 +45,6 @@ $seqcmds = @(
     "SELECT setval('tpa_partners_pa_paid_seq',           (SELECT COALESCE(MAX(pa_paid), 0) FROM tpa_partners))",
     "SELECT setval('tre_results_re_reid_seq',            (SELECT COALESCE(MAX(re_reid), 0) FROM tre_results))",
     "SELECT setval('trk_ranks_rk_rkid_seq',              (SELECT COALESCE(MAX(rk_rkid), 0) FROM trk_ranks))",
-    "SELECT setval('tcl_clubs_cl_clid_seq',              (SELECT COALESCE(MAX(cl_clid), 0) FROM tcl_clubs))",
     "SELECT setval('tgr_grades_gr_grid_seq',             (SELECT COALESCE(MAX(gr_grid), 0) FROM tgr_grades))",
     "SELECT setval('tet_event_types_et_etid_seq',        (SELECT COALESCE(MAX(et_etid), 0) FROM tet_event_types))",
     "SELECT setval('ta1_player_stats_a1_a1id_seq',       (SELECT COALESCE(MAX(a1_a1id), 0) FROM ta1_player_stats))",

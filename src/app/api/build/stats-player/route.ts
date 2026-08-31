@@ -1,27 +1,26 @@
-﻿import { NextResponse } from 'next/server'
-import { buildAllPartnerStats } from '@/src/lib/actions/players'
-import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
+import { NextResponse } from 'next/server'
+import { rebuildPlayerStats } from '@/src/lib/actions/stats'
 import { cronStart, cronEnd, cronFail } from '@/src/lib/actions/cronTrace'
 
-const ROUTE = 'build/partners'
+//
+//  Hard Vercel per-invocation ceiling — the 4-group player recompute needs the
+//  headroom. Next.js route config must be a literal — keep in sync with
+//  SCRAPE_MAX_DURATION_SECONDS in src/lib/constants.ts
+//
+export const maxDuration = 300
+
+const ROUTE = 'build/stats-player'
 
 //----------------------------------------------------------------------------------
-//  run — reads the tpa_partners count via buildAllPartnerStats(), logs it as
-//  pipeline step 3 under the day's current run_id, and returns { pairs } as JSON
-//  (500 with { error } on failure)
+//  run — runs rebuildPlayerStats() (pip_step 4 a–d, under the day's current run_id)
+//  and returns the result as JSON (500 with { error } on failure)
 //----------------------------------------------------------------------------------
 async function run(): Promise<NextResponse> {
   await cronStart(ROUTE)
-  const t0 = Date.now()
   try {
-    const { pairs } = await buildAllPartnerStats()
-    await logPipelineStep({
-      run_id: await resolvePipRunId(3, false), step: 3, step_name: 'Build Partners',
-      output_table: 'tpa_partners', output_recs: pairs,
-      duration_ms: Date.now() - t0
-    })
-    await cronEnd(ROUTE, `${pairs} pairs`)
-    return NextResponse.json({ pairs })
+    const result = await rebuildPlayerStats()
+    await cronEnd(ROUTE, `${result.player_rows} player rows`)
+    return NextResponse.json(result)
   } catch (err) {
     await cronFail(ROUTE, err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
@@ -29,7 +28,7 @@ async function run(): Promise<NextResponse> {
 }
 
 //----------------------------------------------------------------------------------
-//  GET — runs the Build Partners step
+//  GET — runs the Player Stats step
 //----------------------------------------------------------------------------------
 export async function GET()  { return run() }
 

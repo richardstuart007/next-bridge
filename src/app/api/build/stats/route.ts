@@ -1,25 +1,29 @@
 import { NextResponse } from 'next/server'
-import { write_logging } from 'nextjs-shared/write_logging'
 import { rebuildAllStats } from '@/src/lib/actions/stats'
+import { cronStart, cronEnd, cronFail } from '@/src/lib/actions/cronTrace'
 
 //
 //  Hard Vercel per-invocation ceiling — rebuildAllStats' 8-group recompute needs the
-//  headroom too. Next.js route config must be a literal — keep in sync with
+//  headroom. Next.js route config must be a literal — keep in sync with
 //  SCRAPE_MAX_DURATION_SECONDS in src/lib/constants.ts
 //
 export const maxDuration = 300
 
+const ROUTE = 'build/stats'
+
 //----------------------------------------------------------------------------------
-//  run — runs rebuildAllStats(), logs the player/partner row counts, and returns
-//  the result as JSON (500 with { error } on failure)
+//  run — runs rebuildAllStats() (player stats → pip_step 4 a–d, partner stats →
+//  pip_step 5 a–d, under the day's current run_id), and returns the result as JSON
+//  (500 with { error } on failure)
 //----------------------------------------------------------------------------------
 async function run(): Promise<NextResponse> {
+  await cronStart(ROUTE)
   try {
     const result = await rebuildAllStats()
-    await write_logging({ lg_functionname: 'run', lg_caller: 'build/stats', lg_msg: `${result.player_rows} player rows, ${result.partner_rows} partner rows`, lg_severity: 'I' })
+    await cronEnd(ROUTE, `${result.player_rows} player rows, ${result.partner_rows} partner rows`)
     return NextResponse.json(result)
   } catch (err) {
-    await write_logging({ lg_functionname: 'run', lg_caller: 'build/stats', lg_msg: String(err), lg_severity: 'E' })
+    await cronFail(ROUTE, err)
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }

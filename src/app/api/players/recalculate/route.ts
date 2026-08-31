@@ -1,8 +1,8 @@
 //==============================================================================================
 //  1) DESCRIPTION
 //    POST — /api/players/recalculate route handler. Recomputes one group's stats: mode
-//    'player_grp' runs computePlayerGroupStats(grp), mode 'partner_grp' runs
-//    computePartnerGroupStats(grp); each logs its own sub-step under pipeline step 4.
+//    'player_grp' runs computePlayerGroupStats(grp) → pipeline step 4 (sub_step a–d),
+//    mode 'partner_grp' runs computePartnerGroupStats(grp) → step 5 (sub_step a–d).
 //
 //    Parameters:
 //      request — query string: mode ('player_grp' | 'partner_grp'), grp ('A' | 'B' | 'C' | 'all')
@@ -16,8 +16,7 @@ import { write_logging } from 'nextjs-shared/write_logging'
 import { computePlayerGroupStats, computePartnerGroupStats } from '@/src/lib/actions/statsCompute'
 import { logPipelineStep, resolvePipRunId } from '@/src/lib/actions/pipelineLog'
 
-const PLAYER_SUB_STEP:  Record<string, string> = { A: 'a', B: 'b', C: 'c', all: 'd' }
-const PARTNER_SUB_STEP: Record<string, string> = { A: 'e', B: 'f', C: 'g', all: 'h' }
+const GROUP_SUB_STEP: Record<string, string> = { A: 'a', B: 'b', C: 'c', all: 'd' }
 
 export async function POST(request: NextRequest) {
   const { searchParams } = request.nextUrl
@@ -31,7 +30,7 @@ export async function POST(request: NextRequest) {
     if (mode === 'player_grp') {
       const { inserted, inputRecs } = await computePlayerGroupStats(grp)
       await logPipelineStep({
-        run_id, step: 4, sub_step: PLAYER_SUB_STEP[grp], step_name: `Player Stats — Group ${grp === 'all' ? 'All' : grp}`,
+        run_id, step: 4, sub_step: GROUP_SUB_STEP[grp], step_name: `Player Stats — Group ${grp === 'all' ? 'All' : grp}`,
         input_table: 'tre_results', input_recs: inputRecs, output_table: 'ta1_player_stats', output_recs: inserted, duration_ms: Date.now() - t0
       })
       return NextResponse.json({ updated: inserted })
@@ -39,7 +38,7 @@ export async function POST(request: NextRequest) {
     } else if (mode === 'partner_grp') {
       const { inserted, inputRecs } = await computePartnerGroupStats(grp)
       await logPipelineStep({
-        run_id, step: 4, sub_step: PARTNER_SUB_STEP[grp], step_name: `Partner Stats — Group ${grp === 'all' ? 'All' : grp}`,
+        run_id, step: 5, sub_step: GROUP_SUB_STEP[grp], step_name: `Partner Stats — Group ${grp === 'all' ? 'All' : grp}`,
         input_table: 'tre_results', input_recs: inputRecs, output_table: 'ta2_partner_stats', output_recs: inserted, duration_ms: Date.now() - t0
       })
       return NextResponse.json({ updated: inserted })
